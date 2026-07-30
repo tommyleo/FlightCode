@@ -1,0 +1,49 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "FlightCode Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BOARD": "MAMBAF411"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "FlightCode Release",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "clracingf4-debug",
+      "displayName": "FlightCode CLRacingF4 Debug",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/clracingf4-debug",
+      "cacheVariables": {
+        "BOARD": "CLRACINGF4"
+      }
+    },
+    {
+      "name": "clracingf4-release",
+      "displayName": "FlightCode CLRacingF4 Release",
+      "inherits": "clracingf4-debug",
+      "binaryDir": "${sourceDir}/build/clracingf4-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "clracingf4-debug", "configurePreset": "clracingf4-debug" },
+    { "name": "clracingf4-release", "configurePreset": "clracingf4-release" }
+  ]
+}
