@@ -51,6 +51,25 @@ Release builds are stored in `build/release` and
 The project can be opened directly in Visual Studio Code with the CMake Tools,
 C/C++, and Cortex-Debug extensions.
 
+## Project structure
+
+```text
+src/
+├── app/                 Firmware entry point and main flight loop
+├── control/             Rate controller, PID logic and motor mixer
+├── drivers/
+│   ├── imu/             MPU6000 driver
+│   ├── motors/          DSHOT, OneShot125 and MultiShot outputs
+│   ├── receiver/        SBUS receiver and frame decoder
+│   └── usb/             USB device and CDC transport
+├── platform/            STM32 board mapping, HAL configuration and interrupts
+├── protocol/            Shared FlightCode Configurator protocol
+└── storage/             Persistent settings and flight log
+linker/                  Board-specific linker scripts
+cmake/                   ARM toolchain configuration
+tools/                   Build helpers
+```
+
 ## USB Configurator
 
 The firmware exposes a USB CDC serial port with telemetry, SBUS channels,

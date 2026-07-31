@@ -49,19 +49,19 @@ FetchContent_MakeAvailable(cmsis_core cmsis_device_f4 stm32f4_hal stm32_usb_devi
 set(HAL_SRC ${stm32f4_hal_SOURCE_DIR}/Src)
 
 add_executable(FlightCode
-    src/main.c
-    src/board.c
-    src/dshot.c
-    src/config_protocol.c
-    src/flight_control.c
-    src/flight_log.c
-    src/flight_settings.c
-    src/mpu6000.c
-    src/sbus.c
-    src/stm32f4xx_it.c
-    src/usb_cdc.c
-    src/usbd_conf.c
-    src/usbd_desc.c
+    src/app/main.c
+    src/control/flight_control.c
+    src/drivers/imu/mpu6000.c
+    src/drivers/motors/dshot.c
+    src/drivers/receiver/sbus.c
+    src/drivers/usb/usb_cdc.c
+    src/drivers/usb/usbd_conf.c
+    src/drivers/usb/usbd_desc.c
+    src/platform/board.c
+    src/platform/stm32f4xx_it.c
+    src/protocol/config_protocol.c
+    src/storage/flight_log.c
+    src/storage/flight_settings.c
     ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/system_stm32f4xx.c
     ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/gcc/${STARTUP_FILE}
     ${HAL_SRC}/stm32f4xx_hal.c
@@ -87,7 +87,15 @@ add_executable(FlightCode
 set_target_properties(FlightCode PROPERTIES SUFFIX ".elf")
 
 target_include_directories(FlightCode PRIVATE
-    include
+    src/app
+    src/control
+    src/drivers/imu
+    src/drivers/motors
+    src/drivers/receiver
+    src/drivers/usb
+    src/platform
+    src/protocol
+    src/storage
     ${cmsis_core_SOURCE_DIR}/CMSIS/Core/Include
     ${cmsis_device_f4_SOURCE_DIR}/Include
     ${stm32f4_hal_SOURCE_DIR}/Inc
