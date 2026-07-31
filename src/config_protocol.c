@@ -109,7 +109,11 @@ static void process(const char *command)
     if (strcmp(command, "HELLO") == 0) {
         client_active = true;
         last_activity_us = board_micros();
-        reply("@CFG HELLO FlightCode 2 %s\n", BOARD_NAME);
+        reply("@CFG HELLO FlightCode 3 %s\n", BOARD_NAME);
+        reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
+              "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
+              "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+              "TELEMETRY_EXT\n");
         send_pids();
         send_motor_protocol();
         send_board_alignment();

@@ -1,69 +1,69 @@
-# FlightCode - MAMBAF411 e CLRacingF4
+# FlightCode - MAMBAF411 and CLRacingF4
 
-Firmware sperimentale Quad X rate mode per DIAT MAMBAF411 (STM32F411) e
+Experimental Quad X rate-mode firmware for the DIAT MAMBAF411 (STM32F411) and
 CL Racing CLRacingF4 (STM32F405).
 
-Il controllo gyro/PID gira a 8 kHz, pari alla massima frequenza dati utile
-dell'MPU6000. DSHOT300 e' il protocollo ESC predefinito; dal Configurator si
-possono selezionare anche OneShot125 e MultiShot.
+The gyroscope/PID control loop runs at 8 kHz, matching the highest useful data
+rate of the MPU6000. DSHOT300 is the default ESC protocol; OneShot125 and
+MultiShot can also be selected from the Configurator.
 
-- MCU STM32F411, core 96 MHz e USB CDC
-- MPU6000 SPI1: CS PA4, SCK PA5, MISO PA6, MOSI PA7, orientamento CW180
-- SBUS su USART1 RX PA10, inverter PB10, 100000 baud 8E2
-- Motori: M1 PB3, M2 PB4, M3 PB6, M4 PB7
-- LED PC13
-- Buzzer attivo basso PB2, comandato da CH5 > 2000
+- STM32F411 MCU, 96 MHz core, and USB CDC
+- MPU6000 on SPI1: CS PA4, SCK PA5, MISO PA6, MOSI PA7, CW180 orientation
+- SBUS on USART1 RX PA10, inverter PB10, 100000 baud 8E2
+- Motors: M1 PB3, M2 PB4, M3 PB6, M4 PB7
+- LED on PC13
+- Active-low buzzer on PB2, controlled by CH5 > 2000
 
-La mappatura deriva dal target ufficiale Betaflight `DIAT/MAMBAF411`.
-Canali radio: CH1 throttle, CH2 roll, CH3 pitch, CH4 yaw e
+The mapping is based on the official Betaflight `DIAT/MAMBAF411` target.
+Radio channels are CH1 throttle, CH2 roll, CH3 pitch, CH4 yaw, and
 CH6 arm > 2000.
 
-La CLRacingF4 usa la mappatura Betaflight `CLRA/CLRACINGF4`: MPU6000 su
-SPI1 (CS PA4), SBUS su USART1 RX PA10 con inverter PC0, motori PB0, PB1,
-PA3 e PA2, LED PB5 e buzzer attivo basso PB4.
+The CLRacingF4 uses the Betaflight `CLRA/CLRACINGF4` mapping: MPU6000 on SPI1
+(CS PA4), SBUS on USART1 RX PA10 with inverter PC0, motors on PB0, PB1, PA3,
+and PA2, LED on PB5, and an active-low buzzer on PB4.
 
-## Compilazione Windows
+## Building on Windows
 
-Da PowerShell:
+From PowerShell:
 
 ```powershell
 cd C:\SvilST\FlightCode
-# Una scheda (Debug)
+# One board (Debug)
 .\tools\build.ps1 -Board MAMBAF411
 .\tools\build.ps1 -Board CLRACINGF4
 
-# Tutte le schede (Debug)
+# All boards (Debug)
 .\tools\build.ps1 -Board All
 
-# Una o tutte in Release
+# One board or all boards in Release mode
 .\tools\build.ps1 -Board CLRACINGF4 -Configuration Release
 .\tools\build.ps1 -Board All -Configuration Release
 ```
 
-Il firmware da caricare e':
+Firmware images:
 
 - `build/debug/FlightCode-MAMBAF411.hex`
 - `build/clracingf4-debug/FlightCode-CLRACINGF4.hex`
 
-Le build Release sono rispettivamente in `build/release` e
-`build/clracingf4-release`.
+Release builds are stored in `build/release` and
+`build/clracingf4-release`, respectively.
 
-Il progetto puo' essere aperto direttamente in Visual Studio Code con le
-estensioni CMake Tools, C/C++ e Cortex-Debug.
+The project can be opened directly in Visual Studio Code with the CMake Tools,
+C/C++, and Cortex-Debug extensions.
 
-## Configuratore USB
+## USB Configurator
 
-Il firmware espone una porta seriale USB CDC con telemetria, canali SBUS,
-uscite motori e configurazione PID. Dopo aver caricato il firmware:
+The firmware exposes a USB CDC serial port with telemetry, SBUS channels,
+motor outputs, and PID configuration. After flashing the firmware:
 
-1. riavviare la scheda normalmente, senza tenere premuto BOOT;
-2. avviare `C:\SvilST\FlightCodeConfigurator\start-configurator.cmd`;
-3. in Chrome o Edge premere **Connetti** e scegliere FlightCode.
+1. restart the board normally without holding BOOT;
+2. launch `C:\SvilST\FlightCodeConfigurator\start-configurator.cmd`;
+3. in Chrome or Edge, select **Connect** and choose FlightCode.
 
-I PID possono essere modificati o salvati solo a quad disarmato. L'ultimo
-settore della flash interna e' riservato alle impostazioni persistenti.
+PID settings can only be changed or saved while the quad is disarmed. The last
+sector of internal flash is reserved for persistent settings.
 
-## Sicurezza
+## Safety
 
-Prima prova obbligatoriamente senza eliche. Verificare ordine motori, verso
-motori, orientamento gyro, failsafe e comando di armamento.
+Always perform the first test without propellers. Verify motor order, motor
+direction, gyroscope orientation, failsafe behavior, and the arming command.
