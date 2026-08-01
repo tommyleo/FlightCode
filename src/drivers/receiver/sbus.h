@@ -20,6 +20,8 @@ typedef struct {
     uint32_t valid_frame_count;
     uint32_t uart_error_count;
     uint32_t recovery_count;
+    uint32_t ring_overrun_count;
+    uint32_t invalid_frame_count;
     sbus_loss_reason_t loss_reason;
 } sbus_data_t;
 

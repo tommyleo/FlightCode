@@ -5,6 +5,7 @@
 #include "flight_log.h"
 #include "flight_settings.h"
 #include "mpu6000.h"
+#include "max7456.h"
 #include "sbus.h"
 
 #define LOOP_HZ 8000U
@@ -19,6 +20,7 @@ int main(void)
     flight_settings_init();
     sbus_init();
     flight_control_init();
+    max7456_init();
 
     bool imu_ready = mpu6000_init();
     uint8_t consecutive_imu_failures = 0U;
@@ -27,6 +29,8 @@ int main(void)
     const uint32_t loop_cycles = SystemCoreClock / LOOP_HZ;
     uint32_t next_loop = DWT->CYCCNT;
     uint32_t last_telemetry_us = 0U;
+    uint32_t last_osd_us = 0U;
+    uint32_t last_osd_retry_us = 0U;
     uint32_t last_imu_retry_us = board_micros();
     uint32_t previous_loop_us = board_micros();
     uint32_t loop_window_start_us = previous_loop_us;
@@ -90,6 +94,18 @@ int main(void)
         flight_log_persist_if_ready();
 
         const uint32_t now_us = board_micros();
+        if ((uint32_t)(now_us - last_osd_us) >= 200000U) {
+            last_osd_us = now_us;
+            const float battery_voltage = board_battery_voltage();
+            if (!max7456_is_available() && !flight_control_is_armed() &&
+                battery_voltage >= 3.0f &&
+                (uint32_t)(now_us - last_osd_retry_us) >= 1000000U) {
+                last_osd_retry_us = now_us;
+                (void)max7456_init();
+                next_loop = DWT->CYCCNT;
+            }
+            max7456_update_battery(battery_voltage);
+        }
         if (!imu_ready &&
             (uint32_t)(now_us - last_imu_retry_us) >= 2000000U) {
             last_imu_retry_us = now_us;

@@ -6,7 +6,7 @@
 
 #define FRAME_SIZE 25U
 #define SIGNAL_TIMEOUT_US 100000U
-#define RX_RING_SIZE 128U
+#define RX_RING_SIZE 256U
 #define INVERTER_PROBE_US 400000U
 #define RECOVERY_RETRY_US 100000U
 
@@ -21,6 +21,8 @@ static uint32_t last_inverter_probe_us;
 static bool inverter_locked;
 static GPIO_PinState inverter_level;
 static uint32_t last_recovery_us;
+static volatile bool uart_recovery_pending;
+static volatile bool ring_resync_pending;
 
 static void restart_uart_receive(void)
 {
@@ -88,6 +90,21 @@ void sbus_init(void)
 
 void sbus_update(void)
 {
+    if (uart_recovery_pending) {
+        __disable_irq();
+        uart_recovery_pending = false;
+        __enable_irq();
+        frame_index = 0U;
+        rx_tail = rx_head;
+        restart_uart_receive();
+    }
+    if (ring_resync_pending) {
+        __disable_irq();
+        ring_resync_pending = false;
+        __enable_irq();
+        frame_index = 0U;
+        rx_tail = rx_head;
+    }
     while (rx_tail != rx_head) {
         const uint8_t byte = rx_ring[rx_tail];
         rx_tail = (uint16_t)((rx_tail + 1U) % RX_RING_SIZE);
@@ -101,6 +118,7 @@ void sbus_update(void)
                 decode();
                 frame_index = 0U;
             } else {
+                ++data.invalid_frame_count;
                 resync_frame();
             }
         }
@@ -158,6 +176,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
     if (next != rx_tail) {
         rx_ring[rx_head] = irq_byte;
         rx_head = next;
+    } else {
+        ++data.ring_overrun_count;
+        ring_resync_pending = true;
     }
     HAL_UART_Receive_IT(&hsbus_uart, &irq_byte, 1U);
 }
@@ -168,6 +189,6 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
         ++data.uart_error_count;
         ++data.recovery_count;
         last_recovery_us = board_micros();
-        restart_uart_receive();
+        uart_recovery_pending = true;
     }
 }

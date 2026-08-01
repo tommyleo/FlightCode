@@ -53,6 +53,7 @@ add_executable(FlightCode
     src/control/flight_control.c
     src/drivers/imu/mpu6000.c
     src/drivers/motors/dshot.c
+    src/drivers/osd/max7456.c
     src/drivers/receiver/sbus.c
     src/drivers/usb/usb_cdc.c
     src/drivers/usb/usbd_conf.c
@@ -65,6 +66,7 @@ add_executable(FlightCode
     ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/system_stm32f4xx.c
     ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/gcc/${STARTUP_FILE}
     ${HAL_SRC}/stm32f4xx_hal.c
+    ${HAL_SRC}/stm32f4xx_hal_adc.c
     ${HAL_SRC}/stm32f4xx_hal_cortex.c
     ${HAL_SRC}/stm32f4xx_hal_dma.c
     ${HAL_SRC}/stm32f4xx_hal_flash.c
@@ -91,6 +93,7 @@ target_include_directories(FlightCode PRIVATE
     src/control
     src/drivers/imu
     src/drivers/motors
+    src/drivers/osd
     src/drivers/receiver
     src/drivers/usb
     src/platform

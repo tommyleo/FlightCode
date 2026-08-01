@@ -7,10 +7,12 @@
 
 #include "board.h"
 #include "mpu6000.h"
+#include "max7456.h"
 #include "stm32f4xx_hal.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 11U
+#define SETTINGS_VERSION 12U
+#define SETTINGS_LEGACY_VERSION_11 11U
 #define SETTINGS_LEGACY_VERSION 7U
 #define SETTINGS_LEGACY_VERSION_8 8U
 #define SETTINGS_LEGACY_VERSION_9 9U
@@ -76,6 +78,24 @@ typedef struct {
     legacy_settings_v10_t settings;
     uint32_t checksum;
 } legacy_record_v10_t;
+
+typedef struct {
+    legacy_settings_v10_t base;
+    uint32_t receiver_channel_order;
+    uint32_t arm_channel;
+    uint32_t arm_min_us;
+    uint32_t arm_max_us;
+    uint32_t beep_channel;
+    uint32_t beep_min_us;
+    uint32_t beep_max_us;
+} legacy_settings_v11_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    legacy_settings_v11_t settings;
+    uint32_t checksum;
+} legacy_record_v11_t;
 
 typedef struct {
     uint32_t magic;
@@ -180,6 +200,8 @@ static void apply(void)
     flight_control_set_motor_direction_reversed(
         current_settings.motor_direction_reversed != 0U);
     flight_control_set_motor_idle_percent(current_settings.motor_idle_percent);
+    (void)max7456_set_config(current_settings.osd_enabled != 0U,
+                             (uint8_t)current_settings.osd_position);
 }
 
 void flight_settings_reset_defaults(void)
@@ -210,6 +232,8 @@ void flight_settings_reset_defaults(void)
         .beep_channel = 4U,
         .beep_min_us = 1950U,
         .beep_max_us = 2100U,
+        .osd_enabled = 0U,
+        .osd_position = 4U,
     };
     settings_saved = false;
     apply();
@@ -226,6 +250,19 @@ void flight_settings_init(void)
         (const legacy_record_v9_t *)SETTINGS_ADDRESS;
     const legacy_record_v10_t *legacy_v10 =
         (const legacy_record_v10_t *)SETTINGS_ADDRESS;
+    const legacy_record_v11_t *legacy_v11 =
+        (const legacy_record_v11_t *)SETTINGS_ADDRESS;
+    if (legacy_v11->magic == SETTINGS_MAGIC &&
+        legacy_v11->version == SETTINGS_LEGACY_VERSION_11 &&
+        legacy_v11->checksum == checksum_bytes(
+            legacy_v11, offsetof(legacy_record_v11_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, &legacy_v11->settings,
+               sizeof(legacy_v11->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v10->magic == SETTINGS_MAGIC &&
         legacy_v10->version == SETTINGS_LEGACY_VERSION_10 &&
         legacy_v10->checksum == checksum_bytes(
@@ -290,6 +327,8 @@ void flight_settings_init(void)
         !rates_valid(&stored->settings) ||
         !feedforward_valid(&stored->settings) ||
         !receiver_valid(&stored->settings) ||
+        stored->settings.osd_enabled > 1U ||
+        stored->settings.osd_position > 8U ||
         !isfinite(stored->settings.tpa_attenuation) ||
         stored->settings.tpa_attenuation < 0.0f ||
         stored->settings.tpa_attenuation > 1.0f ||
@@ -327,6 +366,7 @@ bool flight_settings_set(const flight_settings_t *settings)
         !rates_valid(settings) ||
         !feedforward_valid(settings) ||
         !receiver_valid(settings) ||
+        settings->osd_enabled > 1U || settings->osd_position > 8U ||
         !isfinite(settings->tpa_attenuation) ||
         settings->tpa_attenuation < 0.0f ||
         settings->tpa_attenuation > 1.0f ||

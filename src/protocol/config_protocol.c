@@ -8,6 +8,7 @@
 #include "flight_control.h"
 #include "flight_log.h"
 #include "flight_settings.h"
+#include "max7456.h"
 #include "usb_cdc.h"
 
 #define LINE_LENGTH 192U
@@ -124,16 +125,47 @@ static void send_receiver_config(void)
           flight_settings_are_saved() ? 1U : 0U);
 }
 
+static const char *osd_position_name(uint8_t position)
+{
+    static const char *const names[9] = {
+        "TOP_LEFT", "TOP_CENTER", "TOP_RIGHT",
+        "CENTER_LEFT", "CENTER", "CENTER_RIGHT",
+        "BOTTOM_LEFT", "BOTTOM_CENTER", "BOTTOM_RIGHT",
+    };
+    return position < 9U ? names[position] : "CENTER";
+}
+
+static void send_osd_status(void)
+{
+#if BOARD_HAS_OSD
+    reply("@CFG OSD_STATUS %u %u %s %s %s %02X %u %u\n",
+          max7456_is_available() ? 1U : 0U,
+          max7456_is_enabled() ? 1U : 0U,
+          osd_position_name(max7456_position()),
+          max7456_video_is_pal() ? "PAL" : "NTSC",
+          max7456_font_is_ready() ? "FONT_OK" : "FONT_FAILED",
+          max7456_probe_value(), max7456_probe_spi_mode(),
+          flight_settings_are_saved() ? 1U : 0U);
+#endif
+}
+
 static void process(const char *command)
 {
     if (strcmp(command, "HELLO") == 0) {
         client_active = true;
         last_activity_us = board_micros();
         reply("@CFG HELLO FlightCode 3 %s\n", BOARD_NAME);
+#if BOARD_HAS_BATTERY_VOLTAGE
+        reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
+              "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
+              "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+              "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD\n");
+#else
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
               "TELEMETRY_EXT RECEIVER_CONFIG\n");
+#endif
         send_pids();
         send_motor_protocol();
         send_board_alignment();
@@ -143,6 +175,9 @@ static void process(const char *command)
         send_feedforward();
         send_tpa();
         send_receiver_config();
+#if BOARD_HAS_OSD
+        send_osd_status();
+#endif
         return;
     }
     if (strcmp(command, "PING") == 0) {
@@ -315,6 +350,29 @@ static void process(const char *command)
     }
 
     flight_settings_t settings = *flight_settings_get();
+    unsigned int osd_enabled;
+    char osd_position[20];
+    if (sscanf(command, "SET_OSD %u %19s", &osd_enabled, osd_position) == 2) {
+        static const char *const names[9] = {
+            "TOP_LEFT", "TOP_CENTER", "TOP_RIGHT",
+            "CENTER_LEFT", "CENTER", "CENTER_RIGHT",
+            "BOTTOM_LEFT", "BOTTOM_CENTER", "BOTTOM_RIGHT",
+        };
+        uint8_t position = 9U;
+        for (uint8_t i = 0U; i < 9U; ++i) {
+            if (strcmp(osd_position, names[i]) == 0) position = i;
+        }
+        settings.osd_enabled = osd_enabled;
+        settings.osd_position = position;
+        if (osd_enabled > 1U || position > 8U ||
+            !flight_settings_set(&settings)) {
+            reply("@CFG ERROR INVALID_OSD_CONFIG\n");
+        } else {
+            reply("@CFG OK SET_OSD\n");
+            send_osd_status();
+        }
+        return;
+    }
     char receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
@@ -609,5 +667,34 @@ void config_protocol_send_telemetry(const sbus_data_t *rx,
     if (used > 0 && (size_t)used < sizeof(output) - 1U) {
         output[used++] = '\n';
         usb_cdc_write((const uint8_t *)output, (size_t)used);
+    }
+#if BOARD_HAS_BATTERY_VOLTAGE
+    static uint32_t last_battery_us;
+    const uint32_t now = board_micros();
+    if ((uint32_t)(now - last_battery_us) >= 200000U) {
+        last_battery_us = now;
+        const float voltage = board_battery_voltage();
+        reply("@CFG BATTERY_VOLTAGE %.2f\n", voltage >= 1.0f ? voltage : 0.0f);
+    }
+#endif
+    static uint32_t last_osd_status_us;
+    const uint32_t osd_status_now = board_micros();
+    if ((uint32_t)(osd_status_now - last_osd_status_us) >= 1000000U) {
+        last_osd_status_us = osd_status_now;
+        send_osd_status();
+    }
+    static uint32_t last_sbus_diagnostics_us;
+    const uint32_t diagnostics_now = board_micros();
+    if ((uint32_t)(diagnostics_now - last_sbus_diagnostics_us) >= 500000U) {
+        last_sbus_diagnostics_us = diagnostics_now;
+        reply("@CFG SBUS_DIAGNOSTICS %u %lu %lu %lu %lu %lu %lu\n",
+              rx->valid ? 1U : 0U,
+              (unsigned long)(rx->frame_age_us == UINT32_MAX
+                                  ? UINT32_MAX : rx->frame_age_us / 1000U),
+              (unsigned long)rx->valid_frame_count,
+              (unsigned long)rx->uart_error_count,
+              (unsigned long)rx->recovery_count,
+              (unsigned long)rx->ring_overrun_count,
+              (unsigned long)rx->invalid_frame_count);
     }
 }

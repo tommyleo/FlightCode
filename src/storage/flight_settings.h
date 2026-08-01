@@ -32,6 +32,8 @@ typedef struct {
     uint32_t beep_channel;
     uint32_t beep_min_us;
     uint32_t beep_max_us;
+    uint32_t osd_enabled;
+    uint32_t osd_position;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U

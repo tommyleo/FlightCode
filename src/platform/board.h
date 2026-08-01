@@ -37,6 +37,10 @@
 #define MPU6000_CS_PORT GPIOA
 #define MPU6000_CS_PIN GPIO_PIN_4
 #define BOARD_CORE_CLOCK_HZ 96000000U
+#define BOARD_HAS_BATTERY_VOLTAGE 1
+#define BOARD_HAS_OSD 1
+#define MAX7456_CS_PORT GPIOB
+#define MAX7456_CS_PIN GPIO_PIN_12
 
 #elif defined(BOARD_CLRACINGF4)
 #define BOARD_NAME "CLRACINGF4"
@@ -71,16 +75,20 @@
 #define MPU6000_CS_PORT GPIOA
 #define MPU6000_CS_PIN GPIO_PIN_4
 #define BOARD_CORE_CLOCK_HZ 168000000U
+#define BOARD_HAS_BATTERY_VOLTAGE 0
+#define BOARD_HAS_OSD 0
 #else
 #error "No supported board selected"
 #endif
 
 extern SPI_HandleTypeDef hspi1;
+extern SPI_HandleTypeDef hspi2;
 extern UART_HandleTypeDef hsbus_uart;
 
 void board_init(void);
 void board_fatal_error(void);
 uint32_t board_micros(void);
 void board_buzzer_set(bool enabled);
+float board_battery_voltage(void);
 void board_check_dfu_request(void);
 void board_enter_dfu(void) __attribute__((noreturn));
