@@ -80,6 +80,15 @@ size_t usb_cdc_read(uint8_t *data, size_t capacity)
 
 size_t usb_cdc_write(const uint8_t *data, size_t length)
 {
+    const size_t used = tx_head >= tx_tail
+        ? (size_t)(tx_head - tx_tail)
+        : (size_t)(TX_RING_SIZE - tx_tail + tx_head);
+    const size_t available = TX_RING_SIZE - 1U - used;
+    /* Protocol messages are line based: never enqueue a truncated line. */
+    if (length > available) {
+        usb_cdc_poll();
+        return 0U;
+    }
     size_t count = 0U;
     while (count < length) {
         const uint16_t next = (uint16_t)((tx_head + 1U) % TX_RING_SIZE);

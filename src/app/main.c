@@ -8,7 +8,6 @@
 #include "sbus.h"
 
 #define LOOP_HZ 8000U
-#define BUZZER_CH 4U
 #define IMU_FAILURE_LIMIT 8U
 
 int main(void)
@@ -53,8 +52,12 @@ int main(void)
         next_loop += loop_cycles;
         sbus_update();
         const sbus_data_t *receiver = sbus_get();
+        const flight_settings_t *settings = flight_settings_get();
         board_buzzer_set(receiver->valid &&
-                         receiver->channel_us[BUZZER_CH] > 2000U);
+            receiver->channel_us[settings->beep_channel] >=
+                settings->beep_min_us &&
+            receiver->channel_us[settings->beep_channel] <=
+                settings->beep_max_us);
         config_protocol_update();
 
         imu_sample_t imu = {0};

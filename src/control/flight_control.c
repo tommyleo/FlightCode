@@ -6,12 +6,8 @@
 #include "board.h"
 #include "dshot.h"
 #include "flight_log.h"
+#include "flight_settings.h"
 
-#define THROTTLE_CH 0U
-#define ROLL_CH 1U
-#define PITCH_CH 2U
-#define YAW_CH 3U
-#define ARM_CH 5U
 #define CALIBRATION_SAMPLES 8000U
 #define CALIBRATION_MAX_VARIATION_DPS 3.0f
 #define CALIBRATION_MAX_ABSOLUTE_RATE_DPS 10.0f
@@ -228,14 +224,23 @@ void flight_control_update(const imu_sample_t *imu,
                            float dt,
                            uint16_t motors[4])
 {
+    const flight_settings_t *settings = flight_settings_get();
+    const bool aetr = settings->receiver_channel_order ==
+                      RECEIVER_ORDER_AETR1234;
+    const uint8_t throttle_ch = aetr ? 2U : 0U;
+    const uint8_t roll_ch = aetr ? 0U : 1U;
+    const uint8_t pitch_ch = aetr ? 1U : 2U;
+    const uint8_t yaw_ch = 3U;
     const float measured_dt = dt;
     update_status_led();
     dt = clampf(dt, 0.00005f, 0.0005f);
     memset(motors, 0, sizeof(uint16_t) * 4U);
     const float throttle = clampf(
-        ((float)rx->channel_us[THROTTLE_CH] - 1000.0f) / 10.0f,
+        ((float)rx->channel_us[throttle_ch] - 1000.0f) / 10.0f,
         0.0f, 100.0f);
-    const bool arm_switch = rx->channel_us[ARM_CH] > 2000U;
+    const bool arm_switch = rx->valid &&
+        rx->channel_us[settings->arm_channel] >= settings->arm_min_us &&
+        rx->channel_us[settings->arm_channel] <= settings->arm_max_us;
     if (!calibrated) {
         if (armed) flight_log_stop(FLIGHT_LOG_FLAG_STOP_DISARM);
         armed = false;
@@ -342,11 +347,11 @@ void flight_control_update(const imu_sample_t *imu,
     const float rate_yaw = pt1(&gyro_filter[2], imu->gyro_z_dps - bias_z,
                                GYRO_LPF_HZ, dt);
     const float setpoint_roll =
-        rate_setpoint(rx->channel_us[ROLL_CH], roll_rate_dps);
+        rate_setpoint(rx->channel_us[roll_ch], roll_rate_dps);
     const float setpoint_pitch =
-        rate_setpoint(rx->channel_us[PITCH_CH], pitch_rate_dps);
+        rate_setpoint(rx->channel_us[pitch_ch], pitch_rate_dps);
     const float setpoint_yaw =
-        rate_setpoint(rx->channel_us[YAW_CH], yaw_rate_dps);
+        rate_setpoint(rx->channel_us[yaw_ch], yaw_rate_dps);
     float tpa_factor = 1.0f;
     if (tpa_attenuation > 0.0f &&
         throttle > tpa_breakpoint_percent &&

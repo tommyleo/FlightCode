@@ -13,7 +13,6 @@
 #define LINE_LENGTH 192U
 #define CLIENT_TIMEOUT_US 3000000U
 #define MOTOR_TEST_TIMEOUT_US 1000000U
-#define ARM_CHANNEL 5U
 
 static char input_line[LINE_LENGTH];
 static size_t input_length;
@@ -25,6 +24,14 @@ static float motor_test_percent[4];
 static uint32_t last_motor_test_us;
 static bool dfu_pending;
 static uint32_t dfu_deadline_us;
+
+static bool arm_mode_active(const sbus_data_t *receiver)
+{
+    const flight_settings_t *s = flight_settings_get();
+    return receiver->valid && s->arm_channel < 16U &&
+           receiver->channel_us[s->arm_channel] >= s->arm_min_us &&
+           receiver->channel_us[s->arm_channel] <= s->arm_max_us;
+}
 
 static void reply(const char *format, ...)
 {
@@ -104,6 +111,19 @@ static void send_tpa(void)
           flight_settings_are_saved() ? 1U : 0U);
 }
 
+static void send_receiver_config(void)
+{
+    const flight_settings_t *s = flight_settings_get();
+    reply("@CFG RECEIVER_CONFIG %s %lu %lu %lu %lu %lu %lu %u\n",
+          s->receiver_channel_order == RECEIVER_ORDER_AETR1234
+              ? "AETR1234" : "TAER1234",
+          (unsigned long)(s->arm_channel + 1U),
+          (unsigned long)s->arm_min_us, (unsigned long)s->arm_max_us,
+          (unsigned long)(s->beep_channel + 1U),
+          (unsigned long)s->beep_min_us, (unsigned long)s->beep_max_us,
+          flight_settings_are_saved() ? 1U : 0U);
+}
+
 static void process(const char *command)
 {
     if (strcmp(command, "HELLO") == 0) {
@@ -113,7 +133,7 @@ static void process(const char *command)
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
-              "TELEMETRY_EXT\n");
+              "TELEMETRY_EXT RECEIVER_CONFIG\n");
         send_pids();
         send_motor_protocol();
         send_board_alignment();
@@ -122,6 +142,7 @@ static void process(const char *command)
         send_rates();
         send_feedforward();
         send_tpa();
+        send_receiver_config();
         return;
     }
     if (strcmp(command, "PING") == 0) {
@@ -172,6 +193,10 @@ static void process(const char *command)
     if (strcmp(command, "GET_TPA") == 0) {
         last_activity_us = board_micros();
         send_tpa();
+        return;
+    }
+    if (strcmp(command, "GET_RECEIVER_CONFIG") == 0) {
+        send_receiver_config();
         return;
     }
     if (strcmp(command, "GET_FLIGHT_LOG_INFO") == 0) {
@@ -261,7 +286,7 @@ static void process(const char *command)
             motor_test_enabled = false;
             memset(motor_test_percent, 0, sizeof(motor_test_percent));
             reply("@CFG OK MOTOR_TEST_DISABLED\n");
-        } else if (sbus_get()->channel_us[ARM_CHANNEL] > 2000U) {
+        } else if (arm_mode_active(sbus_get())) {
             reply("@CFG ERROR ARM_SWITCH\n");
         } else {
             motor_test_enabled = true;
@@ -290,6 +315,37 @@ static void process(const char *command)
     }
 
     flight_settings_t settings = *flight_settings_get();
+    char receiver_order[16];
+    unsigned int arm_channel, arm_min, arm_max;
+    unsigned int beep_channel, beep_min, beep_max;
+    if (sscanf(command, "SET_RECEIVER_CONFIG %15s %u %u %u %u %u %u",
+               receiver_order, &arm_channel, &arm_min, &arm_max,
+               &beep_channel, &beep_min, &beep_max) == 7) {
+        if (strcmp(receiver_order, "TAER1234") == 0) {
+            settings.receiver_channel_order = RECEIVER_ORDER_TAER1234;
+        } else if (strcmp(receiver_order, "AETR1234") == 0) {
+            settings.receiver_channel_order = RECEIVER_ORDER_AETR1234;
+        } else {
+            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+            return;
+        }
+        if (arm_channel < 5U || arm_channel > 16U ||
+            beep_channel < 5U || beep_channel > 16U) {
+            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+            return;
+        }
+        settings.arm_channel = arm_channel - 1U;
+        settings.arm_min_us = arm_min;
+        settings.arm_max_us = arm_max;
+        settings.beep_channel = beep_channel - 1U;
+        settings.beep_min_us = beep_min;
+        settings.beep_max_us = beep_max;
+        reply(flight_settings_set(&settings)
+                  ? "@CFG OK SET_RECEIVER_CONFIG\n"
+                  : "@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+        send_receiver_config();
+        return;
+    }
     if (sscanf(command, "SET_TPA %f %f",
                &settings.tpa_attenuation,
                &settings.tpa_breakpoint_percent) == 2) {
@@ -487,7 +543,7 @@ bool config_protocol_apply_motor_test(const sbus_data_t *receiver,
 {
     const uint32_t now = board_micros();
     if (!motor_test_enabled ||
-        receiver->channel_us[ARM_CHANNEL] > 2000U ||
+        arm_mode_active(receiver) ||
         (uint32_t)(now - last_motor_test_us) > MOTOR_TEST_TIMEOUT_US) {
         motor_test_enabled = false;
         memset(motor_test_percent, 0, sizeof(motor_test_percent));
@@ -525,7 +581,7 @@ void config_protocol_send_telemetry(const sbus_data_t *rx,
                         corrected.accel_z_g);
     for (uint8_t i = 0U; i < SBUS_CHANNEL_COUNT && used > 0; ++i) {
         used += snprintf(output + used, sizeof(output) - (size_t)used,
-                         " %u", rx->channel_us[i]);
+                         " %u", rx->valid ? rx->channel_us[i] : 0U);
     }
     for (uint8_t i = 0U; i < 4U && used > 0; ++i) {
         const float percent = motors[i] == 0U ? 0.0f :

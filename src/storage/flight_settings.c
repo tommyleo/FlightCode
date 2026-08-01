@@ -10,10 +10,11 @@
 #include "stm32f4xx_hal.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 10U
+#define SETTINGS_VERSION 11U
 #define SETTINGS_LEGACY_VERSION 7U
 #define SETTINGS_LEGACY_VERSION_8 8U
 #define SETTINGS_LEGACY_VERSION_9 9U
+#define SETTINGS_LEGACY_VERSION_10 10U
 
 typedef struct {
     pid_gains_t roll;
@@ -62,6 +63,19 @@ typedef struct {
     legacy_settings_v9_t settings;
     uint32_t checksum;
 } legacy_record_v9_t;
+
+typedef struct {
+    legacy_settings_v9_t base;
+    float tpa_attenuation;
+    float tpa_breakpoint_percent;
+} legacy_settings_v10_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    legacy_settings_v10_t settings;
+    uint32_t checksum;
+} legacy_record_v10_t;
 
 typedef struct {
     uint32_t magic;
@@ -134,6 +148,17 @@ static bool feedforward_valid(const flight_settings_t *settings)
            settings->yaw_feedforward <= 1.0f;
 }
 
+static bool receiver_valid(const flight_settings_t *settings)
+{
+    return settings->receiver_channel_order <= RECEIVER_ORDER_AETR1234 &&
+           settings->arm_channel >= 4U && settings->arm_channel < 16U &&
+           settings->beep_channel >= 4U && settings->beep_channel < 16U &&
+           settings->arm_min_us >= 900U && settings->arm_max_us <= 2100U &&
+           settings->arm_min_us < settings->arm_max_us &&
+           settings->beep_min_us >= 900U && settings->beep_max_us <= 2100U &&
+           settings->beep_min_us < settings->beep_max_us;
+}
+
 static void apply(void)
 {
     flight_control_set_gains(&current_settings.roll,
@@ -178,6 +203,13 @@ void flight_settings_reset_defaults(void)
         .yaw_feedforward = 0.015f,
         .tpa_attenuation = 0.0f,
         .tpa_breakpoint_percent = 65.0f,
+        .receiver_channel_order = RECEIVER_ORDER_TAER1234,
+        .arm_channel = 5U,
+        .arm_min_us = 1950U,
+        .arm_max_us = 2100U,
+        .beep_channel = 4U,
+        .beep_min_us = 1950U,
+        .beep_max_us = 2100U,
     };
     settings_saved = false;
     apply();
@@ -192,6 +224,19 @@ void flight_settings_init(void)
         (const legacy_record_v8_t *)SETTINGS_ADDRESS;
     const legacy_record_v9_t *legacy_v9 =
         (const legacy_record_v9_t *)SETTINGS_ADDRESS;
+    const legacy_record_v10_t *legacy_v10 =
+        (const legacy_record_v10_t *)SETTINGS_ADDRESS;
+    if (legacy_v10->magic == SETTINGS_MAGIC &&
+        legacy_v10->version == SETTINGS_LEGACY_VERSION_10 &&
+        legacy_v10->checksum == checksum_bytes(
+            legacy_v10, offsetof(legacy_record_v10_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, &legacy_v10->settings,
+               sizeof(legacy_v10->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v9->magic == SETTINGS_MAGIC &&
         legacy_v9->version == SETTINGS_LEGACY_VERSION_9 &&
         legacy_v9->checksum ==
@@ -244,6 +289,7 @@ void flight_settings_init(void)
         !gains_valid(&stored->settings.yaw) ||
         !rates_valid(&stored->settings) ||
         !feedforward_valid(&stored->settings) ||
+        !receiver_valid(&stored->settings) ||
         !isfinite(stored->settings.tpa_attenuation) ||
         stored->settings.tpa_attenuation < 0.0f ||
         stored->settings.tpa_attenuation > 1.0f ||
@@ -280,6 +326,7 @@ bool flight_settings_set(const flight_settings_t *settings)
         !gains_valid(&settings->yaw) ||
         !rates_valid(settings) ||
         !feedforward_valid(settings) ||
+        !receiver_valid(settings) ||
         !isfinite(settings->tpa_attenuation) ||
         settings->tpa_attenuation < 0.0f ||
         settings->tpa_attenuation > 1.0f ||
