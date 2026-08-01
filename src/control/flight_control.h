@@ -29,6 +29,7 @@ void flight_control_update(const imu_sample_t *imu,
                            uint16_t motor_dshot[4]);
 bool flight_control_is_armed(void);
 bool flight_control_is_calibrated(void);
+uint16_t flight_control_get_calibration_samples(void);
 void flight_control_start_calibration(void);
 void flight_control_reset_pid_state(void);
 void flight_control_emergency_stop(uint8_t log_stop_flag);

@@ -542,9 +542,13 @@ void config_protocol_send_telemetry(const sbus_data_t *rx,
                          " %lu", (unsigned long)max_loop_period_us);
     }
     if (used > 0) {
-        /* Expose raw Y to distinguish sensor data from gyro bias correction. */
+        /* Raw XYZ values support stationary calibration diagnostics. */
         used += snprintf(output + used, sizeof(output) - (size_t)used,
-                         " %.3f", imu->gyro_y_dps);
+                          " %.3f %.3f %.3f %u",
+                          imu->gyro_x_dps,
+                          imu->gyro_y_dps,
+                          imu->gyro_z_dps,
+                          flight_control_get_calibration_samples());
     }
     if (used > 0 && (size_t)used < sizeof(output) - 1U) {
         output[used++] = '\n';

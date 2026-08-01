@@ -14,6 +14,8 @@
 #define ARM_CH 5U
 #define CALIBRATION_SAMPLES 8000U
 #define CALIBRATION_MAX_VARIATION_DPS 3.0f
+#define CALIBRATION_MAX_ABSOLUTE_RATE_DPS 10.0f
+#define CALIBRATION_MAX_CONSECUTIVE_OUTLIERS 16U
 #define CALIBRATION_TIMEOUT_US 5000000U
 #define GYRO_LPF_HZ 150.0f
 #define DTERM_LPF_HZ 100.0f
@@ -40,6 +42,7 @@ static float calibration_reference_x;
 static float calibration_reference_y;
 static float calibration_reference_z;
 static uint16_t calibration_count;
+static uint16_t calibration_outliers;
 static uint32_t calibration_started_us;
 static bool calibrated;
 static bool calibration_failed;
@@ -125,6 +128,7 @@ static void begin_calibration(bool for_arm)
     armed = false;
     arm_calibration_active = for_arm;
     calibration_count = 0U;
+    calibration_outliers = 0U;
     calibration_started_us = board_micros();
     calibration_failed = false;
     sum_x = sum_y = sum_z = 0.0f;
@@ -240,6 +244,7 @@ void flight_control_update(const imu_sample_t *imu,
              throttle > ARM_THROTTLE_MAX_PERCENT)) {
             arm_calibration_active = false;
             calibration_count = 0U;
+            calibration_outliers = 0U;
             sum_x = sum_y = sum_z = 0.0f;
         }
         if ((uint32_t)(board_micros() - calibration_started_us) >=
@@ -262,6 +267,12 @@ void flight_control_update(const imu_sample_t *imu,
                 calibration_count = 1U;
             } else {
                 const bool stationary =
+                    fabsf(imu->gyro_x_dps) <
+                        CALIBRATION_MAX_ABSOLUTE_RATE_DPS &&
+                    fabsf(imu->gyro_y_dps) <
+                        CALIBRATION_MAX_ABSOLUTE_RATE_DPS &&
+                    fabsf(imu->gyro_z_dps) <
+                        CALIBRATION_MAX_ABSOLUTE_RATE_DPS &&
                     fabsf(imu->gyro_x_dps - calibration_reference_x) <
                         CALIBRATION_MAX_VARIATION_DPS &&
                     fabsf(imu->gyro_y_dps - calibration_reference_y) <
@@ -269,9 +280,14 @@ void flight_control_update(const imu_sample_t *imu,
                     fabsf(imu->gyro_z_dps - calibration_reference_z) <
                         CALIBRATION_MAX_VARIATION_DPS;
                 if (!stationary) {
-                    calibration_count = 0U;
-                    sum_x = sum_y = sum_z = 0.0f;
+                    if (++calibration_outliers >=
+                        CALIBRATION_MAX_CONSECUTIVE_OUTLIERS) {
+                        calibration_count = 0U;
+                        calibration_outliers = 0U;
+                        sum_x = sum_y = sum_z = 0.0f;
+                    }
                 } else {
+                    calibration_outliers = 0U;
                     sum_x += imu->gyro_x_dps;
                     sum_y += imu->gyro_y_dps;
                     sum_z += imu->gyro_z_dps;
@@ -397,6 +413,11 @@ bool flight_control_is_armed(void)
 bool flight_control_is_calibrated(void)
 {
     return calibrated;
+}
+
+uint16_t flight_control_get_calibration_samples(void)
+{
+    return calibration_count;
 }
 
 void flight_control_start_calibration(void)
