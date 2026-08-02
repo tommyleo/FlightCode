@@ -9,6 +9,7 @@
 #define RX_RING_SIZE 256U
 #define INVERTER_PROBE_US 400000U
 #define RECOVERY_RETRY_US 100000U
+#define FAILSAFE_CONFIRM_US 100000U
 
 static uint8_t frame[FRAME_SIZE];
 static uint8_t frame_index;
@@ -23,6 +24,8 @@ static GPIO_PinState inverter_level;
 static uint32_t last_recovery_us;
 static volatile bool uart_recovery_pending;
 static volatile bool ring_resync_pending;
+static bool failsafe_pending;
+static uint32_t failsafe_started_us;
 
 static void restart_uart_receive(void)
 {
@@ -54,6 +57,24 @@ static void resync_frame(void)
 
 static void decode(void)
 {
+    const uint32_t now_us = board_micros();
+    const bool frame_failsafe = (frame[23] & 0x08U) != 0U;
+    data.last_frame_us = now_us;
+    ++data.valid_frame_count;
+    inverter_locked = true;
+
+    if (frame_failsafe) {
+        if (!failsafe_pending) {
+            failsafe_pending = true;
+            failsafe_started_us = now_us;
+        }
+        data.failsafe =
+            (uint32_t)(now_us - failsafe_started_us) >= FAILSAFE_CONFIRM_US;
+        return;
+    }
+
+    failsafe_pending = false;
+    data.failsafe = false;
     const uint8_t *payload = &frame[1];
     uint32_t accumulator = 0;
     uint8_t bits = 0;
@@ -70,10 +91,6 @@ static void decode(void)
         bits -= 11U;
     }
 
-    data.failsafe = (frame[23] & 0x08U) != 0U;
-    data.last_frame_us = board_micros();
-    ++data.valid_frame_count;
-    inverter_locked = true;
 }
 
 void sbus_init(void)
@@ -85,6 +102,8 @@ void sbus_init(void)
     last_inverter_probe_us = board_micros();
     inverter_locked = false;
     last_recovery_us = 0U;
+    failsafe_pending = false;
+    failsafe_started_us = 0U;
     HAL_UART_Receive_IT(&hsbus_uart, &irq_byte, 1U);
 }
 

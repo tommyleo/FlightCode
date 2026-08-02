@@ -54,6 +54,7 @@ add_executable(FlightCode
     src/drivers/imu/mpu6000.c
     src/drivers/motors/dshot.c
     src/drivers/osd/max7456.c
+    src/drivers/osd/osd_tuning_menu.c
     src/drivers/receiver/sbus.c
     src/drivers/usb/usb_cdc.c
     src/drivers/usb/usbd_conf.c

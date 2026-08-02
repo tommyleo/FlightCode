@@ -6,6 +6,7 @@
 #include "flight_settings.h"
 #include "mpu6000.h"
 #include "max7456.h"
+#include "osd_tuning_menu.h"
 #include "sbus.h"
 
 #define LOOP_HZ 8000U
@@ -21,6 +22,7 @@ int main(void)
     sbus_init();
     flight_control_init();
     max7456_init();
+    osd_tuning_menu_init();
 
     bool imu_ready = mpu6000_init();
     uint8_t consecutive_imu_failures = 0U;
@@ -57,6 +59,8 @@ int main(void)
         sbus_update();
         const sbus_data_t *receiver = sbus_get();
         const flight_settings_t *settings = flight_settings_get();
+        osd_tuning_menu_update(receiver, flight_control_is_armed());
+        const bool tuning_menu_active = osd_tuning_menu_is_active();
         board_buzzer_set(receiver->valid &&
             receiver->channel_us[settings->beep_channel] >=
                 settings->beep_min_us &&
@@ -70,7 +74,11 @@ int main(void)
             const float control_dt =
                 loop_period_us > 0U ? (float)loop_period_us * 0.000001f
                                     : (1.0f / (float)LOOP_HZ);
-            flight_control_update(&imu, receiver, control_dt, motors);
+            if (!tuning_menu_active) {
+                flight_control_update(&imu, receiver, control_dt, motors);
+            } else {
+                motors[0] = motors[1] = motors[2] = motors[3] = 0U;
+            }
         } else {
             if (imu_ready &&
                 consecutive_imu_failures < IMU_FAILURE_LIMIT) {
@@ -85,6 +93,9 @@ int main(void)
             }
         }
         config_protocol_apply_motor_test(receiver, motors);
+        if (tuning_menu_active) {
+            motors[0] = motors[1] = motors[2] = motors[3] = 0U;
+        }
         if (config_protocol_motor_output_suppressed()) {
             const uint16_t suppressed_motors[4] = {0U, 0U, 0U, 0U};
             dshot_write(suppressed_motors);
@@ -97,6 +108,7 @@ int main(void)
         if ((uint32_t)(now_us - last_osd_us) >= 200000U) {
             last_osd_us = now_us;
             const float battery_voltage = board_battery_voltage();
+            flight_log_set_battery_voltage(battery_voltage);
             if (!max7456_is_available() && !flight_control_is_armed() &&
                 battery_voltage >= 3.0f &&
                 (uint32_t)(now_us - last_osd_retry_us) >= 1000000U) {

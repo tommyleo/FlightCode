@@ -38,7 +38,12 @@
 #define MPU6000_CS_PIN GPIO_PIN_4
 #define BOARD_CORE_CLOCK_HZ 96000000U
 #define BOARD_HAS_BATTERY_VOLTAGE 1
+#define BATTERY_ADC_PORT GPIOA
+#define BATTERY_ADC_PIN GPIO_PIN_0
+#define BATTERY_ADC_CHANNEL ADC_CHANNEL_0
+#define BATTERY_VOLTAGE_DIVIDER 11.0f
 #define BOARD_HAS_OSD 1
+#define OSD_SPI_HANDLE hspi2
 #define MAX7456_CS_PORT GPIOB
 #define MAX7456_CS_PIN GPIO_PIN_12
 
@@ -75,14 +80,22 @@
 #define MPU6000_CS_PORT GPIOA
 #define MPU6000_CS_PIN GPIO_PIN_4
 #define BOARD_CORE_CLOCK_HZ 168000000U
-#define BOARD_HAS_BATTERY_VOLTAGE 0
-#define BOARD_HAS_OSD 0
+#define BOARD_HAS_BATTERY_VOLTAGE 1
+#define BATTERY_ADC_PORT GPIOC
+#define BATTERY_ADC_PIN GPIO_PIN_2
+#define BATTERY_ADC_CHANNEL ADC_CHANNEL_12
+#define BATTERY_VOLTAGE_DIVIDER 11.0f
+#define BOARD_HAS_OSD 1
+#define OSD_SPI_HANDLE hspi3
+#define MAX7456_CS_PORT GPIOA
+#define MAX7456_CS_PIN GPIO_PIN_15
 #else
 #error "No supported board selected"
 #endif
 
 extern SPI_HandleTypeDef hspi1;
 extern SPI_HandleTypeDef hspi2;
+extern SPI_HandleTypeDef hspi3;
 extern UART_HandleTypeDef hsbus_uart;
 
 void board_init(void);

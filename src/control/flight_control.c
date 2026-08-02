@@ -15,12 +15,17 @@
 #define CALIBRATION_TIMEOUT_US 5000000U
 #define GYRO_LPF_HZ 150.0f
 #define DTERM_LPF_HZ 100.0f
+#define FLIGHT_PI_F 3.14159265358979323846f
+#define YAW_ITERM_RELAX_LPF_HZ 8.0f
+#define YAW_ITERM_RELAX_THRESHOLD_DPS 20.0f
+#define AIRMODE_ACTIVATION_THROTTLE_PERCENT 10.0f
 #define ARM_THROTTLE_MAX_PERCENT 5.0f
 
 typedef struct {
     float integral;
     float previous_rate;
     float dterm;
+    float relaxed_setpoint;
 } pid_state_t;
 
 typedef struct {
@@ -57,6 +62,7 @@ static float yaw_feedforward = 0.015f;
 static float tpa_attenuation;
 static float tpa_breakpoint_percent = 65.0f;
 static bool mixer_saturated;
+static bool airmode_active;
 static pt1_filter_t gyro_filter[3];
 
 static float clampf(float value, float min, float max)
@@ -84,27 +90,49 @@ static float pt1(pt1_filter_t *filter, float input, float cutoff_hz, float dt)
         filter->initialized = true;
         return input;
     }
-    const float rc = 1.0f / (2.0f * 3.14159265358979323846f * cutoff_hz);
+    const float rc = 1.0f / (2.0f * FLIGHT_PI_F * cutoff_hz);
     filter->value += (dt / (rc + dt)) * (input - filter->value);
     return filter->value;
 }
 
 static float pid(pid_state_t *state, const pid_gains_t *gains,
                  float setpoint, float rate, float feedforward,
-                 float dt, float limit, float tpa_factor)
+                 float dt, float limit, float tpa_factor,
+                 bool relax_integral, float *p_out, float *i_out,
+                 float *d_out)
 {
     const float error = setpoint - rate;
+    float integral_factor = 1.0f;
+    if (relax_integral) {
+        const float relax_rc =
+            1.0f / (2.0f * FLIGHT_PI_F *
+                    YAW_ITERM_RELAX_LPF_HZ);
+        state->relaxed_setpoint +=
+            (dt / (relax_rc + dt)) *
+            (setpoint - state->relaxed_setpoint);
+        const float setpoint_highpass =
+            fabsf(setpoint - state->relaxed_setpoint);
+        integral_factor = clampf(
+            1.0f - setpoint_highpass / YAW_ITERM_RELAX_THRESHOLD_DPS,
+            0.0f, 1.0f);
+    }
     if (!mixer_saturated || state->integral * error < 0.0f) {
+        /* Never slow down unwinding an I term that opposes the error. */
+        if (state->integral * error < 0.0f) integral_factor = 1.0f;
         state->integral =
-            clampf(state->integral + gains->ki * error * dt, -30.0f, 30.0f);
+            clampf(state->integral +
+                       gains->ki * error * dt * integral_factor,
+                   -30.0f, 30.0f);
     }
     const float derivative = -(rate - state->previous_rate) / dt;
     state->previous_rate = rate;
     const float d_alpha =
-        dt / (1.0f / (2.0f * 3.14159265358979323846f * DTERM_LPF_HZ) + dt);
+        dt / (1.0f / (2.0f * FLIGHT_PI_F * DTERM_LPF_HZ) + dt);
     state->dterm += d_alpha * (derivative - state->dterm);
-    return clampf(gains->kp * tpa_factor * error + state->integral +
-                      gains->kd * tpa_factor * state->dterm +
+    *p_out = gains->kp * tpa_factor * error;
+    *i_out = state->integral;
+    *d_out = gains->kd * tpa_factor * state->dterm;
+    return clampf(*p_out + *i_out + *d_out +
                       feedforward * setpoint,
                   -limit, limit);
 }
@@ -116,6 +144,7 @@ static void reset_controller(void)
     memset(&yaw_state, 0, sizeof(yaw_state));
     memset(gyro_filter, 0, sizeof(gyro_filter));
     mixer_saturated = false;
+    airmode_active = false;
 }
 
 static void begin_calibration(bool for_arm)
@@ -360,25 +389,34 @@ void flight_control_update(const imu_sample_t *imu,
             (throttle - tpa_breakpoint_percent) /
             (100.0f - tpa_breakpoint_percent);
     }
+    float p_term[3], i_term[3], d_term[3];
     const float roll = pid(&roll_state, &roll_gains,
                            setpoint_roll,
                            rate_roll, roll_feedforward, dt, 35.0f,
-                           tpa_factor);
+                           tpa_factor, false, &p_term[0], &i_term[0],
+                           &d_term[0]);
     const float pitch = pid(&pitch_state, &pitch_gains,
                             setpoint_pitch,
                             rate_pitch, pitch_feedforward, dt, 35.0f,
-                            tpa_factor);
+                            tpa_factor, false, &p_term[1], &i_term[1],
+                            &d_term[1]);
     const float yaw = pid(&yaw_state, &yaw_gains,
                           setpoint_yaw,
                           rate_yaw, yaw_feedforward, dt, 25.0f,
-                          tpa_factor);
+                          tpa_factor, true, &p_term[2], &i_term[2],
+                          &d_term[2]);
     const float mixer_yaw = motor_direction_reversed ? -yaw : yaw;
+    if (throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
+        airmode_active = true;
+    }
+    const float pid_authority = airmode_active ? 1.0f :
+        clampf(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT, 0.0f, 1.0f);
 
     float correction[4] = {
-        -roll + pitch - mixer_yaw,
-        -roll - pitch + mixer_yaw,
-        roll + pitch + mixer_yaw,
-        roll - pitch - mixer_yaw
+        (-roll + pitch - mixer_yaw) * pid_authority,
+        (-roll - pitch + mixer_yaw) * pid_authority,
+        (roll + pitch + mixer_yaw) * pid_authority,
+        (roll - pitch - mixer_yaw) * pid_authority
     };
     float correction_min = correction[0];
     float correction_max = correction[0];
@@ -406,7 +444,8 @@ void flight_control_update(const imu_sample_t *imu,
     const float pid_output[3] = {roll, pitch, yaw};
     uint32_t loop_us = (uint32_t)(measured_dt * 1000000.0f + 0.5f);
     if (loop_us > 65535U) loop_us = 65535U;
-    flight_log_record(rates, setpoints, pid_output, motors, throttle,
+    flight_log_record(rates, setpoints, pid_output, p_term, i_term, d_term,
+                      motors, throttle,
                       mixer_saturated, (uint16_t)loop_us);
 }
 

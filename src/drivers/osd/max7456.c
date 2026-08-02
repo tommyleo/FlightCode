@@ -39,12 +39,14 @@ static uint8_t probe_value = 0xFFU;
 static uint8_t probe_spi_mode = 0xFFU;
 static bool video_pal = true;
 static bool enabled;
+static bool menu_active;
 static uint8_t selected_position = 4U;
 static uint8_t battery_column = 11U;
 static uint8_t battery_row = 7U;
+static uint8_t detected_battery_cells;
 static char previous[BATTERY_FIELD_LENGTH + 1U];
 
-/* Compact 5x7 font: blank, 0-9, decimal point, V. */
+/* Compact 5x7 font: blank, digits, punctuation, and uppercase letters. */
 static const uint8_t font_5x7[][7] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
     {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E},
@@ -59,6 +61,37 @@ static const uint8_t font_5x7[][7] = {
     {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x0E},
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C},
     {0x11, 0x11, 0x11, 0x11, 0x0A, 0x0A, 0x04},
+    {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, /* A */
+    {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E}, /* B */
+    {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E}, /* C */
+    {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E}, /* D */
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F}, /* E */
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10}, /* F */
+    {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F}, /* G */
+    {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, /* H */
+    {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}, /* I */
+    {0x07, 0x02, 0x02, 0x02, 0x12, 0x12, 0x0C}, /* J */
+    {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}, /* K */
+    {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}, /* L */
+    {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11}, /* M */
+    {0x11, 0x19, 0x19, 0x15, 0x13, 0x13, 0x11}, /* N */
+    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, /* O */
+    {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10}, /* P */
+    {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D}, /* Q */
+    {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11}, /* R */
+    {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E}, /* S */
+    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}, /* T */
+    {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, /* U */
+    {0x11, 0x11, 0x11, 0x11, 0x0A, 0x0A, 0x04}, /* V */
+    {0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11}, /* W */
+    {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}, /* X */
+    {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}, /* Y */
+    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F}, /* Z */
+    {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00}, /* - */
+    {0x10, 0x08, 0x04, 0x02, 0x04, 0x08, 0x10}, /* > */
+    {0x01, 0x02, 0x04, 0x08, 0x04, 0x02, 0x01}, /* < */
+    {0x19, 0x1A, 0x02, 0x04, 0x08, 0x0B, 0x13}, /* % */
+    {0x01, 0x02, 0x02, 0x04, 0x08, 0x08, 0x10}, /* / */
 };
 
 static uint8_t transfer(uint8_t address, uint8_t value)
@@ -68,7 +101,7 @@ static uint8_t transfer(uint8_t address, uint8_t value)
     uint8_t rx[2] = {0};
     HAL_GPIO_WritePin(MAX7456_CS_PORT, MAX7456_CS_PIN, GPIO_PIN_RESET);
     const HAL_StatusTypeDef result =
-        HAL_SPI_TransmitReceive(&hspi2, tx, rx, sizeof(tx), 10U);
+        HAL_SPI_TransmitReceive(&OSD_SPI_HANDLE, tx, rx, sizeof(tx), 10U);
     HAL_GPIO_WritePin(MAX7456_CS_PORT, MAX7456_CS_PIN, GPIO_PIN_SET);
     return result == HAL_OK ? rx[1] : 0xFFU;
 #else
@@ -88,7 +121,7 @@ static void end_pending_transaction(void)
 #if BOARD_HAS_OSD
     const uint8_t end = 0xFFU;
     HAL_GPIO_WritePin(MAX7456_CS_PORT, MAX7456_CS_PIN, GPIO_PIN_RESET);
-    (void)HAL_SPI_Transmit(&hspi2, &end, 1U, 10U);
+    (void)HAL_SPI_Transmit(&OSD_SPI_HANDLE, &end, 1U, 10U);
     HAL_GPIO_WritePin(MAX7456_CS_PORT, MAX7456_CS_PIN, GPIO_PIN_SET);
     HAL_Delay(1U);
 #endif
@@ -105,11 +138,11 @@ static bool configure_spi_mode(uint8_t mode)
         SPI_PHASE_1EDGE, SPI_PHASE_2EDGE,
         SPI_PHASE_1EDGE, SPI_PHASE_2EDGE,
     };
-    (void)HAL_SPI_DeInit(&hspi2);
-    hspi2.Init.CLKPolarity = polarity[mode];
-    hspi2.Init.CLKPhase = phase[mode];
-    hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
-    return HAL_SPI_Init(&hspi2) == HAL_OK;
+    (void)HAL_SPI_DeInit(&OSD_SPI_HANDLE);
+    OSD_SPI_HANDLE.Init.CLKPolarity = polarity[mode];
+    OSD_SPI_HANDLE.Init.CLKPhase = phase[mode];
+    OSD_SPI_HANDLE.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+    return HAL_SPI_Init(&OSD_SPI_HANDLE) == HAL_OK;
 #else
     (void)mode;
     return false;
@@ -201,6 +234,14 @@ static uint8_t font_character(char character)
     }
     if (character == '.') return 11U;
     if (character == 'V') return 12U;
+    if (character >= 'A' && character <= 'Z') {
+        return (uint8_t)(character - 'A' + 13);
+    }
+    if (character == '-') return 39U;
+    if (character == '>') return 40U;
+    if (character == '<') return 41U;
+    if (character == '%') return 42U;
+    if (character == '/') return 43U;
     return 0U;
 }
 
@@ -308,38 +349,48 @@ uint8_t max7456_position(void)
 bool max7456_set_config(bool requested_enabled, uint8_t position)
 {
     if (position > 8U) return false;
-    if (available && enabled) clear_battery_field();
+    if (available && enabled && !menu_active) clear_battery_field();
     selected_position = position;
     select_position(position);
     enabled = requested_enabled;
     memset(previous, 0, sizeof(previous));
     if (!available) return true;
-    write_register(REG_VM0, (video_pal ? VM0_PAL : 0U) |
-                            (enabled ? VM0_ENABLE : 0U));
+    if (!menu_active) {
+        write_register(REG_VM0, (video_pal ? VM0_PAL : 0U) |
+                                (enabled ? VM0_ENABLE : 0U));
+    }
     return true;
 }
 
 void max7456_update_battery(float voltage)
 {
-    if (!available || !enabled) return;
+    if (!available || !enabled || menu_active) return;
     char text[BATTERY_FIELD_LENGTH + 1U];
     memset(text, ' ', BATTERY_FIELD_LENGTH);
     text[BATTERY_FIELD_LENGTH] = '\0';
     bool show_voltage = true;
     if (voltage >= 1.0f && voltage < 100.0f) {
-        uint8_t cells = (uint8_t)ceilf(voltage / 4.25f);
-        if (cells > 8U) cells = 8U;
-        const bool critical = voltage / (float)cells <
-                              BATTERY_CRITICAL_CELL_VOLTAGE;
+        uint8_t candidate_cells = (uint8_t)ceilf(voltage / 4.25f);
+        if (candidate_cells > 8U) candidate_cells = 8U;
+        if (candidate_cells > detected_battery_cells) {
+            detected_battery_cells = candidate_cells;
+        }
+        const float cell_voltage =
+            voltage / (float)detected_battery_cells;
+        const bool critical =
+            cell_voltage < BATTERY_CRITICAL_CELL_VOLTAGE;
         if (critical) {
             show_voltage = ((board_micros() / BATTERY_BLINK_HALF_PERIOD_US) &
                             1U) == 0U;
         }
-    }
-    if (show_voltage && voltage >= 1.0f && voltage < 100.0f) {
-        char value[BATTERY_FIELD_LENGTH + 1U];
-        const int length = snprintf(value, sizeof(value), "%5.2fV", voltage);
-        if (length > 0) memcpy(text, value, (size_t)length);
+        if (show_voltage) {
+            char value[BATTERY_FIELD_LENGTH + 1U];
+            const int length =
+                snprintf(value, sizeof(value), "%5.2fV", cell_voltage);
+            if (length > 0) memcpy(text, value, (size_t)length);
+        }
+    } else {
+        detected_battery_cells = 0U;
     }
     if (memcmp(text, previous, BATTERY_FIELD_LENGTH) == 0) return;
     const uint16_t start = battery_row * SCREEN_COLUMNS + battery_column;
@@ -347,4 +398,41 @@ void max7456_update_battery(float voltage)
         write_character((uint16_t)(start + i), font_character(text[i]));
     }
     memcpy(previous, text, sizeof(previous));
+}
+
+void max7456_clear_screen(void)
+{
+    if (!available) return;
+    write_register(REG_DMM, DMM_CLEAR);
+    HAL_Delay(1U);
+}
+
+void max7456_write_text(uint8_t row, uint8_t column, const char *text)
+{
+    if (!available || text == NULL || row >= 16U || column >= SCREEN_COLUMNS) {
+        return;
+    }
+    uint16_t position = (uint16_t)row * SCREEN_COLUMNS + column;
+    while (*text != '\0' && column++ < SCREEN_COLUMNS) {
+        write_character(position++, font_character(*text++));
+    }
+}
+
+bool max7456_menu_begin(void)
+{
+    if (!available || !font_ready) return false;
+    menu_active = true;
+    write_register(REG_VM0, (video_pal ? VM0_PAL : 0U) | VM0_ENABLE);
+    max7456_clear_screen();
+    return true;
+}
+
+void max7456_menu_end(void)
+{
+    if (!menu_active) return;
+    max7456_clear_screen();
+    menu_active = false;
+    memset(previous, 0, sizeof(previous));
+    write_register(REG_VM0, (video_pal ? VM0_PAL : 0U) |
+                            (enabled ? VM0_ENABLE : 0U));
 }

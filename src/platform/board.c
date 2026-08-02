@@ -2,6 +2,7 @@
 
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
+SPI_HandleTypeDef hspi3;
 UART_HandleTypeDef hsbus_uart;
 #if BOARD_HAS_BATTERY_VOLTAGE
 static ADC_HandleTypeDef hadc1;
@@ -172,9 +173,21 @@ static void spi1_init(void)
     }
 }
 
-static void spi2_init(void)
+static void osd_spi_init(void)
 {
 #if BOARD_HAS_OSD
+#if defined(BOARD_CLRACINGF4)
+    __HAL_RCC_SPI3_CLK_ENABLE();
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpio.Alternate = GPIO_AF6_SPI3;
+    HAL_GPIO_Init(GPIOC, &gpio);
+
+    hspi3.Instance = SPI3;
+#else
     __HAL_RCC_SPI2_CLK_ENABLE();
     GPIO_InitTypeDef gpio = {0};
     gpio.Pin = GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
@@ -184,23 +197,25 @@ static void spi2_init(void)
     gpio.Alternate = GPIO_AF5_SPI2;
     HAL_GPIO_Init(GPIOB, &gpio);
 
+    hspi2.Instance = SPI2;
+#endif
+
     gpio.Pin = MAX7456_CS_PIN;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     HAL_GPIO_Init(MAX7456_CS_PORT, &gpio);
     HAL_GPIO_WritePin(MAX7456_CS_PORT, MAX7456_CS_PIN, GPIO_PIN_SET);
 
-    hspi2.Instance = SPI2;
-    hspi2.Init.Mode = SPI_MODE_MASTER;
-    hspi2.Init.Direction = SPI_DIRECTION_2LINES;
-    hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-    hspi2.Init.CLKPolarity = SPI_POLARITY_HIGH;
-    hspi2.Init.CLKPhase = SPI_PHASE_2EDGE;
-    hspi2.Init.NSS = SPI_NSS_SOFT;
-    hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
-    hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
-    hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
-    hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-    if (HAL_SPI_Init(&hspi2) != HAL_OK) board_fatal_error();
+    OSD_SPI_HANDLE.Init.Mode = SPI_MODE_MASTER;
+    OSD_SPI_HANDLE.Init.Direction = SPI_DIRECTION_2LINES;
+    OSD_SPI_HANDLE.Init.DataSize = SPI_DATASIZE_8BIT;
+    OSD_SPI_HANDLE.Init.CLKPolarity = SPI_POLARITY_HIGH;
+    OSD_SPI_HANDLE.Init.CLKPhase = SPI_PHASE_2EDGE;
+    OSD_SPI_HANDLE.Init.NSS = SPI_NSS_SOFT;
+    OSD_SPI_HANDLE.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+    OSD_SPI_HANDLE.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    OSD_SPI_HANDLE.Init.TIMode = SPI_TIMODE_DISABLE;
+    OSD_SPI_HANDLE.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    if (HAL_SPI_Init(&OSD_SPI_HANDLE) != HAL_OK) board_fatal_error();
 #endif
 }
 
@@ -235,10 +250,10 @@ static void battery_adc_init(void)
 #if BOARD_HAS_BATTERY_VOLTAGE
     __HAL_RCC_ADC1_CLK_ENABLE();
     GPIO_InitTypeDef gpio = {0};
-    gpio.Pin = GPIO_PIN_0;
+    gpio.Pin = BATTERY_ADC_PIN;
     gpio.Mode = GPIO_MODE_ANALOG;
     gpio.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(GPIOA, &gpio);
+    HAL_GPIO_Init(BATTERY_ADC_PORT, &gpio);
 
     hadc1.Instance = ADC1;
     hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
@@ -255,7 +270,7 @@ static void battery_adc_init(void)
     if (HAL_ADC_Init(&hadc1) != HAL_OK) board_fatal_error();
 
     ADC_ChannelConfTypeDef channel = {0};
-    channel.Channel = ADC_CHANNEL_0;
+    channel.Channel = BATTERY_ADC_CHANNEL;
     channel.Rank = 1U;
     channel.SamplingTime = ADC_SAMPLETIME_84CYCLES;
     if (HAL_ADC_ConfigChannel(&hadc1, &channel) != HAL_OK) {
@@ -270,7 +285,7 @@ void board_init(void)
     clock_init();
     gpio_init();
     spi1_init();
-    spi2_init();
+    osd_spi_init();
     sbus_uart_init();
     battery_adc_init();
 
@@ -292,8 +307,9 @@ float board_battery_voltage(void)
         total += HAL_ADC_GetValue(&hadc1);
         HAL_ADC_Stop(&hadc1);
     }
-    /* Betaflight MAMBAF411 default: PA0 VBAT divider, scale 110 (11:1). */
-    const float measured = ((float)total / 8.0f) * 3.3f * 11.0f / 4095.0f;
+    const float measured =
+        ((float)total / 8.0f) * 3.3f *
+        BATTERY_VOLTAGE_DIVIDER / 4095.0f;
     static float filtered;
     filtered = filtered <= 0.0f ? measured : filtered * 0.85f + measured * 0.15f;
     return filtered;

@@ -22,6 +22,17 @@ The CLRacingF4 uses the Betaflight `CLRA/CLRACINGF4` mapping: MPU6000 on SPI1
 (CS PA4), SBUS on USART1 RX PA10 with inverter PC0, motors on PB0, PB1, PA3,
 and PA2, LED on PB5, and an active-low buzzer on PB4.
 
+## OSD tuning menu
+
+With the quad disarmed and the ARM switch off, hold throttle high and roll
+right for 0.8 seconds to open the OSD tuning menu.  Center all four sticks
+before navigating.  Pitch selects a parameter, roll changes its value, yaw
+left exits without applying changes, and yaw right applies and saves all
+changes to flash.  Motor output remains inhibited while the menu is open.
+
+The menu includes roll, pitch, and yaw P/I/D/feedforward values, maximum rates,
+expo, TPA attenuation, and the TPA breakpoint.
+
 ## Building on Windows
 
 From PowerShell:
