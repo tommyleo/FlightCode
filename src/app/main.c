@@ -8,6 +8,7 @@
 #include "max7456.h"
 #include "osd_tuning_menu.h"
 #include "sbus.h"
+#include "blackbox_sd.h"
 
 #define LOOP_HZ 8000U
 #define IMU_FAILURE_LIMIT 8U
@@ -16,6 +17,7 @@ int main(void)
 {
     board_check_dfu_request();
     board_init();
+    blackbox_sd_init();
     config_protocol_init();
     dshot_init();
     flight_settings_init();
@@ -61,12 +63,13 @@ int main(void)
         const flight_settings_t *settings = flight_settings_get();
         osd_tuning_menu_update(receiver, flight_control_is_armed());
         const bool tuning_menu_active = osd_tuning_menu_is_active();
-        board_buzzer_set(receiver->valid &&
+        config_protocol_update();
+        const bool radio_beep = receiver->valid &&
             receiver->channel_us[settings->beep_channel] >=
                 settings->beep_min_us &&
             receiver->channel_us[settings->beep_channel] <=
-                settings->beep_max_us);
-        config_protocol_update();
+                settings->beep_max_us;
+        board_buzzer_update(radio_beep);
 
         imu_sample_t imu = {0};
         if (imu_ready && mpu6000_read(&imu)) {
@@ -103,6 +106,7 @@ int main(void)
             dshot_write(motors);
         }
         flight_log_persist_if_ready();
+        blackbox_sd_update();
 
         const uint32_t now_us = board_micros();
         if ((uint32_t)(now_us - last_osd_us) >= 200000U) {

@@ -43,6 +43,7 @@
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_0
 #define BATTERY_VOLTAGE_DIVIDER 11.0f
 #define BOARD_HAS_OSD 1
+#define BOARD_HAS_SDCARD 0
 #define OSD_SPI_HANDLE hspi2
 #define MAX7456_CS_PORT GPIOB
 #define MAX7456_CS_PIN GPIO_PIN_12
@@ -86,6 +87,13 @@
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_12
 #define BATTERY_VOLTAGE_DIVIDER 11.0f
 #define BOARD_HAS_OSD 1
+#define BOARD_HAS_SDCARD 1
+#define SDCARD_SPI_HANDLE hspi2
+#define SDCARD_CS_PORT GPIOB
+#define SDCARD_CS_PIN GPIO_PIN_12
+#define SDCARD_DETECT_PORT GPIOB
+#define SDCARD_DETECT_PIN GPIO_PIN_7
+#define SDCARD_DETECT_PRESENT_LEVEL GPIO_PIN_SET
 #define OSD_SPI_HANDLE hspi3
 #define MAX7456_CS_PORT GPIOA
 #define MAX7456_CS_PIN GPIO_PIN_15
@@ -93,15 +101,21 @@
 #error "No supported board selected"
 #endif
 
+#ifndef BOARD_HAS_SDCARD
+#define BOARD_HAS_SDCARD 0
+#endif
+
 extern SPI_HandleTypeDef hspi1;
 extern SPI_HandleTypeDef hspi2;
 extern SPI_HandleTypeDef hspi3;
+extern DMA_HandleTypeDef hdma_spi2_tx;
 extern UART_HandleTypeDef hsbus_uart;
 
 void board_init(void);
 void board_fatal_error(void);
 uint32_t board_micros(void);
 void board_buzzer_set(bool enabled);
+void board_buzzer_update(bool requested);
 float board_battery_voltage(void);
 void board_check_dfu_request(void);
 void board_enter_dfu(void) __attribute__((noreturn));

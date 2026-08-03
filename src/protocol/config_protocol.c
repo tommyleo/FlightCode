@@ -10,6 +10,7 @@
 #include "flight_settings.h"
 #include "max7456.h"
 #include "usb_cdc.h"
+#include "blackbox_sd.h"
 
 #define LINE_LENGTH 192U
 #define CLIENT_TIMEOUT_US 3000000U
@@ -149,6 +150,18 @@ static void send_osd_status(void)
 #endif
 }
 
+static void send_blackbox_status(void)
+{
+#if BOARD_HAS_SDCARD
+    reply("@CFG BLACKBOX_STATUS %s %u %lu %lu %lu %u\n",
+          blackbox_sd_state_name(), blackbox_sd_is_enabled() ? 1U : 0U,
+          (unsigned long)blackbox_sd_capacity_mb(),
+          (unsigned long)blackbox_sd_written_bytes(),
+          (unsigned long)blackbox_sd_dropped_records(),
+          flight_settings_are_saved() ? 1U : 0U);
+#endif
+}
+
 static void process(const char *command)
 {
     if (strcmp(command, "HELLO") == 0) {
@@ -159,7 +172,11 @@ static void process(const char *command)
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
-              "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD\n");
+              "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
+#if BOARD_HAS_SDCARD
+              "BLACKBOX_SD "
+#endif
+              "\n");
 #else
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
@@ -177,6 +194,9 @@ static void process(const char *command)
         send_receiver_config();
 #if BOARD_HAS_OSD
         send_osd_status();
+#endif
+#if BOARD_HAS_SDCARD
+        send_blackbox_status();
 #endif
         return;
     }
@@ -246,6 +266,15 @@ static void process(const char *command)
               (unsigned long)rx->valid_frame_count,
               (unsigned long)rx->uart_error_count,
               (unsigned long)rx->recovery_count);
+        return;
+    }
+    if (strcmp(command, "GET_BLACKBOX_STATUS") == 0) {
+        if (!flight_control_is_armed() &&
+            (blackbox_sd_state() == BLACKBOX_SD_ABSENT ||
+             blackbox_sd_state() == BLACKBOX_SD_ERROR)) {
+            blackbox_sd_probe();
+        }
+        send_blackbox_status();
         return;
     }
     if (strcmp(command, "CALIBRATE_GYRO") == 0) {
@@ -355,6 +384,27 @@ static void process(const char *command)
     }
 
     flight_settings_t settings = *flight_settings_get();
+    unsigned int blackbox_enabled;
+    if (sscanf(command, "SET_BLACKBOX %u", &blackbox_enabled) == 1) {
+#if BOARD_HAS_SDCARD
+        if (blackbox_enabled > 1U ||
+            (blackbox_enabled != 0U &&
+             blackbox_sd_state() != BLACKBOX_SD_READY)) {
+            reply("@CFG ERROR BLACKBOX_NOT_READY\n");
+        } else {
+            settings.blackbox_enabled = blackbox_enabled;
+            if (!flight_settings_set(&settings)) {
+                reply("@CFG ERROR INVALID_BLACKBOX_CONFIG\n");
+            } else {
+                reply("@CFG OK SET_BLACKBOX\n");
+                send_blackbox_status();
+            }
+        }
+#else
+        reply("@CFG ERROR BLACKBOX_UNSUPPORTED\n");
+#endif
+        return;
+    }
     unsigned int osd_enabled;
     char osd_position[20];
     if (sscanf(command, "SET_OSD %u %19s", &osd_enabled, osd_position) == 2) {

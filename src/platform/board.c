@@ -3,6 +3,7 @@
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi3;
+DMA_HandleTypeDef hdma_spi2_tx;
 UART_HandleTypeDef hsbus_uart;
 #if BOARD_HAS_BATTERY_VOLTAGE
 static ADC_HandleTypeDef hadc1;
@@ -139,8 +140,14 @@ static void gpio_init(void)
                       SBUS_INVERTER_ENABLE_LEVEL);
 
     gpio.Pin = BUZZER_PIN;
+#if defined(BOARD_CLRACINGF4)
+    /* Betaflight drives CLRacingF4 PB4 as a 3.8 kHz push-pull PWM output. */
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
+#else
     gpio.Mode = GPIO_MODE_OUTPUT_OD;
     gpio.Pull = GPIO_PULLUP;
+#endif
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(BUZZER_PORT, &gpio);
     HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN, GPIO_PIN_SET);
@@ -219,6 +226,60 @@ static void osd_spi_init(void)
 #endif
 }
 
+static void sdcard_spi_init(void)
+{
+#if BOARD_HAS_SDCARD
+    __HAL_RCC_SPI2_CLK_ENABLE();
+    __HAL_RCC_DMA1_CLK_ENABLE();
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_PULLUP;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpio.Alternate = GPIO_AF5_SPI2;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    gpio.Pin = SDCARD_CS_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(SDCARD_CS_PORT, &gpio);
+    HAL_GPIO_WritePin(SDCARD_CS_PORT, SDCARD_CS_PIN, GPIO_PIN_SET);
+
+    gpio.Pin = SDCARD_DETECT_PIN;
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(SDCARD_DETECT_PORT, &gpio);
+
+    hspi2.Instance = SPI2;
+    hspi2.Init.Mode = SPI_MODE_MASTER;
+    hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+    hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+    hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+    hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+    hspi2.Init.NSS = SPI_NSS_SOFT;
+    hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+    hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+    hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    if (HAL_SPI_Init(&hspi2) != HAL_OK) board_fatal_error();
+
+    hdma_spi2_tx.Instance = DMA1_Stream4;
+    hdma_spi2_tx.Init.Channel = DMA_CHANNEL_0;
+    hdma_spi2_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_spi2_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_spi2_tx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_spi2_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_spi2_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_spi2_tx.Init.Mode = DMA_NORMAL;
+    hdma_spi2_tx.Init.Priority = DMA_PRIORITY_LOW;
+    hdma_spi2_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+    if (HAL_DMA_Init(&hdma_spi2_tx) != HAL_OK) board_fatal_error();
+    __HAL_LINKDMA(&hspi2, hdmatx, hdma_spi2_tx);
+    HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 7U, 0U);
+    HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
+#endif
+}
+
 static void sbus_uart_init(void)
 {
     __HAL_RCC_USART1_CLK_ENABLE();
@@ -286,6 +347,7 @@ void board_init(void)
     gpio_init();
     spi1_init();
     osd_spi_init();
+    sdcard_spi_init();
     sbus_uart_init();
     battery_adc_init();
 
@@ -353,6 +415,43 @@ void board_buzzer_set(bool enabled)
                               : (BUZZER_ACTIVE_LEVEL == GPIO_PIN_SET
                                      ? GPIO_PIN_RESET
                                      : GPIO_PIN_SET));
+}
+
+void board_buzzer_update(bool requested)
+{
+    static bool was_requested;
+    static uint32_t request_started_us;
+
+    if (!requested) {
+        was_requested = false;
+        board_buzzer_set(false);
+        return;
+    }
+
+    const uint32_t now_us = board_micros();
+    if (!was_requested) {
+        was_requested = true;
+        request_started_us = now_us;
+    }
+
+    /* Finder pattern: one second sounding, one second silent. */
+    const bool sounding =
+        ((uint32_t)(now_us - request_started_us) % 2000000U) < 1000000U;
+#if defined(BOARD_CLRACINGF4)
+    if (sounding) {
+        /*
+         * PB4 drives a passive beeper on CLRacingF4.  This function runs at
+         * the 8 kHz control-loop rate, so toggling once per call produces a
+         * 4 kHz square wave (the Betaflight target specifies 3.8 kHz).
+         */
+        HAL_GPIO_TogglePin(BUZZER_PORT, BUZZER_PIN);
+    } else {
+        board_buzzer_set(false);
+    }
+#else
+    /* MAMBAF411 uses an active buzzer and only needs the envelope. */
+    board_buzzer_set(sounding);
+#endif
 }
 
 void board_check_dfu_request(void)

@@ -63,6 +63,7 @@ add_executable(FlightCode
     src/platform/stm32f4xx_it.c
     src/protocol/config_protocol.c
     src/storage/flight_log.c
+    src/storage/blackbox_sd.c
     src/storage/flight_settings.c
     ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/system_stm32f4xx.c
     ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/gcc/${STARTUP_FILE}

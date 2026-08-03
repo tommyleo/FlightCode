@@ -81,6 +81,19 @@ cmake/                   ARM toolchain configuration
 tools/                   Build helpers
 ```
 
+## CLRacingF4 microSD Blackbox
+
+The CLRacingF4 target supports the onboard microSD socket on SPI2
+(PB13/PB14/PB15, CS PB12, detect PB7). Long-flight records are packed into
+independent 512-byte sectors and transferred through DMA from a RAM queue, so
+SD busy time never blocks the 8 kHz control loop. Recording is optional in the
+Configurator and only flights that exceed 30% throttle are retained.
+
+The current Blackbox format treats the card as dedicated FlightCode storage;
+it is not a FAT volume and must not contain files that need to be preserved.
+Log listing and download will use the FlightCode USB protocol rather than
+direct PC filesystem access.
+
 ## USB Configurator
 
 The firmware exposes a USB CDC serial port with telemetry, SBUS channels,

@@ -4,8 +4,14 @@
 #include <string.h>
 
 #include "board.h"
+#include "blackbox_sd.h"
 
+#if defined(BOARD_CLRACINGF4)
+/* Leave room for the SD write queue; long logs live on the card. */
+#define FLIGHT_LOG_CAPACITY 2688U
+#else
 #define FLIGHT_LOG_CAPACITY 2944U
+#endif
 #define CONTROL_LOOP_HZ 8000U
 #define LOG_DECIMATION (CONTROL_LOOP_HZ / FLIGHT_LOG_RATE_HZ)
 #define DSHOT_MIN 48U
@@ -147,10 +153,13 @@ void flight_log_start(void)
     decimation_count = 0U;
     flight_qualified = false;
     recording = true;
+    blackbox_sd_start();
 }
 
 void flight_log_stop(uint8_t stop_flag)
 {
+    const bool retain_blackbox = recording && flight_qualified;
+    blackbox_sd_stop(stop_flag, retain_blackbox);
     if (recording && !flight_qualified) {
         recording = false;
         persist_pending = false;
@@ -307,6 +316,8 @@ void flight_log_record(const float gyro[3], const float setpoint[3],
     item->cell_centivolts = cell_centivolts;
     item->battery_cells = battery_cells;
     memset(item->reserved, 0, sizeof(item->reserved));
+
+    blackbox_sd_append(item);
 
     write_index = (write_index + 1U) % FLIGHT_LOG_CAPACITY;
     if (record_count < FLIGHT_LOG_CAPACITY) ++record_count;
