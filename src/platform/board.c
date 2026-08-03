@@ -150,7 +150,7 @@ static void gpio_init(void)
 #endif
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(BUZZER_PORT, &gpio);
-    HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN, GPIO_PIN_SET);
+    board_buzzer_set(false);
 }
 
 static void spi1_init(void)

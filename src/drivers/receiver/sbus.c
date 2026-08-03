@@ -59,6 +59,25 @@ static void decode(void)
 {
     const uint32_t now_us = board_micros();
     const bool frame_failsafe = (frame[23] & 0x08U) != 0U;
+    const bool first_valid_frame = data.valid_frame_count == 0U;
+
+    if (first_valid_frame) {
+        /*
+         * UART framing/noise errors are expected while the receiver powers up
+         * and the firmware probes the SBUS inverter polarity.  Start the
+         * operational diagnostics only after SBUS has been decoded once, so
+         * the Configurator reports link errors rather than acquisition noise.
+         */
+        __disable_irq();
+        data.uart_error_count = 0U;
+        data.recovery_count = 0U;
+        data.ring_overrun_count = 0U;
+        data.invalid_frame_count = 0U;
+        uart_recovery_pending = false;
+        ring_resync_pending = false;
+        __enable_irq();
+    }
+
     data.last_frame_us = now_us;
     ++data.valid_frame_count;
     inverter_locked = true;
