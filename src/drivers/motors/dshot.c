@@ -4,11 +4,41 @@
 
 #define DSHOT_MIN 48U
 #define DSHOT_MAX 2047U
+#define DSHOT_STARTUP_TIME_MS 500U
+#define DSHOT_STARTUP_FRAME_INTERVAL_MS 1U
 
 static motor_protocol_t active_protocol = MOTOR_PROTOCOL_DSHOT300;
 
 enum { DSHOT_FRAME_WORDS = 18 };
 static uint32_t dshot_dma_buffer[4][DSHOT_FRAME_WORDS];
+
+#if defined(BOARD_CLRACINGF4)
+static DMA_Stream_TypeDef *const dshot_dma_streams[4] = {
+    DMA1_Stream7, DMA1_Stream2, DMA1_Stream6, DMA1_Stream1,
+};
+#else
+static DMA_Stream_TypeDef *const dshot_dma_streams[4] = {
+    DMA1_Stream6, DMA1_Stream4, DMA1_Stream0, DMA1_Stream3,
+};
+#endif
+
+static bool dshot_dma_transfer_active(void)
+{
+    for (uint8_t motor = 0U; motor < 4U; ++motor) {
+        if ((dshot_dma_streams[motor]->CR & DMA_SxCR_EN) != 0U) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static uint16_t dshot_sanitize_value(uint16_t value)
+{
+    if (value < DSHOT_MIN) {
+        return 0U;
+    }
+    return value > DSHOT_MAX ? DSHOT_MAX : value;
+}
 
 static uint32_t timer_clock_hz(void)
 {
@@ -22,6 +52,9 @@ static uint32_t timer_clock_hz(void)
 static void dma_stream_setup(DMA_Stream_TypeDef *stream, uint32_t channel,
                              volatile uint32_t *peripheral)
 {
+    stream->CR &= ~DMA_SxCR_EN;
+    while ((stream->CR & DMA_SxCR_EN) != 0U) {
+    }
     stream->CR = channel | DMA_MEMORY_TO_PERIPH |
                  DMA_PINC_DISABLE | DMA_MINC_ENABLE |
                  DMA_PDATAALIGN_WORD | DMA_MDATAALIGN_WORD |
@@ -40,7 +73,7 @@ static void hardware_dshot_init(void)
 #endif
 
     GPIO_InitTypeDef gpio = {
-        .Mode = GPIO_MODE_AF_PP, .Pull = GPIO_NOPULL,
+        .Mode = GPIO_MODE_AF_PP, .Pull = GPIO_PULLDOWN,
         .Speed = GPIO_SPEED_FREQ_VERY_HIGH,
     };
 #if defined(BOARD_CLRACINGF4)
@@ -63,15 +96,15 @@ static void hardware_dshot_init(void)
     TIM3->CCMR2 = (6U << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE |
                   (6U << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
     TIM3->CCER = TIM_CCER_CC3E | TIM_CCER_CC4E; TIM3->EGR = TIM_EGR_UG;
-    TIM3->DIER = TIM_DIER_CC3DE | TIM_DIER_CC4DE;
-    TIM3->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
+    TIM3->DIER = 0U;
+    TIM3->CR1 = TIM_CR1_ARPE;
 
     TIM2->PSC = psc; TIM2->ARR = 39U; TIM2->CCR3 = TIM2->CCR4 = 0U;
     TIM2->CCMR2 = (6U << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE |
                   (6U << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
     TIM2->CCER = TIM_CCER_CC3E | TIM_CCER_CC4E; TIM2->EGR = TIM_EGR_UG;
-    TIM2->DIER = TIM_DIER_CC3DE | TIM_DIER_CC4DE;
-    TIM2->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
+    TIM2->DIER = 0U;
+    TIM2->CR1 = TIM_CR1_ARPE;
 
     dma_stream_setup(DMA1_Stream7, DMA_CHANNEL_5, &TIM3->CCR3);
     dma_stream_setup(DMA1_Stream2, DMA_CHANNEL_5, &TIM3->CCR4);
@@ -81,19 +114,19 @@ static void hardware_dshot_init(void)
     TIM2->PSC = psc; TIM2->ARR = 39U; TIM2->CCR2 = 0U;
     TIM2->CCMR1 = (6U << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE;
     TIM2->CCER = TIM_CCER_CC2E; TIM2->EGR = TIM_EGR_UG;
-    TIM2->DIER = TIM_DIER_CC2DE; TIM2->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
+    TIM2->DIER = 0U; TIM2->CR1 = TIM_CR1_ARPE;
 
     TIM3->PSC = psc; TIM3->ARR = 39U; TIM3->CCR1 = 0U;
     TIM3->CCMR1 = (6U << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE;
     TIM3->CCER = TIM_CCER_CC1E; TIM3->EGR = TIM_EGR_UG;
-    TIM3->DIER = TIM_DIER_CC1DE; TIM3->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
+    TIM3->DIER = 0U; TIM3->CR1 = TIM_CR1_ARPE;
 
     TIM4->PSC = psc; TIM4->ARR = 39U; TIM4->CCR1 = TIM4->CCR2 = 0U;
     TIM4->CCMR1 = (6U << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE |
                   (6U << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE;
     TIM4->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E; TIM4->EGR = TIM_EGR_UG;
-    TIM4->DIER = TIM_DIER_CC1DE | TIM_DIER_CC2DE;
-    TIM4->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
+    TIM4->DIER = 0U;
+    TIM4->CR1 = TIM_CR1_ARPE;
 
     dma_stream_setup(DMA1_Stream6, DMA_CHANNEL_3, &TIM2->CCR2);
     dma_stream_setup(DMA1_Stream4, DMA_CHANNEL_5, &TIM3->CCR1);
@@ -102,14 +135,82 @@ static void hardware_dshot_init(void)
 #endif
 }
 
-static void dma_start(DMA_Stream_TypeDef *stream, uint32_t *data)
+static void dma_prepare(DMA_Stream_TypeDef *stream, uint32_t *data)
 {
     stream->CR &= ~DMA_SxCR_EN;
     while ((stream->CR & DMA_SxCR_EN) != 0U) {
     }
     stream->M0AR = (uint32_t)data;
     stream->NDTR = DSHOT_FRAME_WORDS;
-    stream->CR |= DMA_SxCR_EN;
+}
+
+static void dshot_timers_stop(void)
+{
+#if defined(BOARD_CLRACINGF4)
+    TIM3->DIER &= ~(TIM_DIER_CC3DE | TIM_DIER_CC4DE);
+    TIM2->DIER &= ~(TIM_DIER_CC3DE | TIM_DIER_CC4DE);
+    TIM3->CR1 &= ~TIM_CR1_CEN;
+    TIM2->CR1 &= ~TIM_CR1_CEN;
+#else
+    TIM2->DIER &= ~TIM_DIER_CC2DE;
+    TIM3->DIER &= ~TIM_DIER_CC1DE;
+    TIM4->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2DE);
+    TIM2->CR1 &= ~TIM_CR1_CEN;
+    TIM3->CR1 &= ~TIM_CR1_CEN;
+    TIM4->CR1 &= ~TIM_CR1_CEN;
+#endif
+}
+
+static void dshot_dma_flags_clear(void)
+{
+#if defined(BOARD_CLRACINGF4)
+    DMA1->LIFCR = DMA_LIFCR_CFEIF1 | DMA_LIFCR_CDMEIF1 |
+                  DMA_LIFCR_CTEIF1 | DMA_LIFCR_CHTIF1 | DMA_LIFCR_CTCIF1 |
+                  DMA_LIFCR_CFEIF2 | DMA_LIFCR_CDMEIF2 |
+                  DMA_LIFCR_CTEIF2 | DMA_LIFCR_CHTIF2 | DMA_LIFCR_CTCIF2;
+    DMA1->HIFCR = DMA_HIFCR_CFEIF6 | DMA_HIFCR_CDMEIF6 |
+                  DMA_HIFCR_CTEIF6 | DMA_HIFCR_CHTIF6 | DMA_HIFCR_CTCIF6 |
+                  DMA_HIFCR_CFEIF7 | DMA_HIFCR_CDMEIF7 |
+                  DMA_HIFCR_CTEIF7 | DMA_HIFCR_CHTIF7 | DMA_HIFCR_CTCIF7;
+#else
+    DMA1->LIFCR = DMA_LIFCR_CFEIF0 | DMA_LIFCR_CDMEIF0 |
+                  DMA_LIFCR_CTEIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CTCIF0 |
+                  DMA_LIFCR_CFEIF3 | DMA_LIFCR_CDMEIF3 |
+                  DMA_LIFCR_CTEIF3 | DMA_LIFCR_CHTIF3 | DMA_LIFCR_CTCIF3;
+    DMA1->HIFCR = DMA_HIFCR_CFEIF4 | DMA_HIFCR_CDMEIF4 |
+                  DMA_HIFCR_CTEIF4 | DMA_HIFCR_CHTIF4 | DMA_HIFCR_CTCIF4 |
+                  DMA_HIFCR_CFEIF6 | DMA_HIFCR_CDMEIF6 |
+                  DMA_HIFCR_CTEIF6 | DMA_HIFCR_CHTIF6 | DMA_HIFCR_CTCIF6;
+#endif
+}
+
+static void dshot_timers_start(void)
+{
+#if defined(BOARD_CLRACINGF4)
+    TIM3->CNT = 0U;
+    TIM2->CNT = 0U;
+    TIM3->SR = 0U;
+    TIM2->SR = 0U;
+    TIM3->DIER |= TIM_DIER_CC3DE | TIM_DIER_CC4DE;
+    TIM2->DIER |= TIM_DIER_CC3DE | TIM_DIER_CC4DE;
+    __DMB();
+    TIM3->CR1 |= TIM_CR1_CEN;
+    TIM2->CR1 |= TIM_CR1_CEN;
+#else
+    TIM2->CNT = 0U;
+    TIM3->CNT = 0U;
+    TIM4->CNT = 0U;
+    TIM2->SR = 0U;
+    TIM3->SR = 0U;
+    TIM4->SR = 0U;
+    TIM2->DIER |= TIM_DIER_CC2DE;
+    TIM3->DIER |= TIM_DIER_CC1DE;
+    TIM4->DIER |= TIM_DIER_CC1DE | TIM_DIER_CC2DE;
+    __DMB();
+    TIM2->CR1 |= TIM_CR1_CEN;
+    TIM3->CR1 |= TIM_CR1_CEN;
+    TIM4->CR1 |= TIM_CR1_CEN;
+#endif
 }
 
 static uint16_t packet(uint16_t value)
@@ -240,8 +341,18 @@ void dshot_init(void)
 void dshot_write(const uint16_t values[4])
 {
     if (active_protocol == MOTOR_PROTOCOL_DSHOT300) {
+        /*
+         * Non interrompere un frame ancora in corso. Un loop anticipato o
+         * ravvicinato allungherebbe un impulso e potrebbe trasformare lo STOP
+         * in un comando DShot valido. Betaflight lascia terminare il DMA e
+         * mantiene l'uscita bassa prima di preparare il frame successivo.
+         */
+        if (dshot_dma_transfer_active()) {
+            return;
+        }
         for (uint8_t motor = 0U; motor < 4U; ++motor) {
-            const uint16_t frame = packet(values[motor]);
+            const uint16_t frame = packet(
+                dshot_sanitize_value(values[motor]));
             for (uint8_t bit = 0U; bit < 16U; ++bit) {
                 dshot_dma_buffer[motor][bit] =
                     (frame & (1U << (15U - bit))) != 0U ? 30U : 15U;
@@ -249,33 +360,22 @@ void dshot_write(const uint16_t values[4])
             dshot_dma_buffer[motor][16] = 0U;
             dshot_dma_buffer[motor][17] = 0U;
         }
-#if defined(BOARD_CLRACINGF4)
-        DMA1->LIFCR = DMA_LIFCR_CFEIF1 | DMA_LIFCR_CDMEIF1 |
-                      DMA_LIFCR_CTEIF1 | DMA_LIFCR_CHTIF1 | DMA_LIFCR_CTCIF1 |
-                      DMA_LIFCR_CFEIF2 | DMA_LIFCR_CDMEIF2 |
-                      DMA_LIFCR_CTEIF2 | DMA_LIFCR_CHTIF2 | DMA_LIFCR_CTCIF2;
-        DMA1->HIFCR = DMA_HIFCR_CFEIF6 | DMA_HIFCR_CDMEIF6 |
-                      DMA_HIFCR_CTEIF6 | DMA_HIFCR_CHTIF6 | DMA_HIFCR_CTCIF6 |
-                      DMA_HIFCR_CFEIF7 | DMA_HIFCR_CDMEIF7 |
-                      DMA_HIFCR_CTEIF7 | DMA_HIFCR_CHTIF7 | DMA_HIFCR_CTCIF7;
-        dma_start(DMA1_Stream7, dshot_dma_buffer[0]);
-        dma_start(DMA1_Stream2, dshot_dma_buffer[1]);
-        dma_start(DMA1_Stream6, dshot_dma_buffer[2]);
-        dma_start(DMA1_Stream1, dshot_dma_buffer[3]);
-#else
-        DMA1->LIFCR = DMA_LIFCR_CFEIF0 | DMA_LIFCR_CDMEIF0 |
-                      DMA_LIFCR_CTEIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CTCIF0 |
-                      DMA_LIFCR_CFEIF3 | DMA_LIFCR_CDMEIF3 |
-                      DMA_LIFCR_CTEIF3 | DMA_LIFCR_CHTIF3 | DMA_LIFCR_CTCIF3;
-        DMA1->HIFCR = DMA_HIFCR_CFEIF4 | DMA_HIFCR_CDMEIF4 |
-                      DMA_HIFCR_CTEIF4 | DMA_HIFCR_CHTIF4 | DMA_HIFCR_CTCIF4 |
-                      DMA_HIFCR_CFEIF6 | DMA_HIFCR_CDMEIF6 |
-                      DMA_HIFCR_CTEIF6 | DMA_HIFCR_CHTIF6 | DMA_HIFCR_CTCIF6;
-        dma_start(DMA1_Stream6, dshot_dma_buffer[0]);
-        dma_start(DMA1_Stream4, dshot_dma_buffer[1]);
-        dma_start(DMA1_Stream0, dshot_dma_buffer[2]);
-        dma_start(DMA1_Stream3, dshot_dma_buffer[3]);
-#endif
+        /*
+         * Stage every channel while the timer DMA requests are disabled.
+         * Starting free-running channels one by one can lose the first compare
+         * event on a channel that happens to be at the end of its period.
+         */
+        dshot_timers_stop();
+        for (uint8_t motor = 0U; motor < 4U; ++motor) {
+            dma_prepare(dshot_dma_streams[motor], dshot_dma_buffer[motor]);
+        }
+        dshot_dma_flags_clear();
+        __DMB();
+        for (uint8_t motor = 0U; motor < 4U; ++motor) {
+            dshot_dma_streams[motor]->CR |= DMA_SxCR_EN;
+        }
+        __DMB();
+        dshot_timers_start();
         return;
     }
     if (active_protocol == MOTOR_PROTOCOL_ONESHOT125) {
@@ -325,6 +425,20 @@ void dshot_write(const uint16_t values[4])
         return;
     }
 
+}
+
+void dshot_startup_sequence(void)
+{
+    if (active_protocol != MOTOR_PROTOCOL_DSHOT300) {
+        return;
+    }
+
+    static const uint16_t stopped[4] = {0U, 0U, 0U, 0U};
+    const uint32_t started_ms = HAL_GetTick();
+    do {
+        dshot_write(stopped);
+        HAL_Delay(DSHOT_STARTUP_FRAME_INTERVAL_MS);
+    } while ((uint32_t)(HAL_GetTick() - started_ms) < DSHOT_STARTUP_TIME_MS);
 }
 
 bool motor_protocol_set(motor_protocol_t protocol)

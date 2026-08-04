@@ -120,6 +120,11 @@ static void gpio_init(void)
     gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
 
+    /* Keep every ESC signal low before changing the pins to timer outputs. */
+    HAL_GPIO_WritePin(MOTOR_1_PORT, MOTOR_1_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(MOTOR_2_PORT, MOTOR_2_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(MOTOR_3_PORT, MOTOR_3_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(MOTOR_4_PORT, MOTOR_4_PIN, GPIO_PIN_RESET);
     gpio.Pin = MOTOR_1_PIN;
     HAL_GPIO_Init(MOTOR_1_PORT, &gpio);
     gpio.Pin = MOTOR_2_PIN;

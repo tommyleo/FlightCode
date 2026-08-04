@@ -10,6 +10,7 @@ typedef enum {
 } motor_protocol_t;
 
 void dshot_init(void);
+void dshot_startup_sequence(void);
 void dshot_write(const uint16_t values[4]);
 uint16_t dshot_from_percent(float percent);
 bool motor_protocol_set(motor_protocol_t protocol);

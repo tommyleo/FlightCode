@@ -21,6 +21,7 @@ int main(void)
     config_protocol_init();
     dshot_init();
     flight_settings_init();
+    dshot_startup_sequence();
     sbus_init();
     flight_control_init();
     max7456_init();
