@@ -58,6 +58,24 @@ static void rotate(float *x, float *y, float *z)
          alignment[2][2] * in_z;
 }
 
+static void apply_fixed_sensor_mounting(float *x, float *y, float *z)
+{
+    const float sensor_x = *x;
+    const float sensor_y = *y;
+    const float sensor_z = *z;
+#if defined(BOARD_CLRACINGF4)
+    /* CLRacingF4 target sensor alignment: CW0. */
+    *x = sensor_x;
+    *y = -sensor_y;
+    *z = -sensor_z;
+#else
+    /* MAMBAF411 target sensor alignment: CLRacingF4 frame + CW180. */
+    *x = -sensor_x;
+    *y = sensor_y;
+    *z = -sensor_z;
+#endif
+}
+
 static bool write_reg(uint8_t reg, uint8_t value)
 {
     uint8_t data[2] = {reg, value};
@@ -183,35 +201,31 @@ bool mpu6000_read(imu_sample_t *sample)
         return false;
     }
 
-    const float ax = (float)be16(&data[0]) / accel_lsb_per_g;
-    const float ay = (float)be16(&data[2]) / accel_lsb_per_g;
-    const float az = (float)be16(&data[4]) / accel_lsb_per_g;
-    const float gx = (float)be16(&data[8]) / gyro_lsb_per_dps;
-    const float gy = (float)be16(&data[10]) / gyro_lsb_per_dps;
-    const float gz = (float)be16(&data[12]) / gyro_lsb_per_dps;
-#if defined(BOARD_CLRACINGF4)
+    sample->accel_x_g = (float)be16(&data[0]) / accel_lsb_per_g;
+    sample->accel_y_g = (float)be16(&data[2]) / accel_lsb_per_g;
+    sample->accel_z_g = (float)be16(&data[4]) / accel_lsb_per_g;
+    sample->gyro_x_dps = (float)be16(&data[8]) / gyro_lsb_per_dps;
+    sample->gyro_y_dps = (float)be16(&data[10]) / gyro_lsb_per_dps;
+    sample->gyro_z_dps = (float)be16(&data[12]) / gyro_lsb_per_dps;
+
     /*
-     * Betaflight's CLRACINGF4 target uses the MPU6000 with no board
-     * alignment correction.  Its X/Y axes therefore already match the
-     * flight-controller body frame.
+     * Fixed sensor mounting and user FC Alignment are separate transforms.
+     * Their output is one canonical flight-controller frame:
+     *   +roll  = right side down
+     *   +pitch = nose up
+     *   +yaw   = nose right
+     * Accelerometer values represent the gravity vector, hence the global
+     * sign reversal relative to the MPU specific-force output.
      */
-    sample->accel_x_g = -ax;
-    sample->accel_y_g = ay;
-    sample->gyro_x_dps = gx;
-    sample->gyro_y_dps = -gy;
-#else
-    /* The MAMBAF411 MPU6000 is mounted CW180 around Z. */
-    sample->accel_x_g = -ax;
-    sample->accel_y_g = -ay;
-    sample->gyro_x_dps = -gx;
-    sample->gyro_y_dps = -gy;
-#endif
-    sample->accel_z_g = az;
-    /*
-     * Body yaw convention: rotating the nose clockwise/right when viewed
-     * from above is positive.  The Mamba sensor Z axis has the opposite sign.
-     */
-    sample->gyro_z_dps = -gz;
+    apply_fixed_sensor_mounting(&sample->accel_x_g,
+                                &sample->accel_y_g,
+                                &sample->accel_z_g);
+    sample->accel_x_g = -sample->accel_x_g;
+    sample->accel_y_g = -sample->accel_y_g;
+    sample->accel_z_g = -sample->accel_z_g;
+    apply_fixed_sensor_mounting(&sample->gyro_x_dps,
+                                &sample->gyro_y_dps,
+                                &sample->gyro_z_dps);
     rotate(&sample->accel_x_g, &sample->accel_y_g, &sample->accel_z_g);
     rotate(&sample->gyro_x_dps, &sample->gyro_y_dps, &sample->gyro_z_dps);
     return true;

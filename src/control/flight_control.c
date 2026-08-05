@@ -377,8 +377,9 @@ void flight_control_update(const imu_sample_t *imu,
                                GYRO_LPF_HZ, dt);
     const float setpoint_roll =
         rate_setpoint(rx->channel_us[roll_ch], roll_rate_dps);
+    /* Receiver pitch high is nose-down; body pitch positive is nose-up. */
     const float setpoint_pitch =
-        rate_setpoint(rx->channel_us[pitch_ch], pitch_rate_dps);
+        -rate_setpoint(rx->channel_us[pitch_ch], pitch_rate_dps);
     const float setpoint_yaw =
         rate_setpoint(rx->channel_us[yaw_ch], yaw_rate_dps);
     float tpa_factor = 1.0f;
@@ -412,11 +413,12 @@ void flight_control_update(const imu_sample_t *imu,
     const float pid_authority = airmode_active ? 1.0f :
         clampf(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT, 0.0f, 1.0f);
 
+    /* Quad X: M1 rear-right, M2 front-right, M3 rear-left, M4 front-left. */
     float correction[4] = {
-        (-roll + pitch - mixer_yaw) * pid_authority,
-        (-roll - pitch + mixer_yaw) * pid_authority,
-        (roll + pitch + mixer_yaw) * pid_authority,
-        (roll - pitch - mixer_yaw) * pid_authority
+        (-roll - pitch - mixer_yaw) * pid_authority,
+        (-roll + pitch + mixer_yaw) * pid_authority,
+        (roll - pitch + mixer_yaw) * pid_authority,
+        (roll + pitch - mixer_yaw) * pid_authority
     };
     float correction_min = correction[0];
     float correction_max = correction[0];
@@ -481,7 +483,10 @@ void flight_control_emergency_stop(uint8_t log_stop_flag)
 
 void flight_control_reset_pid_state(void)
 {
+    /* The guided PID test primes airmode before resetting each test axis. */
+    const bool preserve_airmode = armed && airmode_active;
     reset_controller();
+    airmode_active = preserve_airmode;
 }
 
 void flight_control_get_corrected_imu(const imu_sample_t *raw,
