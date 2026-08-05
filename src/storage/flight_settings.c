@@ -12,7 +12,8 @@
 #include "stm32f4xx_hal.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 13U
+#define SETTINGS_VERSION 14U
+#define SETTINGS_LEGACY_VERSION_13 13U
 #define SETTINGS_LEGACY_VERSION_12 12U
 #define SETTINGS_LEGACY_VERSION_11 11U
 #define SETTINGS_LEGACY_VERSION 7U
@@ -109,6 +110,48 @@ typedef struct {
 } legacy_record_v12_t;
 
 typedef struct {
+    pid_gains_t roll;
+    pid_gains_t pitch;
+    pid_gains_t yaw;
+    motor_protocol_t motor_protocol;
+    float board_roll_deg;
+    float board_pitch_deg;
+    float board_yaw_deg;
+    uint32_t motor_direction_reversed;
+    float motor_idle_percent;
+    float roll_rate_dps;
+    float pitch_rate_dps;
+    float yaw_rate_dps;
+    float rate_expo;
+    float roll_feedforward;
+    float pitch_feedforward;
+    float yaw_feedforward;
+    float tpa_attenuation;
+    float tpa_breakpoint_percent;
+    uint32_t receiver_channel_order;
+    uint32_t arm_channel;
+    uint32_t arm_min_us;
+    uint32_t arm_max_us;
+    uint32_t beep_channel;
+    uint32_t beep_min_us;
+    uint32_t beep_max_us;
+    uint32_t osd_enabled;
+    uint32_t osd_position;
+    uint32_t blackbox_enabled;
+} legacy_settings_v13_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    legacy_settings_v13_t settings;
+    uint32_t checksum;
+} legacy_record_v13_t;
+
+_Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
+                   sizeof(legacy_settings_v13_t),
+               "Flight settings v13 migration layout changed");
+
+typedef struct {
     uint32_t magic;
     uint32_t version;
     flight_settings_t settings;
@@ -179,6 +222,17 @@ static bool feedforward_valid(const flight_settings_t *settings)
            settings->yaw_feedforward <= 1.0f;
 }
 
+static bool filters_valid(const flight_settings_t *settings)
+{
+    return isfinite(settings->gyro_lpf_hz) &&
+           isfinite(settings->dterm_lpf_hz) &&
+           settings->gyro_lpf_hz >= 50.0f &&
+           settings->gyro_lpf_hz <= 250.0f &&
+           settings->dterm_lpf_hz >= 20.0f &&
+           settings->dterm_lpf_hz <= 200.0f &&
+           settings->dterm_lpf_hz <= settings->gyro_lpf_hz;
+}
+
 static bool receiver_valid(const flight_settings_t *settings)
 {
     return settings->receiver_channel_order <= RECEIVER_ORDER_AETR1234 &&
@@ -216,27 +270,33 @@ static void apply(void)
     blackbox_sd_set_enabled(current_settings.blackbox_enabled != 0U);
 }
 
+void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
+{
+    settings->roll = (pid_gains_t){0.1005f, 0.200f, 0.0009f};
+    settings->pitch = (pid_gains_t){0.1005f, 0.200f, 0.0007f};
+    settings->yaw = (pid_gains_t){0.155f, 0.250f, 0.0f};
+    settings->roll_rate_dps = 420.0f;
+    settings->pitch_rate_dps = 420.0f;
+    settings->yaw_rate_dps = 320.0f;
+    settings->rate_expo = 0.30f;
+    settings->roll_feedforward = 0.025f;
+    settings->pitch_feedforward = 0.025f;
+    settings->yaw_feedforward = 0.015f;
+    settings->tpa_attenuation = 0.20f;
+    settings->tpa_breakpoint_percent = 70.0f;
+    settings->gyro_lpf_hz = 100.0f;
+    settings->dterm_lpf_hz = 60.0f;
+}
+
 void flight_settings_reset_defaults(void)
 {
     current_settings = (flight_settings_t){
-        .roll = {0.090f, 0.200f, 0.0012f},
-        .pitch = {0.090f, 0.200f, 0.0012f},
-        .yaw = {0.120f, 0.200f, 0.0f},
         .motor_protocol = MOTOR_PROTOCOL_DSHOT300,
         .board_roll_deg = 0.0f,
         .board_pitch_deg = 0.0f,
         .board_yaw_deg = 0.0f,
         .motor_direction_reversed = 0U,
-        .motor_idle_percent = 3.0f,
-        .roll_rate_dps = 500.0f,
-        .pitch_rate_dps = 500.0f,
-        .yaw_rate_dps = 400.0f,
-        .rate_expo = 0.35f,
-        .roll_feedforward = 0.025f,
-        .pitch_feedforward = 0.025f,
-        .yaw_feedforward = 0.015f,
-        .tpa_attenuation = 0.0f,
-        .tpa_breakpoint_percent = 65.0f,
+        .motor_idle_percent = 5.0f,
         .receiver_channel_order = RECEIVER_ORDER_TAER1234,
         .arm_channel = 5U,
         .arm_min_us = 1950U,
@@ -248,6 +308,7 @@ void flight_settings_reset_defaults(void)
         .osd_position = 4U,
         .blackbox_enabled = 0U,
     };
+    flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
     apply();
 }
@@ -267,6 +328,19 @@ void flight_settings_init(void)
         (const legacy_record_v11_t *)SETTINGS_ADDRESS;
     const legacy_record_v12_t *legacy_v12 =
         (const legacy_record_v12_t *)SETTINGS_ADDRESS;
+    const legacy_record_v13_t *legacy_v13 =
+        (const legacy_record_v13_t *)SETTINGS_ADDRESS;
+    if (legacy_v13->magic == SETTINGS_MAGIC &&
+        legacy_v13->version == SETTINGS_LEGACY_VERSION_13 &&
+        legacy_v13->checksum == checksum_bytes(
+            legacy_v13, offsetof(legacy_record_v13_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, &legacy_v13->settings,
+               sizeof(legacy_v13->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v12->magic == SETTINGS_MAGIC &&
         legacy_v12->version == SETTINGS_LEGACY_VERSION_12 &&
         legacy_v12->checksum == checksum_bytes(
@@ -354,6 +428,7 @@ void flight_settings_init(void)
         !gains_valid(&stored->settings.yaw) ||
         !rates_valid(&stored->settings) ||
         !feedforward_valid(&stored->settings) ||
+        !filters_valid(&stored->settings) ||
         !receiver_valid(&stored->settings) ||
         stored->settings.osd_enabled > 1U ||
         stored->settings.osd_position > 8U ||
@@ -394,6 +469,7 @@ bool flight_settings_set(const flight_settings_t *settings)
         !gains_valid(&settings->yaw) ||
         !rates_valid(settings) ||
         !feedforward_valid(settings) ||
+        !filters_valid(settings) ||
         !receiver_valid(settings) ||
         settings->osd_enabled > 1U || settings->osd_position > 8U ||
         settings->blackbox_enabled > 1U ||
@@ -419,9 +495,15 @@ bool flight_settings_set(const flight_settings_t *settings)
         settings->board_roll_deg != current_settings.board_roll_deg ||
         settings->board_pitch_deg != current_settings.board_pitch_deg ||
         settings->board_yaw_deg != current_settings.board_yaw_deg;
+    const bool filters_changed =
+        settings->gyro_lpf_hz != current_settings.gyro_lpf_hz ||
+        settings->dterm_lpf_hz != current_settings.dterm_lpf_hz;
     current_settings = *settings;
     settings_saved = false;
     apply();
+    if (filters_changed) {
+        flight_control_reset_pid_state();
+    }
     if (alignment_changed) {
         flight_control_start_calibration();
     }

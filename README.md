@@ -106,6 +106,11 @@ motor outputs, and PID configuration. After flashing the firmware:
 PID settings can only be changed or saved while the quad is disarmed. The last
 sector of internal flash is reserved for persistent settings.
 
+The configurator also exposes persistent gyroscope and D-term low-pass
+cutoffs. Factory defaults are 100 Hz for the gyroscope and 60 Hz for D-term;
+accepted ranges are 50–250 Hz and 20–200 Hz respectively, with the D-term
+cutoff constrained not to exceed the gyroscope cutoff.
+
 ## Safety
 
 Always perform the first test without propellers. Verify motor order, motor

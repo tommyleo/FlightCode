@@ -113,6 +113,14 @@ static void send_tpa(void)
           flight_settings_are_saved() ? 1U : 0U);
 }
 
+static void send_filters(void)
+{
+    const flight_settings_t *s = flight_settings_get();
+    reply("@CFG FILTERS %.1f %.1f %u\n",
+          s->gyro_lpf_hz, s->dterm_lpf_hz,
+          flight_settings_are_saved() ? 1U : 0U);
+}
+
 static void send_receiver_config(void)
 {
     const flight_settings_t *s = flight_settings_get();
@@ -171,7 +179,7 @@ static void process(const char *command)
 #if BOARD_HAS_BATTERY_VOLTAGE
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-              "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
 #if BOARD_HAS_SDCARD
               "BLACKBOX_SD "
@@ -180,7 +188,7 @@ static void process(const char *command)
 #else
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-              "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
               "TELEMETRY_EXT RECEIVER_CONFIG\n");
 #endif
         send_pids();
@@ -191,6 +199,7 @@ static void process(const char *command)
         send_rates();
         send_feedforward();
         send_tpa();
+        send_filters();
         send_receiver_config();
 #if BOARD_HAS_OSD
         send_osd_status();
@@ -248,6 +257,11 @@ static void process(const char *command)
     if (strcmp(command, "GET_TPA") == 0) {
         last_activity_us = board_micros();
         send_tpa();
+        return;
+    }
+    if (strcmp(command, "GET_FILTERS") == 0) {
+        last_activity_us = board_micros();
+        send_filters();
         return;
     }
     if (strcmp(command, "GET_RECEIVER_CONFIG") == 0) {
@@ -470,6 +484,17 @@ static void process(const char *command)
         }
         return;
     }
+    if (sscanf(command, "SET_FILTERS %f %f",
+               &settings.gyro_lpf_hz,
+               &settings.dterm_lpf_hz) == 2) {
+        if (flight_settings_set(&settings)) {
+            reply("@CFG OK SET_FILTERS\n");
+            send_filters();
+        } else {
+            reply("@CFG ERROR INVALID_FILTERS\n");
+        }
+        return;
+    }
     if (sscanf(command, "SET_FEEDFORWARD %f %f %f",
                &settings.roll_feedforward, &settings.pitch_feedforward,
                &settings.yaw_feedforward) == 3) {
@@ -556,28 +581,19 @@ static void process(const char *command)
         send_rates();
         send_feedforward();
         send_tpa();
+        send_filters();
         return;
     }
     if (strcmp(command, "RESET_PIDS") == 0) {
         settings = *flight_settings_get();
-        settings.roll = (pid_gains_t){0.090f, 0.200f, 0.0012f};
-        settings.pitch = (pid_gains_t){0.090f, 0.200f, 0.0012f};
-        settings.yaw = (pid_gains_t){0.120f, 0.200f, 0.0f};
-        settings.roll_rate_dps = 500.0f;
-        settings.pitch_rate_dps = 500.0f;
-        settings.yaw_rate_dps = 400.0f;
-        settings.rate_expo = 0.35f;
-        settings.roll_feedforward = 0.025f;
-        settings.pitch_feedforward = 0.025f;
-        settings.yaw_feedforward = 0.015f;
-        settings.tpa_attenuation = 0.0f;
-        settings.tpa_breakpoint_percent = 65.0f;
+        flight_settings_reset_tuning_defaults(&settings);
         reply(flight_settings_set(&settings) ? "@CFG OK RESET_PIDS\n"
                                              : "@CFG ERROR RESET_PIDS\n");
         send_pids();
         send_rates();
         send_feedforward();
         send_tpa();
+        send_filters();
         return;
     }
     char protocol_name[24];

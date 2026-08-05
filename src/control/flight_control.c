@@ -13,8 +13,6 @@
 #define CALIBRATION_MAX_ABSOLUTE_RATE_DPS 10.0f
 #define CALIBRATION_MAX_CONSECUTIVE_OUTLIERS 16U
 #define CALIBRATION_TIMEOUT_US 5000000U
-#define GYRO_LPF_HZ 150.0f
-#define DTERM_LPF_HZ 100.0f
 #define FLIGHT_PI_F 3.14159265358979323846f
 #define YAW_ITERM_RELAX_LPF_HZ 8.0f
 #define YAW_ITERM_RELAX_THRESHOLD_DPS 20.0f
@@ -33,9 +31,9 @@ typedef struct {
     bool initialized;
 } pt1_filter_t;
 
-static pid_gains_t roll_gains = {0.090f, 0.200f, 0.0012f};
-static pid_gains_t pitch_gains = {0.090f, 0.200f, 0.0012f};
-static pid_gains_t yaw_gains = {0.120f, 0.200f, 0.0f};
+static pid_gains_t roll_gains = {0.1005f, 0.200f, 0.0009f};
+static pid_gains_t pitch_gains = {0.1005f, 0.200f, 0.0007f};
+static pid_gains_t yaw_gains = {0.155f, 0.250f, 0.0f};
 static pid_state_t roll_state, pitch_state, yaw_state;
 static float bias_x, bias_y, bias_z;
 static float sum_x, sum_y, sum_z;
@@ -51,16 +49,16 @@ static bool armed;
 static bool arm_switch_was_low;
 static bool arm_calibration_active;
 static bool motor_direction_reversed;
-static float motor_idle_percent = 3.0f;
-static float roll_rate_dps = 500.0f;
-static float pitch_rate_dps = 500.0f;
-static float yaw_rate_dps = 400.0f;
-static float rate_expo = 0.35f;
+static float motor_idle_percent = 5.0f;
+static float roll_rate_dps = 420.0f;
+static float pitch_rate_dps = 420.0f;
+static float yaw_rate_dps = 320.0f;
+static float rate_expo = 0.30f;
 static float roll_feedforward = 0.025f;
 static float pitch_feedforward = 0.025f;
 static float yaw_feedforward = 0.015f;
-static float tpa_attenuation;
-static float tpa_breakpoint_percent = 65.0f;
+static float tpa_attenuation = 0.20f;
+static float tpa_breakpoint_percent = 70.0f;
 static bool mixer_saturated;
 static bool airmode_active;
 static pt1_filter_t gyro_filter[3];
@@ -98,7 +96,8 @@ static float pt1(pt1_filter_t *filter, float input, float cutoff_hz, float dt)
 static float pid(pid_state_t *state, const pid_gains_t *gains,
                  float setpoint, float rate, float feedforward,
                  float dt, float limit, float tpa_factor,
-                 bool relax_integral, float *p_out, float *i_out,
+                 float dterm_lpf_hz, bool relax_integral,
+                 float *p_out, float *i_out,
                  float *d_out)
 {
     const float error = setpoint - rate;
@@ -127,7 +126,7 @@ static float pid(pid_state_t *state, const pid_gains_t *gains,
     const float derivative = -(rate - state->previous_rate) / dt;
     state->previous_rate = rate;
     const float d_alpha =
-        dt / (1.0f / (2.0f * FLIGHT_PI_F * DTERM_LPF_HZ) + dt);
+        dt / (1.0f / (2.0f * FLIGHT_PI_F * dterm_lpf_hz) + dt);
     state->dterm += d_alpha * (derivative - state->dterm);
     *p_out = gains->kp * tpa_factor * error;
     *i_out = state->integral;
@@ -370,11 +369,11 @@ void flight_control_update(const imu_sample_t *imu,
     }
 
     const float rate_roll = pt1(&gyro_filter[0], imu->gyro_x_dps - bias_x,
-                                GYRO_LPF_HZ, dt);
+                                settings->gyro_lpf_hz, dt);
     const float rate_pitch = pt1(&gyro_filter[1], imu->gyro_y_dps - bias_y,
-                                 GYRO_LPF_HZ, dt);
+                                 settings->gyro_lpf_hz, dt);
     const float rate_yaw = pt1(&gyro_filter[2], imu->gyro_z_dps - bias_z,
-                               GYRO_LPF_HZ, dt);
+                               settings->gyro_lpf_hz, dt);
     const float setpoint_roll =
         rate_setpoint(rx->channel_us[roll_ch], roll_rate_dps);
     /* Receiver pitch high is nose-down; body pitch positive is nose-up. */
@@ -394,17 +393,20 @@ void flight_control_update(const imu_sample_t *imu,
     const float roll = pid(&roll_state, &roll_gains,
                            setpoint_roll,
                            rate_roll, roll_feedforward, dt, 35.0f,
-                           tpa_factor, false, &p_term[0], &i_term[0],
+                           tpa_factor, settings->dterm_lpf_hz, false,
+                           &p_term[0], &i_term[0],
                            &d_term[0]);
     const float pitch = pid(&pitch_state, &pitch_gains,
                             setpoint_pitch,
                             rate_pitch, pitch_feedforward, dt, 35.0f,
-                            tpa_factor, false, &p_term[1], &i_term[1],
+                            tpa_factor, settings->dterm_lpf_hz, false,
+                            &p_term[1], &i_term[1],
                             &d_term[1]);
     const float yaw = pid(&yaw_state, &yaw_gains,
                           setpoint_yaw,
                           rate_yaw, yaw_feedforward, dt, 25.0f,
-                          tpa_factor, true, &p_term[2], &i_term[2],
+                          tpa_factor, settings->dterm_lpf_hz, true,
+                          &p_term[2], &i_term[2],
                           &d_term[2]);
     const float mixer_yaw = motor_direction_reversed ? -yaw : yaw;
     if (throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
@@ -436,7 +438,10 @@ void flight_control_update(const imu_sample_t *imu,
     const float base = clampf(requested_base,
                               motor_idle_percent - correction_min,
                               100.0f - correction_max);
-    mixer_saturated = scale < 0.999f || base != requested_base;
+    /* Airmode base shifting preserves every axis correction. Only scaled
+     * corrections have exhausted actuator authority and should stop I-term
+     * accumulation. */
+    mixer_saturated = scale < 0.999f;
     for (uint8_t i = 0; i < 4U; ++i) {
         motors[i] = dshot_from_percent(base + correction[i] * scale);
     }

@@ -35,6 +35,8 @@ typedef struct {
     uint32_t osd_enabled;
     uint32_t osd_position;
     uint32_t blackbox_enabled;
+    float gyro_lpf_hz;
+    float dterm_lpf_hz;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U
@@ -44,5 +46,6 @@ void flight_settings_init(void);
 const flight_settings_t *flight_settings_get(void);
 bool flight_settings_set(const flight_settings_t *settings);
 void flight_settings_reset_defaults(void);
+void flight_settings_reset_tuning_defaults(flight_settings_t *settings);
 bool flight_settings_save(void);
 bool flight_settings_are_saved(void);
