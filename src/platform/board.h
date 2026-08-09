@@ -127,6 +127,7 @@ void board_init(void);
 void board_fatal_error(void);
 uint32_t board_micros(void);
 void board_status_led_set(bool enabled);
+void board_status_led_update(bool receiver_signal_valid);
 void board_buzzer_set(bool enabled);
 void board_buzzer_update(bool requested);
 float board_battery_voltage(void);

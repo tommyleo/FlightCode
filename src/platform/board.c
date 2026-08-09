@@ -12,6 +12,12 @@ static ADC_HandleTypeDef hadc1;
 #define DFU_REQUEST_ADDRESS 0x2001FFF0U
 #define DFU_REQUEST_MAGIC 0x44554634U
 #define SYSTEM_MEMORY_ADDRESS 0x1FFF0000U
+#define STATUS_LED_PATTERN_PERIOD_US 1000000U
+#define STATUS_LED_FLASH_US 80000U
+#define STATUS_LED_SECOND_FLASH_US 160000U
+#define BUZZER_PATTERN_PERIOD_US 500000U
+#define BUZZER_BEEP_US 70000U
+#define BUZZER_SECOND_BEEP_US 120000U
 
 static void jump_to_system_bootloader(void) __attribute__((noreturn));
 
@@ -432,6 +438,17 @@ void board_status_led_set(bool enabled)
                                      : GPIO_PIN_SET));
 }
 
+void board_status_led_update(bool receiver_signal_valid)
+{
+    const uint32_t phase =
+        board_micros() % STATUS_LED_PATTERN_PERIOD_US;
+    const bool first_flash = phase < STATUS_LED_FLASH_US;
+    const bool second_flash = receiver_signal_valid &&
+        phase >= STATUS_LED_SECOND_FLASH_US &&
+        phase < STATUS_LED_SECOND_FLASH_US + STATUS_LED_FLASH_US;
+    board_status_led_set(first_flash || second_flash);
+}
+
 void board_buzzer_update(bool requested)
 {
     static bool was_requested;
@@ -449,15 +466,19 @@ void board_buzzer_update(bool requested)
         request_started_us = now_us;
     }
 
-    /* Finder pattern: one second sounding, one second silent. */
-    const bool sounding =
-        ((uint32_t)(now_us - request_started_us) % 2000000U) < 1000000U;
+    const uint32_t phase =
+        (uint32_t)(now_us - request_started_us) %
+        BUZZER_PATTERN_PERIOD_US;
+    const bool sounding = phase < BUZZER_BEEP_US ||
+        (phase >= BUZZER_SECOND_BEEP_US &&
+         phase < BUZZER_SECOND_BEEP_US + BUZZER_BEEP_US);
 #if BOARD_BUZZER_REQUIRES_TONE
     if (sounding) {
         /*
          * PB4 drives a passive beeper on CLRacingF4.  This function runs at
-         * the 8 kHz control-loop rate, so toggling once per call produces a
-         * 4 kHz square wave (the Betaflight target specifies 3.8 kHz).
+         * the 8 kHz control-loop rate, so toggling once per call produces the
+         * highest possible square wave here: 4 kHz, close to its most audible
+         * range.
          */
         HAL_GPIO_TogglePin(BUZZER_PORT, BUZZER_PIN);
     } else {

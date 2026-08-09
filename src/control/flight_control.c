@@ -166,19 +166,6 @@ static void begin_calibration(bool for_arm)
     reset_controller();
 }
 
-static void update_status_led(void)
-{
-    bool on;
-    if (!calibrated && calibration_failed) {
-        on = true;
-    } else if (!calibrated) {
-        on = ((board_micros() / 100000U) & 1U) == 0U;
-    } else {
-        on = ((board_micros() / 500000U) & 1U) == 0U;
-    }
-    board_status_led_set(on);
-}
-
 void flight_control_init(void)
 {
     flight_log_init();
@@ -262,7 +249,6 @@ void flight_control_update(const imu_sample_t *imu,
     const uint8_t pitch_ch = aetr ? 1U : 2U;
     const uint8_t yaw_ch = 3U;
     const float measured_dt = dt;
-    update_status_led();
     dt = clampf(dt, 0.00005f, 0.0005f);
     memset(motors, 0, sizeof(uint16_t) * 4U);
     const float throttle = clampf(

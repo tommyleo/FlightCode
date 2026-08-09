@@ -61,6 +61,7 @@ int main(void)
         next_loop += loop_cycles;
         sbus_update();
         const sbus_data_t *receiver = sbus_get();
+        board_status_led_update(receiver->valid);
         const flight_settings_t *settings = flight_settings_get();
         osd_tuning_menu_update(receiver, flight_control_is_armed());
         const bool tuning_menu_active = osd_tuning_menu_is_active();

@@ -11,8 +11,8 @@ MultiShot can also be selected from the Configurator.
 - MPU6000 on SPI1: CS PA4, SCK PA5, MISO PA6, MOSI PA7; no fixed yaw alignment
 - SBUS on USART1 RX PA10, inverter PB10, 100000 baud 8E2
 - Motors: M1 PB3, M2 PB4, M3 PB6, M4 PB7
-- LED on PC13
-- Active-low buzzer on PB2, controlled by CH5 > 2000
+- LED on PC13: one heartbeat flash per second, or two flashes with valid SBUS
+- Active-low buzzer on PB2, controlled by CH5 > 2000 with two beeps every 500 ms
 
 The mapping is based on the official Betaflight `DIAT/MAMBAF411` target.
 Radio channels are CH1 throttle, CH2 roll, CH3 pitch, CH4 yaw, and
@@ -20,7 +20,8 @@ CH6 arm > 2000.
 
 The CLRacingF4 uses the Betaflight `CLRA/CLRACINGF4` mapping: MPU6000 on SPI1
 (CS PA4), SBUS on USART1 RX PA10 with inverter PC0, motors on PB0, PB1, PA3,
-and PA2, LED on PB5, and an active-low buzzer on PB4.
+and PA2, LED on PB5, and a passive 4 kHz buzzer on PB4. The LED and buzzer use
+the same heartbeat, receiver-signal, and double-beep patterns as MAMBAF411.
 
 ## OSD tuning menu
 
