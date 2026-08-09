@@ -12,7 +12,7 @@ static motor_protocol_t active_protocol = MOTOR_PROTOCOL_DSHOT300;
 enum { DSHOT_FRAME_WORDS = 18 };
 static uint32_t dshot_dma_buffer[4][DSHOT_FRAME_WORDS];
 
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
 static DMA_Stream_TypeDef *const dshot_dma_streams[4] = {
     DMA1_Stream7, DMA1_Stream2, DMA1_Stream6, DMA1_Stream1,
 };
@@ -68,7 +68,7 @@ static void hardware_dshot_init(void)
     __HAL_RCC_DMA1_CLK_ENABLE();
     __HAL_RCC_TIM2_CLK_ENABLE();
     __HAL_RCC_TIM3_CLK_ENABLE();
-#if defined(BOARD_MAMBAF411)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3_TIM4
     __HAL_RCC_TIM4_CLK_ENABLE();
 #endif
 
@@ -76,7 +76,7 @@ static void hardware_dshot_init(void)
         .Mode = GPIO_MODE_AF_PP, .Pull = GPIO_PULLDOWN,
         .Speed = GPIO_SPEED_FREQ_VERY_HIGH,
     };
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     gpio.Pin = MOTOR_1_PIN | MOTOR_2_PIN; gpio.Alternate = GPIO_AF2_TIM3;
     HAL_GPIO_Init(GPIOB, &gpio);
     gpio.Pin = MOTOR_3_PIN | MOTOR_4_PIN; gpio.Alternate = GPIO_AF1_TIM2;
@@ -91,7 +91,7 @@ static void hardware_dshot_init(void)
 #endif
 
     const uint32_t psc = timer_clock_hz() / 12000000U - 1U;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     TIM3->PSC = psc; TIM3->ARR = 39U; TIM3->CCR3 = TIM3->CCR4 = 0U;
     TIM3->CCMR2 = (6U << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE |
                   (6U << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
@@ -146,7 +146,7 @@ static void dma_prepare(DMA_Stream_TypeDef *stream, uint32_t *data)
 
 static void dshot_timers_stop(void)
 {
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     TIM3->DIER &= ~(TIM_DIER_CC3DE | TIM_DIER_CC4DE);
     TIM2->DIER &= ~(TIM_DIER_CC3DE | TIM_DIER_CC4DE);
     TIM3->CR1 &= ~TIM_CR1_CEN;
@@ -163,7 +163,7 @@ static void dshot_timers_stop(void)
 
 static void dshot_dma_flags_clear(void)
 {
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     DMA1->LIFCR = DMA_LIFCR_CFEIF1 | DMA_LIFCR_CDMEIF1 |
                   DMA_LIFCR_CTEIF1 | DMA_LIFCR_CHTIF1 | DMA_LIFCR_CTCIF1 |
                   DMA_LIFCR_CFEIF2 | DMA_LIFCR_CDMEIF2 |
@@ -186,7 +186,7 @@ static void dshot_dma_flags_clear(void)
 
 static void dshot_timers_start(void)
 {
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     TIM3->CNT = 0U;
     TIM2->CNT = 0U;
     TIM3->SR = 0U;
@@ -229,14 +229,14 @@ static void oneshot125_init(void)
 {
     __HAL_RCC_TIM2_CLK_ENABLE();
     __HAL_RCC_TIM3_CLK_ENABLE();
-#if defined(BOARD_MAMBAF411)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3_TIM4
     __HAL_RCC_TIM4_CLK_ENABLE();
 #endif
     GPIO_InitTypeDef gpio = {
         .Mode = GPIO_MODE_AF_PP, .Pull = GPIO_NOPULL,
         .Speed = GPIO_SPEED_FREQ_VERY_HIGH,
     };
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     gpio.Pin = MOTOR_1_PIN | MOTOR_2_PIN; gpio.Alternate = GPIO_AF2_TIM3;
     HAL_GPIO_Init(GPIOB, &gpio);
     gpio.Pin = MOTOR_3_PIN | MOTOR_4_PIN; gpio.Alternate = GPIO_AF1_TIM2;
@@ -251,7 +251,7 @@ static void oneshot125_init(void)
 #endif
 
     const uint32_t psc = timer_clock_hz() / 1000000U - 1U;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     TIM3->PSC = psc; TIM3->ARR = 499U; TIM3->CCR3 = TIM3->CCR4 = 125U;
     TIM3->CCMR2 = (6U << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE |
                   (6U << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
@@ -283,14 +283,14 @@ static void multishot_init(void)
 {
     __HAL_RCC_TIM2_CLK_ENABLE();
     __HAL_RCC_TIM3_CLK_ENABLE();
-#if defined(BOARD_MAMBAF411)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3_TIM4
     __HAL_RCC_TIM4_CLK_ENABLE();
 #endif
     GPIO_InitTypeDef gpio = {
         .Mode = GPIO_MODE_AF_PP, .Pull = GPIO_NOPULL,
         .Speed = GPIO_SPEED_FREQ_VERY_HIGH,
     };
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     gpio.Pin = MOTOR_1_PIN | MOTOR_2_PIN; gpio.Alternate = GPIO_AF2_TIM3;
     HAL_GPIO_Init(GPIOB, &gpio);
     gpio.Pin = MOTOR_3_PIN | MOTOR_4_PIN; gpio.Alternate = GPIO_AF1_TIM2;
@@ -305,7 +305,7 @@ static void multishot_init(void)
 #endif
 
     const uint32_t psc = timer_clock_hz() / 12000000U - 1U;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
     TIM3->PSC = psc; TIM3->ARR = 1499U; TIM3->CCR3 = TIM3->CCR4 = 60U;
     TIM3->CCMR2 = (6U << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE |
                   (6U << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
@@ -388,7 +388,7 @@ void dshot_write(const uint16_t values[4])
             if (percent > 1.0f) percent = 1.0f;
             pulse[i] = 125U + (uint16_t)(percent * 125.0f);
         }
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
         TIM3->CCR3 = pulse[0];
         TIM3->CCR4 = pulse[1];
         TIM2->CCR4 = pulse[2];
@@ -411,7 +411,7 @@ void dshot_write(const uint16_t values[4])
             if (percent > 1.0f) percent = 1.0f;
             pulse[i] = 60U + (uint16_t)(percent * 240.0f);
         }
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
         TIM3->CCR3 = pulse[0];
         TIM3->CCR4 = pulse[1];
         TIM2->CCR4 = pulse[2];
@@ -453,7 +453,7 @@ bool motor_protocol_set(motor_protocol_t protocol)
     }
     TIM3->CR1 = 0U;
     TIM2->CR1 = 0U;
-#if defined(BOARD_MAMBAF411)
+#if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3_TIM4
     TIM4->CR1 = 0U;
 #endif
     active_protocol = protocol;

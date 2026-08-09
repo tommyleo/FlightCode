@@ -6,12 +6,7 @@
 #include "board.h"
 #include "blackbox_sd.h"
 
-#if defined(BOARD_CLRACINGF4)
-/* Leave room for the SD write queue; long logs live on the card. */
-#define FLIGHT_LOG_CAPACITY 2688U
-#else
-#define FLIGHT_LOG_CAPACITY 2944U
-#endif
+#define FLIGHT_LOG_CAPACITY BOARD_FLIGHT_LOG_CAPACITY
 #define CONTROL_LOOP_HZ 8000U
 #define LOG_DECIMATION (CONTROL_LOOP_HZ / FLIGHT_LOG_RATE_HZ)
 #define DSHOT_MIN 48U
@@ -19,7 +14,7 @@
 #define LOG_FLASH_MAGIC 0x46344C47U
 #define LOG_FLASH_VERSION 3U
 #define LOG_PERSIST_DELAY_US 200000U
-#define LOG_MIN_FLIGHT_THROTTLE_PERCENT 10.0f
+#define LOG_MIN_FLIGHT_THROTTLE_PERCENT 1.0f
 
 typedef struct {
     uint32_t magic;
@@ -230,7 +225,7 @@ void flight_log_persist_if_ready(void)
             hash_bytes(header.checksum, ram_record(i), sizeof(*ram_record(i)));
     }
 
-    HAL_GPIO_WritePin(STATUS_LED_PORT, STATUS_LED_PIN, GPIO_PIN_RESET);
+    board_status_led_set(true);
     HAL_FLASH_Unlock();
     FLASH_EraseInitTypeDef erase = {
         .TypeErase = FLASH_TYPEERASE_SECTORS,
@@ -267,7 +262,7 @@ void flight_log_persist_if_ready(void)
     HAL_FLASH_Lock();
     persist_pending = false;
     using_flash = ok;
-    HAL_GPIO_WritePin(STATUS_LED_PORT, STATUS_LED_PIN, GPIO_PIN_SET);
+    board_status_led_set(false);
     if (ok) {
         board_buzzer_set(true);
         HAL_Delay(120U);
@@ -317,7 +312,7 @@ void flight_log_record(const float gyro[3], const float setpoint[3],
     item->battery_cells = battery_cells;
     memset(item->reserved, 0, sizeof(item->reserved));
 
-    blackbox_sd_append(item);
+    if (flight_qualified) blackbox_sd_append(item);
 
     write_index = (write_index + 1U) % FLIGHT_LOG_CAPACITY;
     if (record_count < FLIGHT_LOG_CAPACITY) ++record_count;

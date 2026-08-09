@@ -161,12 +161,15 @@ static void send_osd_status(void)
 static void send_blackbox_status(void)
 {
 #if BOARD_HAS_SDCARD
-    reply("@CFG BLACKBOX_STATUS %s %u %lu %lu %lu %u\n",
+    reply("@CFG BLACKBOX_STATUS %s %u %lu %lu %lu %u %lu %lu %u\n",
           blackbox_sd_state_name(), blackbox_sd_is_enabled() ? 1U : 0U,
           (unsigned long)blackbox_sd_capacity_mb(),
           (unsigned long)blackbox_sd_written_bytes(),
           (unsigned long)blackbox_sd_dropped_records(),
-          flight_settings_are_saved() ? 1U : 0U);
+          flight_settings_are_saved() ? 1U : 0U,
+          (unsigned long)blackbox_sd_flight_count(),
+          (unsigned long)blackbox_sd_total_bytes(),
+          blackbox_sd_is_busy() ? 1U : 0U);
 #endif
 }
 
@@ -182,7 +185,7 @@ static void process(const char *command)
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
 #if BOARD_HAS_SDCARD
-              "BLACKBOX_SD "
+              "BLACKBOX_SD BLACKBOX_CATALOG "
 #endif
               "\n");
 #else
@@ -289,6 +292,72 @@ static void process(const char *command)
             blackbox_sd_probe();
         }
         send_blackbox_status();
+        return;
+    }
+    if (strcmp(command, "GET_BLACKBOX_CATALOG") == 0) {
+        if (flight_control_is_armed() ||
+            blackbox_sd_state() == BLACKBOX_SD_RECORDING ||
+            blackbox_sd_is_busy()) {
+            reply("@CFG ERROR BLACKBOX_RECORDING\n");
+            return;
+        }
+        const uint32_t count = blackbox_sd_flight_count();
+        reply("@CFG BLACKBOX_CATALOG %lu\n", (unsigned long)count);
+        for (uint32_t i = 0U; i < count; ++i) {
+            blackbox_sd_flight_info_t info;
+            if (!blackbox_sd_get_flight(i, &info)) break;
+            reply("@CFG BLACKBOX_FLIGHT %lu %lu %lu %u\n",
+                  (unsigned long)info.flight_id,
+                  (unsigned long)info.record_count,
+                  (unsigned long)info.block_count,
+                  info.stop_flag);
+        }
+        reply("@CFG BLACKBOX_CATALOG_END\n");
+        return;
+    }
+    unsigned int blackbox_flight, blackbox_offset, blackbox_count;
+    if (sscanf(command, "GET_BLACKBOX_CHUNK %u %u %u",
+               &blackbox_flight, &blackbox_offset,
+               &blackbox_count) == 3) {
+        if (flight_control_is_armed() ||
+            blackbox_sd_state() == BLACKBOX_SD_RECORDING ||
+            blackbox_sd_is_busy()) {
+            reply("@CFG ERROR BLACKBOX_RECORDING\n");
+            return;
+        }
+        if (blackbox_count > 4U) blackbox_count = 4U;
+        uint32_t sent = 0U;
+        for (; sent < blackbox_count; ++sent) {
+            flight_log_record_t item;
+            const uint32_t index = (uint32_t)blackbox_offset + sent;
+            if (!blackbox_sd_get_record((uint32_t)blackbox_flight,
+                                        index, &item)) break;
+            reply("@CFG BLACKBOX_LOG %u %lu %d %d %d %d %d %d %d %d %d %u %u %u %u %u %u %u %u %u %u %d %d %d %d %d %d %d %d %d\n",
+                  blackbox_flight, (unsigned long)index,
+                  item.gyro[0], item.gyro[1], item.gyro[2],
+                  item.setpoint[0], item.setpoint[1], item.setpoint[2],
+                  item.pid[0], item.pid[1], item.pid[2],
+                  item.motor[0], item.motor[1], item.motor[2], item.motor[3],
+                  item.throttle, item.flags, item.loop_us,
+                  item.battery_centivolts, item.cell_centivolts,
+                  item.battery_cells,
+                  item.p_term[0], item.p_term[1], item.p_term[2],
+                  item.i_term[0], item.i_term[1], item.i_term[2],
+                  item.d_term[0], item.d_term[1], item.d_term[2]);
+        }
+        reply("@CFG BLACKBOX_CHUNK_END %u %lu\n", blackbox_flight,
+              (unsigned long)((uint32_t)blackbox_offset + sent));
+        return;
+    }
+    if (strcmp(command, "CLEAR_BLACKBOX") == 0) {
+        if (flight_control_is_armed()) {
+            reply("@CFG ERROR ARMED\n");
+        } else if (!blackbox_sd_clear()) {
+            reply("@CFG ERROR BLACKBOX_BUSY\n");
+        } else {
+            reply("@CFG OK CLEAR_BLACKBOX\n");
+            send_blackbox_status();
+        }
         return;
     }
     if (strcmp(command, "CALIBRATE_GYRO") == 0) {

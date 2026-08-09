@@ -96,7 +96,8 @@ static float pt1(pt1_filter_t *filter, float input, float cutoff_hz, float dt)
 static float pid(pid_state_t *state, const pid_gains_t *gains,
                  float setpoint, float rate, float feedforward,
                  float dt, float limit, float tpa_factor,
-                 float dterm_lpf_hz, bool relax_integral,
+                 float dterm_lpf_hz, bool integral_enabled,
+                 bool relax_integral,
                  float *p_out, float *i_out,
                  float *d_out)
 {
@@ -115,7 +116,10 @@ static float pid(pid_state_t *state, const pid_gains_t *gains,
             1.0f - setpoint_highpass / YAW_ITERM_RELAX_THRESHOLD_DPS,
             0.0f, 1.0f);
     }
-    if (!mixer_saturated || state->integral * error < 0.0f) {
+    if (!integral_enabled) {
+        /* Do not store corrections while armed on the ground. */
+        state->integral = 0.0f;
+    } else if (!mixer_saturated || state->integral * error < 0.0f) {
         /* Never slow down unwinding an I term that opposes the error. */
         if (state->integral * error < 0.0f) integral_factor = 1.0f;
         state->integral =
@@ -172,9 +176,7 @@ static void update_status_led(void)
     } else {
         on = ((board_micros() / 500000U) & 1U) == 0U;
     }
-    /* PC13 LED on the MAMBA target is active low. */
-    HAL_GPIO_WritePin(STATUS_LED_PORT, STATUS_LED_PIN,
-                      on ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    board_status_led_set(on);
 }
 
 void flight_control_init(void)
@@ -389,29 +391,40 @@ void flight_control_update(const imu_sample_t *imu,
             (throttle - tpa_breakpoint_percent) /
             (100.0f - tpa_breakpoint_percent);
     }
+    /*
+     * Airmode is latched for the rest of the armed session.  Before its
+     * first activation the craft may be handled or the sticks moved while
+     * the motors have little authority, so the I term must remain empty.
+     * Activate before evaluating the PID loops so the first airborne
+     * correction always starts from a known zero integral.
+     */
+    if (!airmode_active &&
+        throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
+        airmode_active = true;
+    }
     float p_term[3], i_term[3], d_term[3];
     const float roll = pid(&roll_state, &roll_gains,
                            setpoint_roll,
                            rate_roll, roll_feedforward, dt, 35.0f,
-                           tpa_factor, settings->dterm_lpf_hz, false,
+                           tpa_factor, settings->dterm_lpf_hz,
+                           airmode_active, false,
                            &p_term[0], &i_term[0],
                            &d_term[0]);
     const float pitch = pid(&pitch_state, &pitch_gains,
                             setpoint_pitch,
                             rate_pitch, pitch_feedforward, dt, 35.0f,
-                            tpa_factor, settings->dterm_lpf_hz, false,
+                            tpa_factor, settings->dterm_lpf_hz,
+                            airmode_active, false,
                             &p_term[1], &i_term[1],
                             &d_term[1]);
     const float yaw = pid(&yaw_state, &yaw_gains,
                           setpoint_yaw,
                           rate_yaw, yaw_feedforward, dt, 25.0f,
-                          tpa_factor, settings->dterm_lpf_hz, true,
+                          tpa_factor, settings->dterm_lpf_hz,
+                          airmode_active, true,
                           &p_term[2], &i_term[2],
                           &d_term[2]);
     const float mixer_yaw = motor_direction_reversed ? -yaw : yaw;
-    if (throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
-        airmode_active = true;
-    }
     const float pid_authority = airmode_active ? 1.0f :
         clampf(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT, 0.0f, 1.0f);
 
@@ -429,18 +442,38 @@ void flight_control_update(const imu_sample_t *imu,
         correction_max = fmaxf(correction_max, correction[i]);
     }
     const float available = 100.0f - motor_idle_percent;
-    const float span = correction_max - correction_min;
-    const float scale = span > available ? available / span : 1.0f;
-    correction_min *= scale;
-    correction_max *= scale;
     const float requested_base =
         motor_idle_percent + throttle * available / 100.0f;
-    const float base = clampf(requested_base,
-                              motor_idle_percent - correction_min,
-                              100.0f - correction_max);
-    /* Airmode base shifting preserves every axis correction. Only scaled
-     * corrections have exhausted actuator authority and should stop I-term
-     * accumulation. */
+    float scale = 1.0f;
+    float base = requested_base;
+    if (airmode_active) {
+        const float span = correction_max - correction_min;
+        if (span > available) scale = available / span;
+        correction_min *= scale;
+        correction_max *= scale;
+        base = clampf(requested_base,
+                      motor_idle_percent - correction_min,
+                      100.0f - correction_max);
+    } else {
+        /*
+         * Before takeoff the throttle command owns the collective output.
+         * Keep its base fixed and reduce all axis corrections by the same
+         * factor so none of them can pull a motor below idle or raise the
+         * collective through airmode-style base shifting.
+         */
+        if (correction_min < 0.0f) {
+            scale = fminf(scale,
+                          (requested_base - motor_idle_percent) /
+                              -correction_min);
+        }
+        if (correction_max > 0.0f) {
+            scale = fminf(scale,
+                          (100.0f - requested_base) / correction_max);
+        }
+        scale = clampf(scale, 0.0f, 1.0f);
+    }
+    /* Scaled corrections have exhausted the authority available in the
+     * current mixer mode and should stop I-term accumulation. */
     mixer_saturated = scale < 0.999f;
     for (uint8_t i = 0; i < 4U; ++i) {
         motors[i] = dshot_from_percent(base + correction[i] * scale);

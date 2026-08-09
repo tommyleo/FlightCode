@@ -4,6 +4,9 @@
 
 #include "stm32f4xx_hal.h"
 
+#define MOTOR_OUTPUT_LAYOUT_TIM2_TIM3_TIM4 1
+#define MOTOR_OUTPUT_LAYOUT_TIM2_TIM3 2
+
 #if defined(BOARD_MAMBAF411)
 #define BOARD_NAME "MAMBAF411"
 // Official Betaflight DIAT/MAMBAF411 target mapping.
@@ -18,6 +21,7 @@
 
 #define STATUS_LED_PORT GPIOC
 #define STATUS_LED_PIN GPIO_PIN_13
+#define STATUS_LED_ACTIVE_LEVEL GPIO_PIN_RESET
 
 #define BUZZER_PORT GPIOB
 #define BUZZER_PIN GPIO_PIN_2
@@ -41,9 +45,12 @@
 #define BATTERY_ADC_PORT GPIOA
 #define BATTERY_ADC_PIN GPIO_PIN_0
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_0
-#define BATTERY_VOLTAGE_DIVIDER 11.0f
+#define BATTERY_VOLTAGE_DIVIDER 16.20f
 #define BOARD_HAS_OSD 1
 #define BOARD_HAS_SDCARD 0
+#define BOARD_FLIGHT_LOG_CAPACITY 2944U
+#define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM2_TIM3_TIM4
+#define BOARD_BUZZER_REQUIRES_TONE 0
 #define OSD_SPI_HANDLE hspi2
 #define MAX7456_CS_PORT GPIOB
 #define MAX7456_CS_PIN GPIO_PIN_12
@@ -62,6 +69,7 @@
 
 #define STATUS_LED_PORT GPIOB
 #define STATUS_LED_PIN GPIO_PIN_5
+#define STATUS_LED_ACTIVE_LEVEL GPIO_PIN_RESET
 
 #define BUZZER_PORT GPIOB
 #define BUZZER_PIN GPIO_PIN_4
@@ -86,9 +94,12 @@
 #define BATTERY_ADC_PORT GPIOC
 #define BATTERY_ADC_PIN GPIO_PIN_2
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_12
-#define BATTERY_VOLTAGE_DIVIDER 11.0f
+#define BATTERY_VOLTAGE_DIVIDER 10.78f
 #define BOARD_HAS_OSD 1
 #define BOARD_HAS_SDCARD 1
+#define BOARD_FLIGHT_LOG_CAPACITY 2688U
+#define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
+#define BOARD_BUZZER_REQUIRES_TONE 1
 #define SDCARD_SPI_HANDLE hspi2
 #define SDCARD_CS_PORT GPIOB
 #define SDCARD_CS_PIN GPIO_PIN_12
@@ -115,6 +126,7 @@ extern UART_HandleTypeDef hsbus_uart;
 void board_init(void);
 void board_fatal_error(void);
 uint32_t board_micros(void);
+void board_status_led_set(bool enabled);
 void board_buzzer_set(bool enabled);
 void board_buzzer_update(bool requested);
 float board_battery_voltage(void);

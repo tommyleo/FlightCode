@@ -58,22 +58,20 @@ static void rotate(float *x, float *y, float *z)
          alignment[2][2] * in_z;
 }
 
-static void apply_fixed_sensor_mounting(float *x, float *y, float *z)
+static void apply_common_sensor_axes(float *x, float *y, float *z)
 {
     const float sensor_x = *x;
     const float sensor_y = *y;
     const float sensor_z = *z;
-#if defined(BOARD_CLRACINGF4)
-    /* CLRacingF4 target sensor alignment: CW0. */
+
+    /*
+     * Use the same zero-yaw sensor frame on every supported board.
+     * Any FC rotation in the airframe is handled exclusively by the
+     * user-configurable board alignment.
+     */
     *x = sensor_x;
     *y = -sensor_y;
     *z = -sensor_z;
-#else
-    /* MAMBAF411 target sensor alignment: CLRacingF4 frame + CW180. */
-    *x = -sensor_x;
-    *y = sensor_y;
-    *z = -sensor_z;
-#endif
 }
 
 static bool write_reg(uint8_t reg, uint8_t value)
@@ -100,7 +98,7 @@ static bool read_regs(uint8_t reg, uint8_t *data, uint16_t length)
     /*
      * Keep command and payload in one full-duplex transaction.  Using
      * HAL_SPI_Receive() in 2-line master mode aliases its TX and RX buffers;
-     * that corrupted alternating 16-bit sensor words on the STM32F411.
+     * that corrupted alternating 16-bit sensor words on some targets.
      */
     HAL_GPIO_WritePin(MPU6000_CS_PORT, MPU6000_CS_PIN, GPIO_PIN_RESET);
     const HAL_StatusTypeDef status =
@@ -209,7 +207,8 @@ bool mpu6000_read(imu_sample_t *sample)
     sample->gyro_z_dps = (float)be16(&data[12]) / gyro_lsb_per_dps;
 
     /*
-     * Fixed sensor mounting and user FC Alignment are separate transforms.
+     * The common sensor-axis convention and user FC Alignment are separate
+     * transforms.
      * Their output is one canonical flight-controller frame:
      *   +roll  = right side down
      *   +pitch = nose up
@@ -217,15 +216,15 @@ bool mpu6000_read(imu_sample_t *sample)
      * Accelerometer values represent the gravity vector, hence the global
      * sign reversal relative to the MPU specific-force output.
      */
-    apply_fixed_sensor_mounting(&sample->accel_x_g,
-                                &sample->accel_y_g,
-                                &sample->accel_z_g);
+    apply_common_sensor_axes(&sample->accel_x_g,
+                             &sample->accel_y_g,
+                             &sample->accel_z_g);
     sample->accel_x_g = -sample->accel_x_g;
     sample->accel_y_g = -sample->accel_y_g;
     sample->accel_z_g = -sample->accel_z_g;
-    apply_fixed_sensor_mounting(&sample->gyro_x_dps,
-                                &sample->gyro_y_dps,
-                                &sample->gyro_z_dps);
+    apply_common_sensor_axes(&sample->gyro_x_dps,
+                             &sample->gyro_y_dps,
+                             &sample->gyro_z_dps);
     rotate(&sample->accel_x_g, &sample->accel_y_g, &sample->accel_z_g);
     rotate(&sample->gyro_x_dps, &sample->gyro_y_dps, &sample->gyro_z_dps);
     return true;

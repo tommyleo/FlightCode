@@ -8,7 +8,7 @@ rate of the MPU6000. DSHOT300 is the default ESC protocol; OneShot125 and
 MultiShot can also be selected from the Configurator.
 
 - STM32F411 MCU, 96 MHz core, and USB CDC
-- MPU6000 on SPI1: CS PA4, SCK PA5, MISO PA6, MOSI PA7, CW180 orientation
+- MPU6000 on SPI1: CS PA4, SCK PA5, MISO PA6, MOSI PA7; no fixed yaw alignment
 - SBUS on USART1 RX PA10, inverter PB10, 100000 baud 8E2
 - Motors: M1 PB3, M2 PB4, M3 PB6, M4 PB7
 - LED on PC13
@@ -87,12 +87,15 @@ The CLRacingF4 target supports the onboard microSD socket on SPI2
 (PB13/PB14/PB15, CS PB12, detect PB7). Long-flight records are packed into
 independent 512-byte sectors and transferred through DMA from a RAM queue, so
 SD busy time never blocks the 8 kHz control loop. Recording is optional in the
-Configurator and only flights that exceed 10% throttle are retained.
+Configurator. A new log is retained as soon as throttle rises above the 1%
+idle-noise threshold; arming and disarming without touching throttle preserves
+the previous log.
 
-The current Blackbox format treats the card as dedicated FlightCode storage;
-it is not a FAT volume and must not contain files that need to be preserved.
-Log listing and download will use the FlightCode USB protocol rather than
-direct PC filesystem access.
+The Blackbox format treats the card as dedicated FlightCode storage; it is not
+a FAT volume and must not contain files that need to be preserved. A persistent
+on-card catalog retains the 20 most recent flight descriptors across power
+cycles. The Configurator can list them, download complete JSON logs through the
+FlightCode USB protocol, or clear the catalog without formatting the card.
 
 ## USB Configurator
 

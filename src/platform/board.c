@@ -135,6 +135,7 @@ static void gpio_init(void)
     HAL_GPIO_Init(MOTOR_4_PORT, &gpio);
     gpio.Pin = STATUS_LED_PIN;
     HAL_GPIO_Init(STATUS_LED_PORT, &gpio);
+    board_status_led_set(false);
     gpio.Pin = SBUS_INVERTER_PIN;
     HAL_GPIO_Init(SBUS_INVERTER_PORT, &gpio);
     gpio.Pin = MPU6000_CS_PIN;
@@ -422,6 +423,15 @@ void board_buzzer_set(bool enabled)
                                      : GPIO_PIN_SET));
 }
 
+void board_status_led_set(bool enabled)
+{
+    HAL_GPIO_WritePin(STATUS_LED_PORT, STATUS_LED_PIN,
+                      enabled ? STATUS_LED_ACTIVE_LEVEL
+                              : (STATUS_LED_ACTIVE_LEVEL == GPIO_PIN_SET
+                                     ? GPIO_PIN_RESET
+                                     : GPIO_PIN_SET));
+}
+
 void board_buzzer_update(bool requested)
 {
     static bool was_requested;
@@ -442,7 +452,7 @@ void board_buzzer_update(bool requested)
     /* Finder pattern: one second sounding, one second silent. */
     const bool sounding =
         ((uint32_t)(now_us - request_started_us) % 2000000U) < 1000000U;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_BUZZER_REQUIRES_TONE
     if (sounding) {
         /*
          * PB4 drives a passive beeper on CLRacingF4.  This function runs at
@@ -454,7 +464,7 @@ void board_buzzer_update(bool requested)
         board_buzzer_set(false);
     }
 #else
-    /* MAMBAF411 uses an active buzzer and only needs the envelope. */
+    /* An active buzzer only needs the sounding envelope. */
     board_buzzer_set(sounding);
 #endif
 }
