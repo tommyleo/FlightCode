@@ -9,6 +9,39 @@ rate of the supported MPU6000 and ICM-42688-P sensors. DSHOT300 is the default
 ESC protocol; OneShot125 and MultiShot can also be selected from the
 Configurator.
 
+## Supported boards and enabled hardware
+
+| Feature | MAMBAF411 | CLRACINGF4 | FLYWOOF405NANO |
+| --- | --- | --- | --- |
+| Flight controller | DIAT Mamba F411 | CL Racing F4 | Flywoo GOKU GN405 Nano HD V3 |
+| MCU / clock | STM32F411 / 96 MHz | STM32F405 / 168 MHz | STM32F405 / 168 MHz |
+| IMU | MPU6000, SPI1 | MPU6000, SPI1 | ICM-42688-P, SPI1 |
+| Receiver | SBUS, USART1 with controllable inverter | SBUS, USART1 with controllable inverter | SBUS(5), UART5 with fixed inverter |
+| Motor outputs | PB3, PB4, PB6, PB7 | PB0, PB1, PA3, PA2 | PB0, PB1, PA3, PA2 |
+| ESC protocols | DSHOT300, OneShot125, MultiShot | DSHOT300, OneShot125, MultiShot | DSHOT300, OneShot125, MultiShot |
+| Battery voltage | ADC PA0 | ADC PC2 | ADC PC3 |
+| Analog OSD | MAX7456/AT7456E, SPI2 | MAX7456/AT7456E, SPI3 | Not fitted on HD V3 |
+| Persistent Blackbox | No external storage | microSD on SPI2 | 16 MiB W25Q128 internal flash on SPI3 |
+| RAM flight log | 2,944 records | 2,688 records | 2,688 records |
+| Status LED / buzzer | PC13 / PB2 | PB5 / PB4 | PC14 / PC13 |
+| USB configuration | USB CDC | USB CDC | USB CDC |
+| Firmware update | STM32 DFU | STM32 DFU | STM32 DFU |
+
+## Firmware features
+
+All three targets enable rate mode, Quad X mixing, configurable PID/rates/expo,
+progressive feedforward, TPA, gyro and D-term filters, board alignment, motor
+direction and idle, receiver mapping, battery telemetry, protected motor test,
+guided IMU and PID/mixer diagnostics, RAM flight logging, failsafe, buzzer and
+USB DFU requests. Persistent settings are stored in a dedicated internal flash
+sector. Configuration changes and diagnostic motor output are rejected while
+armed.
+
+The Balanced, Racing and Freestyle quick profiles share the proven base P/I
+values and vary rates, expo, feedforward, D-term and filtering. Factory Racing
+defaults are 420/420/350 deg/s, expo 0.30, progressive FF 0.025/0.025/0.015,
+TPA 20% from 70% throttle, and gyro/D-term filters at 90/50 Hz.
+
 - STM32F411 MCU, 96 MHz core, and USB CDC
 - MPU6000 on SPI1: CS PA4, SCK PA5, MISO PA6, MOSI PA7; no fixed yaw alignment
 - SBUS on USART1 RX PA10, inverter PB10, 100000 baud 8E2
@@ -65,26 +98,25 @@ From PowerShell:
 
 ```powershell
 cd C:\SvilST\FlightCode
-# One board (Debug)
+# One board (Release, the default)
 .\tools\build.ps1 -Board MAMBAF411
 .\tools\build.ps1 -Board CLRACINGF4
 .\tools\build.ps1 -Board FLYWOOF405NANO
 
-# All boards (Debug)
+# All boards (Release)
 .\tools\build.ps1 -Board All
 
-# One board or all boards in Release mode
-.\tools\build.ps1 -Board CLRACINGF4 -Configuration Release
-.\tools\build.ps1 -Board All -Configuration Release
+# Debug must be requested explicitly
+.\tools\build.ps1 -Board CLRACINGF4 -Configuration Debug
 ```
 
-Firmware images:
+Default Release firmware images:
 
-- `build/debug/FlightCode-MAMBAF411.hex`
-- `build/clracingf4-debug/FlightCode-CLRACINGF4.hex`
-- `build/flywoof405nano-debug/FlightCode-FLYWOOF405NANO.hex`
+- `build/release/FlightCode-MAMBAF411.hex`
+- `build/clracingf4-release/FlightCode-CLRACINGF4.hex`
+- `build/flywoof405nano-release/FlightCode-FLYWOOF405NANO.hex`
 
-Release builds are stored in the matching `build/*-release` directory.
+Debug builds are stored in the matching `build/*-debug` directory.
 
 The project can be opened directly in Visual Studio Code with the CMake Tools,
 C/C++, and Cortex-Debug extensions.
@@ -108,7 +140,7 @@ cmake/                   ARM toolchain configuration
 tools/                   Build helpers
 ```
 
-## CLRacingF4 microSD Blackbox
+## Persistent Blackbox
 
 The CLRacingF4 target supports the onboard microSD socket on SPI2
 (PB13/PB14/PB15, CS PB12, detect PB7). Long-flight records are packed into
@@ -130,6 +162,17 @@ Feedforward uses a smooth progressive curve: 70% of the configured gain around
 stick center, increasing continuously to 100% at the configured maximum rate.
 The Blackbox `ffTerm` field records the resulting contribution after this curve.
 
+The Flywoo target uses its onboard 16 MiB W25Q128 NOR flash. It keeps the most
+recent completed flight and prepares the alternate 8 MiB bank in the
+background. Recording starts only after throttle rises above 1%, so an
+arm/disarm cycle on the bench does not replace the previous flight. The
+Configurator provides physical write/read verification, a synthetic session
+test, detailed flash error diagnostics, catalog listing, JSON download and
+erase controls.
+
+MAMBAF411 has no persistent Blackbox storage in the current target, but its RAM
+flight log remains available through the Configurator.
+
 ## USB Configurator
 
 The firmware exposes a USB CDC serial port with telemetry, SBUS channels,
@@ -143,7 +186,7 @@ PID settings can only be changed or saved while the quad is disarmed. The last
 sector of internal flash is reserved for persistent settings.
 
 The configurator also exposes persistent gyroscope and D-term low-pass
-cutoffs. Factory defaults are 100 Hz for the gyroscope and 60 Hz for D-term;
+cutoffs. Factory defaults are 90 Hz for the gyroscope and 50 Hz for D-term;
 accepted ranges are 50–250 Hz and 20–200 Hz respectively, with the D-term
 cutoff constrained not to exceed the gyroscope cutoff.
 
