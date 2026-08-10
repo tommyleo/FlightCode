@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "board.h"
-#include "mpu6000.h"
+#include "imu.h"
 #include "max7456.h"
 #include "blackbox_sd.h"
 #include "stm32f4xx_hal.h"
@@ -259,9 +259,9 @@ static void apply(void)
     flight_control_set_tpa(current_settings.tpa_attenuation,
                            current_settings.tpa_breakpoint_percent);
     motor_protocol_set(current_settings.motor_protocol);
-    mpu6000_set_board_alignment(current_settings.board_roll_deg,
-                                current_settings.board_pitch_deg,
-                                current_settings.board_yaw_deg);
+    imu_set_board_alignment(current_settings.board_roll_deg,
+                            current_settings.board_pitch_deg,
+                            current_settings.board_yaw_deg);
     flight_control_set_motor_direction_reversed(
         current_settings.motor_direction_reversed != 0U);
     flight_control_set_motor_idle_percent(current_settings.motor_idle_percent);
@@ -277,15 +277,15 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
     settings->yaw = (pid_gains_t){0.155f, 0.250f, 0.0f};
     settings->roll_rate_dps = 420.0f;
     settings->pitch_rate_dps = 420.0f;
-    settings->yaw_rate_dps = 320.0f;
+    settings->yaw_rate_dps = 350.0f;
     settings->rate_expo = 0.30f;
     settings->roll_feedforward = 0.025f;
     settings->pitch_feedforward = 0.025f;
     settings->yaw_feedforward = 0.015f;
     settings->tpa_attenuation = 0.20f;
     settings->tpa_breakpoint_percent = 70.0f;
-    settings->gyro_lpf_hz = 100.0f;
-    settings->dterm_lpf_hz = 60.0f;
+    settings->gyro_lpf_hz = 90.0f;
+    settings->dterm_lpf_hz = 50.0f;
 }
 
 void flight_settings_reset_defaults(void)

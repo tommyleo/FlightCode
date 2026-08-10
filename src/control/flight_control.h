@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "mpu6000.h"
+#include "imu.h"
 #include "sbus.h"
 
 typedef struct {

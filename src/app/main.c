@@ -4,7 +4,7 @@
 #include "flight_control.h"
 #include "flight_log.h"
 #include "flight_settings.h"
-#include "mpu6000.h"
+#include "imu.h"
 #include "max7456.h"
 #include "osd_tuning_menu.h"
 #include "sbus.h"
@@ -27,7 +27,7 @@ int main(void)
     max7456_init();
     osd_tuning_menu_init();
 
-    bool imu_ready = mpu6000_init();
+    bool imu_ready = imu_init();
     uint8_t consecutive_imu_failures = 0U;
 
     uint16_t motors[4] = {0};
@@ -61,7 +61,8 @@ int main(void)
         next_loop += loop_cycles;
         sbus_update();
         const sbus_data_t *receiver = sbus_get();
-        board_status_led_update(receiver->valid);
+        board_status_led_update(receiver->valid,
+                                !flight_control_is_calibrated());
         const flight_settings_t *settings = flight_settings_get();
         osd_tuning_menu_update(receiver, flight_control_is_armed());
         const bool tuning_menu_active = osd_tuning_menu_is_active();
@@ -74,7 +75,7 @@ int main(void)
         board_buzzer_update(radio_beep);
 
         imu_sample_t imu = {0};
-        if (imu_ready && mpu6000_read(&imu)) {
+        if (imu_ready && imu_read(&imu)) {
             consecutive_imu_failures = 0U;
             const float control_dt =
                 loop_period_us > 0U ? (float)loop_period_us * 0.000001f
@@ -127,7 +128,7 @@ int main(void)
         if (!imu_ready &&
             (uint32_t)(now_us - last_imu_retry_us) >= 2000000U) {
             last_imu_retry_us = now_us;
-            imu_ready = mpu6000_init();
+            imu_ready = imu_init();
             consecutive_imu_failures = 0U;
             next_loop = DWT->CYCCNT;
         }

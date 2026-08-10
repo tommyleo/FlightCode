@@ -1,4 +1,4 @@
-#include "stm32f4xx_hal.h"
+#include "board.h"
 
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern UART_HandleTypeDef hsbus_uart;
@@ -20,7 +20,7 @@ void OTG_FS_IRQHandler(void)
     HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
 }
 
-void USART1_IRQHandler(void)
+void SBUS_UART_IRQ_HANDLER(void)
 {
     HAL_UART_IRQHandler(&hsbus_uart);
 }

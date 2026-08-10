@@ -21,6 +21,38 @@ typedef struct {
     uint8_t stop_flag;
 } blackbox_sd_flight_info_t;
 
+typedef struct {
+    uint32_t jedec_id;
+    uint32_t start_calls;
+    uint32_t start_reject_mask;
+    uint32_t append_calls;
+    uint32_t stop_calls;
+    uint32_t completed_records;
+    uint8_t last_retain;
+    uint8_t state;
+    uint8_t operation;
+    uint8_t queue_count;
+    uint8_t write_bank;
+    uint8_t retained_bank;
+    uint8_t erase_active;
+    uint8_t finalise_pending;
+    uint8_t error_code;
+    uint8_t error_operation;
+    uint8_t last_status;
+    uint32_t error_address;
+} blackbox_sd_diagnostics_t;
+
+typedef struct {
+    uint32_t address;
+    uint8_t before_erased;
+    uint8_t program_ok;
+    uint8_t read_ok;
+    uint8_t verify_ok;
+    uint8_t mismatch_index;
+    uint8_t expected;
+    uint8_t actual;
+} blackbox_sd_write_test_t;
+
 void blackbox_sd_init(void);
 void blackbox_sd_probe(void);
 void blackbox_sd_update(void);
@@ -42,3 +74,8 @@ bool blackbox_sd_clear(void);
 void blackbox_sd_start(void);
 void blackbox_sd_append(const flight_log_record_t *record);
 void blackbox_sd_stop(uint8_t stop_flag, bool retain);
+void blackbox_sd_get_diagnostics(blackbox_sd_diagnostics_t *diagnostics);
+void blackbox_sd_restore_diagnostics(
+    const blackbox_sd_diagnostics_t *diagnostics);
+bool blackbox_sd_write_test(blackbox_sd_write_test_t *result);
+bool blackbox_sd_session_test(void);

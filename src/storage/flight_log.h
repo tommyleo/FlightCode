@@ -25,7 +25,7 @@ typedef struct __attribute__((packed)) {
     int8_t p_term[3];      /* 0.5 percent */
     int8_t i_term[3];      /* 0.5 percent */
     int8_t d_term[3];      /* 0.5 percent */
-    uint8_t reserved[3];
+    int8_t ff_term[3];     /* 0.5 percent */
 } flight_log_record_t;
 
 void flight_log_init(void);
@@ -43,6 +43,7 @@ void flight_log_persist_if_ready(void);
 void flight_log_record(const float gyro[3], const float setpoint[3],
                        const float pid[3], const float p_term[3],
                        const float i_term[3], const float d_term[3],
+                       const float ff_term[3],
                        const uint16_t motors[4],
                        float throttle_percent, bool mixer_saturated,
                        uint16_t loop_us);

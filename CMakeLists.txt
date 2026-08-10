@@ -9,19 +9,19 @@ project(FlightCode C ASM)
 include(FetchContent)
 
 set(BOARD "MAMBAF411" CACHE STRING "Flight controller target")
-set_property(CACHE BOARD PROPERTY STRINGS MAMBAF411 CLRACINGF4)
+set_property(CACHE BOARD PROPERTY STRINGS MAMBAF411 CLRACINGF4 FLYWOOF405NANO)
 string(TOUPPER "${BOARD}" BOARD)
 
 if(BOARD STREQUAL "MAMBAF411")
     set(MCU_DEFINE STM32F411xE)
     set(STARTUP_FILE startup_stm32f411xe.s)
     set(LINKER_SCRIPT STM32F411CEUx_FLASH.ld)
-elseif(BOARD STREQUAL "CLRACINGF4")
+elseif(BOARD STREQUAL "CLRACINGF4" OR BOARD STREQUAL "FLYWOOF405NANO")
     set(MCU_DEFINE STM32F405xx)
     set(STARTUP_FILE startup_stm32f405xx.s)
     set(LINKER_SCRIPT STM32F405RGTx_FLASH.ld)
 else()
-    message(FATAL_ERROR "Unsupported BOARD='${BOARD}'. Use MAMBAF411 or CLRACINGF4.")
+    message(FATAL_ERROR "Unsupported BOARD='${BOARD}'. Use MAMBAF411, CLRACINGF4, or FLYWOOF405NANO.")
 endif()
 
 FetchContent_Declare(cmsis_core
@@ -51,6 +51,8 @@ set(HAL_SRC ${stm32f4_hal_SOURCE_DIR}/Src)
 add_executable(FlightCode
     src/app/main.c
     src/control/flight_control.c
+    src/drivers/imu/imu.c
+    src/drivers/imu/icm42688p.c
     src/drivers/imu/mpu6000.c
     src/drivers/motors/dshot.c
     src/drivers/osd/max7456.c
@@ -64,6 +66,7 @@ add_executable(FlightCode
     src/protocol/config_protocol.c
     src/storage/flight_log.c
     src/storage/blackbox_sd.c
+    src/storage/blackbox_flash.c
     src/storage/flight_settings.c
     ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/system_stm32f4xx.c
     ${cmsis_device_f4_SOURCE_DIR}/Source/Templates/gcc/${STARTUP_FILE}

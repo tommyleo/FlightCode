@@ -15,6 +15,7 @@ static ADC_HandleTypeDef hadc1;
 #define STATUS_LED_PATTERN_PERIOD_US 1000000U
 #define STATUS_LED_FLASH_US 80000U
 #define STATUS_LED_SECOND_FLASH_US 160000U
+#define STATUS_LED_CALIBRATION_TOGGLE_US 100000U
 #define BUZZER_PATTERN_PERIOD_US 500000U
 #define BUZZER_BEEP_US 70000U
 #define BUZZER_SECOND_BEEP_US 120000U
@@ -56,13 +57,13 @@ static void clock_init(void)
     osc.PLL.PLLState = RCC_PLL_ON;
     osc.PLL.PLLSource = RCC_PLLSOURCE_HSE;
     osc.PLL.PLLM = 8;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_CORE_CLOCK_HZ == 168000000U
     osc.PLL.PLLN = 336;
 #else
     osc.PLL.PLLN = 192;
 #endif
     osc.PLL.PLLP = RCC_PLLP_DIV2;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_CORE_CLOCK_HZ == 168000000U
     osc.PLL.PLLQ = 7;
 #else
     osc.PLL.PLLQ = 4;
@@ -81,13 +82,13 @@ static void clock_init(void)
         osc.PLL.PLLState = RCC_PLL_ON;
         osc.PLL.PLLSource = RCC_PLLSOURCE_HSI;
         osc.PLL.PLLM = 16;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_CORE_CLOCK_HZ == 168000000U
         osc.PLL.PLLN = 336;
 #else
         osc.PLL.PLLN = 192;
 #endif
         osc.PLL.PLLP = RCC_PLLP_DIV2;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_CORE_CLOCK_HZ == 168000000U
         osc.PLL.PLLQ = 7;
 #else
         osc.PLL.PLLQ = 4;
@@ -101,7 +102,7 @@ static void clock_init(void)
                     RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
     clk.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
     clk.AHBCLKDivider = RCC_SYSCLK_DIV1;
-#if defined(BOARD_CLRACINGF4)
+#if BOARD_CORE_CLOCK_HZ == 168000000U
     clk.APB1CLKDivider = RCC_HCLK_DIV4;
     clk.APB2CLKDivider = RCC_HCLK_DIV2;
     const uint32_t flash_latency = FLASH_LATENCY_5;
@@ -120,6 +121,9 @@ static void gpio_init(void)
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
+#if defined(BOARD_FLYWOOF405NANO)
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+#endif
 
     GPIO_InitTypeDef gpio = {0};
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
@@ -142,23 +146,25 @@ static void gpio_init(void)
     gpio.Pin = STATUS_LED_PIN;
     HAL_GPIO_Init(STATUS_LED_PORT, &gpio);
     board_status_led_set(false);
+#if BOARD_HAS_SBUS_INVERTER_CONTROL
     gpio.Pin = SBUS_INVERTER_PIN;
     HAL_GPIO_Init(SBUS_INVERTER_PORT, &gpio);
-    gpio.Pin = MPU6000_CS_PIN;
-    HAL_GPIO_Init(MPU6000_CS_PORT, &gpio);
-    HAL_GPIO_WritePin(MPU6000_CS_PORT, MPU6000_CS_PIN, GPIO_PIN_SET);
     HAL_GPIO_WritePin(SBUS_INVERTER_PORT,
                       SBUS_INVERTER_PIN,
                       SBUS_INVERTER_ENABLE_LEVEL);
+#endif
+    gpio.Pin = IMU_CS_PIN;
+    HAL_GPIO_Init(IMU_CS_PORT, &gpio);
+    HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_SET);
 
     gpio.Pin = BUZZER_PIN;
-#if defined(BOARD_CLRACINGF4)
-    /* Betaflight drives CLRacingF4 PB4 as a 3.8 kHz push-pull PWM output. */
-    gpio.Mode = GPIO_MODE_OUTPUT_PP;
-    gpio.Pull = GPIO_NOPULL;
-#else
+#if BOARD_BUZZER_OUTPUT_OPEN_DRAIN
     gpio.Mode = GPIO_MODE_OUTPUT_OD;
     gpio.Pull = GPIO_PULLUP;
+#else
+    /* Push-pull is used by CLRacingF4 and the Flywoo BZ- sink circuit. */
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
 #endif
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(BUZZER_PORT, &gpio);
@@ -238,6 +244,38 @@ static void osd_spi_init(void)
 #endif
 }
 
+static void dataflash_spi_init(void)
+{
+#if BOARD_HAS_DATAFLASH
+    __HAL_RCC_SPI3_CLK_ENABLE();
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpio.Alternate = GPIO_AF6_SPI3;
+    HAL_GPIO_Init(GPIOC, &gpio);
+
+    gpio.Pin = DATAFLASH_CS_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    HAL_GPIO_Init(DATAFLASH_CS_PORT, &gpio);
+    HAL_GPIO_WritePin(DATAFLASH_CS_PORT, DATAFLASH_CS_PIN, GPIO_PIN_SET);
+
+    DATAFLASH_SPI_HANDLE.Instance = SPI3;
+    DATAFLASH_SPI_HANDLE.Init.Mode = SPI_MODE_MASTER;
+    DATAFLASH_SPI_HANDLE.Init.Direction = SPI_DIRECTION_2LINES;
+    DATAFLASH_SPI_HANDLE.Init.DataSize = SPI_DATASIZE_8BIT;
+    DATAFLASH_SPI_HANDLE.Init.CLKPolarity = SPI_POLARITY_LOW;
+    DATAFLASH_SPI_HANDLE.Init.CLKPhase = SPI_PHASE_1EDGE;
+    DATAFLASH_SPI_HANDLE.Init.NSS = SPI_NSS_SOFT;
+    DATAFLASH_SPI_HANDLE.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+    DATAFLASH_SPI_HANDLE.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    DATAFLASH_SPI_HANDLE.Init.TIMode = SPI_TIMODE_DISABLE;
+    DATAFLASH_SPI_HANDLE.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    if (HAL_SPI_Init(&DATAFLASH_SPI_HANDLE) != HAL_OK) board_fatal_error();
+#endif
+}
+
 static void sdcard_spi_init(void)
 {
 #if BOARD_HAS_SDCARD
@@ -294,14 +332,14 @@ static void sdcard_spi_init(void)
 
 static void sbus_uart_init(void)
 {
-    __HAL_RCC_USART1_CLK_ENABLE();
+    SBUS_UART_CLOCK_ENABLE();
     GPIO_InitTypeDef gpio = {0};
-    gpio.Pin = GPIO_PIN_10;
+    gpio.Pin = SBUS_RX_PIN;
     gpio.Mode = GPIO_MODE_AF_PP;
     gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    gpio.Alternate = GPIO_AF7_USART1;
-    HAL_GPIO_Init(GPIOA, &gpio);
+    gpio.Alternate = SBUS_RX_AF;
+    HAL_GPIO_Init(SBUS_RX_PORT, &gpio);
 
     hsbus_uart.Instance = SBUS_UART_INSTANCE;
     hsbus_uart.Init.BaudRate = 100000;
@@ -359,6 +397,7 @@ void board_init(void)
     gpio_init();
     spi1_init();
     osd_spi_init();
+    dataflash_spi_init();
     sdcard_spi_init();
     sbus_uart_init();
     battery_adc_init();
@@ -438,10 +477,17 @@ void board_status_led_set(bool enabled)
                                      : GPIO_PIN_SET));
 }
 
-void board_status_led_update(bool receiver_signal_valid)
+void board_status_led_update(bool receiver_signal_valid,
+                             bool gyro_calibration_active)
 {
-    const uint32_t phase =
-        board_micros() % STATUS_LED_PATTERN_PERIOD_US;
+    const uint32_t now_us = board_micros();
+    if (gyro_calibration_active) {
+        board_status_led_set(
+            ((now_us / STATUS_LED_CALIBRATION_TOGGLE_US) & 1U) == 0U);
+        return;
+    }
+
+    const uint32_t phase = now_us % STATUS_LED_PATTERN_PERIOD_US;
     const bool first_flash = phase < STATUS_LED_FLASH_US;
     const bool second_flash = receiver_signal_valid &&
         phase >= STATUS_LED_SECOND_FLASH_US &&

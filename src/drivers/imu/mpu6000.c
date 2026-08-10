@@ -1,7 +1,5 @@
 #include "mpu6000.h"
 
-#include <math.h>
-
 #include "board.h"
 
 #define REG_CONFIG 0x1AU
@@ -16,70 +14,12 @@
 
 static float gyro_lsb_per_dps = 131.0f;
 static float accel_lsb_per_g = 16384.0f;
-static float alignment[3][3] = {
-    {1.0f, 0.0f, 0.0f},
-    {0.0f, 1.0f, 0.0f},
-    {0.0f, 0.0f, 1.0f},
-};
-
-void mpu6000_set_board_alignment(float roll_deg, float pitch_deg,
-                                 float yaw_deg)
-{
-    const float to_rad = 0.01745329251994329577f;
-    const float cr = cosf(roll_deg * to_rad);
-    const float sr = sinf(roll_deg * to_rad);
-    const float cp = cosf(pitch_deg * to_rad);
-    const float sp = sinf(pitch_deg * to_rad);
-    const float cy = cosf(yaw_deg * to_rad);
-    const float sy = sinf(yaw_deg * to_rad);
-
-    /* Rotate sensor-frame vectors into the quad body frame. */
-    alignment[0][0] = cy * cp;
-    alignment[0][1] = cy * sp * sr - sy * cr;
-    alignment[0][2] = cy * sp * cr + sy * sr;
-    alignment[1][0] = sy * cp;
-    alignment[1][1] = sy * sp * sr + cy * cr;
-    alignment[1][2] = sy * sp * cr - cy * sr;
-    alignment[2][0] = -sp;
-    alignment[2][1] = cp * sr;
-    alignment[2][2] = cp * cr;
-}
-
-static void rotate(float *x, float *y, float *z)
-{
-    const float in_x = *x;
-    const float in_y = *y;
-    const float in_z = *z;
-    *x = alignment[0][0] * in_x + alignment[0][1] * in_y +
-         alignment[0][2] * in_z;
-    *y = alignment[1][0] * in_x + alignment[1][1] * in_y +
-         alignment[1][2] * in_z;
-    *z = alignment[2][0] * in_x + alignment[2][1] * in_y +
-         alignment[2][2] * in_z;
-}
-
-static void apply_common_sensor_axes(float *x, float *y, float *z)
-{
-    const float sensor_x = *x;
-    const float sensor_y = *y;
-    const float sensor_z = *z;
-
-    /*
-     * Use the same zero-yaw sensor frame on every supported board.
-     * Any FC rotation in the airframe is handled exclusively by the
-     * user-configurable board alignment.
-     */
-    *x = sensor_x;
-    *y = -sensor_y;
-    *z = -sensor_z;
-}
-
 static bool write_reg(uint8_t reg, uint8_t value)
 {
     uint8_t data[2] = {reg, value};
-    HAL_GPIO_WritePin(MPU6000_CS_PORT, MPU6000_CS_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_RESET);
     const HAL_StatusTypeDef status = HAL_SPI_Transmit(&hspi1, data, 2, 10);
-    HAL_GPIO_WritePin(MPU6000_CS_PORT, MPU6000_CS_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_SET);
     return status == HAL_OK;
 }
 
@@ -100,10 +40,10 @@ static bool read_regs(uint8_t reg, uint8_t *data, uint16_t length)
      * HAL_SPI_Receive() in 2-line master mode aliases its TX and RX buffers;
      * that corrupted alternating 16-bit sensor words on some targets.
      */
-    HAL_GPIO_WritePin(MPU6000_CS_PORT, MPU6000_CS_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_RESET);
     const HAL_StatusTypeDef status =
         HAL_SPI_TransmitReceive(&hspi1, tx, rx, length + 1U, 10U);
-    HAL_GPIO_WritePin(MPU6000_CS_PORT, MPU6000_CS_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_SET);
     if (status == HAL_OK) {
         for (uint16_t i = 0U; i < length; ++i) {
             data[i] = rx[i + 1U];
@@ -138,7 +78,7 @@ static bool set_spi_prescaler(uint32_t prescaler)
 
 bool mpu6000_init(void)
 {
-    /* 96 MHz / 128 = 750 kHz for reset and configuration registers. */
+    /* Keep reset and configuration transfers below 1 MHz. */
     if (!set_spi_prescaler(SPI_BAUDRATEPRESCALER_128)) {
         return false;
     }
@@ -184,7 +124,7 @@ bool mpu6000_init(void)
     accel_lsb_per_g =
         accel_sensitivity[(accel_config >> 3U) & 0x03U];
 
-    /* 96 MHz / 16 = 6 MHz for the 14-byte live sensor burst. */
+    /* Use a conservative live-data SPI clock on every supported target. */
     if (!set_spi_prescaler(SPI_BAUDRATEPRESCALER_16)) {
         return false;
     }
@@ -206,26 +146,5 @@ bool mpu6000_read(imu_sample_t *sample)
     sample->gyro_y_dps = (float)be16(&data[10]) / gyro_lsb_per_dps;
     sample->gyro_z_dps = (float)be16(&data[12]) / gyro_lsb_per_dps;
 
-    /*
-     * The common sensor-axis convention and user FC Alignment are separate
-     * transforms.
-     * Their output is one canonical flight-controller frame:
-     *   +roll  = right side down
-     *   +pitch = nose up
-     *   +yaw   = nose right
-     * Accelerometer values represent the gravity vector, hence the global
-     * sign reversal relative to the MPU specific-force output.
-     */
-    apply_common_sensor_axes(&sample->accel_x_g,
-                             &sample->accel_y_g,
-                             &sample->accel_z_g);
-    sample->accel_x_g = -sample->accel_x_g;
-    sample->accel_y_g = -sample->accel_y_g;
-    sample->accel_z_g = -sample->accel_z_g;
-    apply_common_sensor_axes(&sample->gyro_x_dps,
-                             &sample->gyro_y_dps,
-                             &sample->gyro_z_dps);
-    rotate(&sample->accel_x_g, &sample->accel_y_g, &sample->accel_z_g);
-    rotate(&sample->gyro_x_dps, &sample->gyro_y_dps, &sample->gyro_z_dps);
     return true;
 }

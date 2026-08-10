@@ -160,8 +160,10 @@ static void send_osd_status(void)
 
 static void send_blackbox_status(void)
 {
-#if BOARD_HAS_SDCARD
-    reply("@CFG BLACKBOX_STATUS %s %u %lu %lu %lu %u %lu %lu %u\n",
+#if BOARD_HAS_BLACKBOX_STORAGE
+    blackbox_sd_diagnostics_t bb;
+    blackbox_sd_get_diagnostics(&bb);
+    reply("@CFG BLACKBOX_STATUS %s %u %lu %lu %lu %u %lu %lu %u %u %u %02X %06lX\n",
           blackbox_sd_state_name(), blackbox_sd_is_enabled() ? 1U : 0U,
           (unsigned long)blackbox_sd_capacity_mb(),
           (unsigned long)blackbox_sd_written_bytes(),
@@ -169,7 +171,9 @@ static void send_blackbox_status(void)
           flight_settings_are_saved() ? 1U : 0U,
           (unsigned long)blackbox_sd_flight_count(),
           (unsigned long)blackbox_sd_total_bytes(),
-          blackbox_sd_is_busy() ? 1U : 0U);
+          blackbox_sd_is_busy() ? 1U : 0U,
+          bb.error_code, bb.error_operation, bb.last_status,
+          (unsigned long)bb.error_address);
 #endif
 }
 
@@ -184,7 +188,9 @@ static void process(const char *command)
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
-#if BOARD_HAS_SDCARD
+#if BOARD_HAS_DATAFLASH
+              "BLACKBOX_SD BLACKBOX_FLASH BLACKBOX_CATALOG "
+#elif BOARD_HAS_SDCARD
               "BLACKBOX_SD BLACKBOX_CATALOG "
 #endif
               "\n");
@@ -207,7 +213,7 @@ static void process(const char *command)
 #if BOARD_HAS_OSD
         send_osd_status();
 #endif
-#if BOARD_HAS_SDCARD
+#if BOARD_HAS_BLACKBOX_STORAGE
         send_blackbox_status();
 #endif
         return;
@@ -283,6 +289,20 @@ static void process(const char *command)
               (unsigned long)rx->valid_frame_count,
               (unsigned long)rx->uart_error_count,
               (unsigned long)rx->recovery_count);
+#if BOARD_HAS_BLACKBOX_STORAGE
+        blackbox_sd_diagnostics_t bb;
+        blackbox_sd_get_diagnostics(&bb);
+        reply("@CFG BLACKBOX_DIAGNOSTICS %06lX %lu %lu %lu %lu %lu %u %u %u %u %u %u %u %u\n",
+              (unsigned long)bb.jedec_id,
+              (unsigned long)bb.start_calls,
+              (unsigned long)bb.start_reject_mask,
+              (unsigned long)bb.append_calls,
+              (unsigned long)bb.stop_calls,
+              (unsigned long)bb.completed_records,
+              bb.last_retain, bb.state, bb.operation, bb.queue_count,
+              bb.write_bank, bb.retained_bank, bb.erase_active,
+              bb.finalise_pending);
+#endif
         return;
     }
     if (strcmp(command, "GET_BLACKBOX_STATUS") == 0) {
@@ -332,7 +352,7 @@ static void process(const char *command)
             const uint32_t index = (uint32_t)blackbox_offset + sent;
             if (!blackbox_sd_get_record((uint32_t)blackbox_flight,
                                         index, &item)) break;
-            reply("@CFG BLACKBOX_LOG %u %lu %d %d %d %d %d %d %d %d %d %u %u %u %u %u %u %u %u %u %u %d %d %d %d %d %d %d %d %d\n",
+            reply("@CFG BLACKBOX_LOG %u %lu %d %d %d %d %d %d %d %d %d %u %u %u %u %u %u %u %u %u %u %d %d %d %d %d %d %d %d %d %d %d %d\n",
                   blackbox_flight, (unsigned long)index,
                   item.gyro[0], item.gyro[1], item.gyro[2],
                   item.setpoint[0], item.setpoint[1], item.setpoint[2],
@@ -343,7 +363,8 @@ static void process(const char *command)
                   item.battery_cells,
                   item.p_term[0], item.p_term[1], item.p_term[2],
                   item.i_term[0], item.i_term[1], item.i_term[2],
-                  item.d_term[0], item.d_term[1], item.d_term[2]);
+                  item.d_term[0], item.d_term[1], item.d_term[2],
+                  item.ff_term[0], item.ff_term[1], item.ff_term[2]);
         }
         reply("@CFG BLACKBOX_CHUNK_END %u %lu\n", blackbox_flight,
               (unsigned long)((uint32_t)blackbox_offset + sent));
@@ -356,6 +377,34 @@ static void process(const char *command)
             reply("@CFG ERROR BLACKBOX_BUSY\n");
         } else {
             reply("@CFG OK CLEAR_BLACKBOX\n");
+            send_blackbox_status();
+        }
+        return;
+    }
+    if (strcmp(command, "BLACKBOX_WRITE_TEST") == 0) {
+        if (flight_control_is_armed()) {
+            reply("@CFG ERROR ARMED\n");
+            return;
+        }
+        blackbox_sd_write_test_t test;
+        if (!blackbox_sd_write_test(&test)) {
+            reply("@CFG ERROR BLACKBOX_BUSY\n");
+        } else {
+            reply("@CFG BLACKBOX_WRITE_TEST %06lX %u %u %u %u %u %02X %02X\n",
+                  (unsigned long)test.address, test.before_erased,
+                  test.program_ok, test.read_ok, test.verify_ok,
+                  test.mismatch_index, test.expected, test.actual);
+            send_blackbox_status();
+        }
+        return;
+    }
+    if (strcmp(command, "BLACKBOX_SESSION_TEST") == 0) {
+        if (flight_control_is_armed()) {
+            reply("@CFG ERROR ARMED\n");
+        } else if (!blackbox_sd_session_test()) {
+            reply("@CFG ERROR BLACKBOX_BUSY\n");
+        } else {
+            reply("@CFG BLACKBOX_SESSION_TEST STARTED\n");
             send_blackbox_status();
         }
         return;
@@ -381,7 +430,7 @@ static void process(const char *command)
         for (; sent < log_count; ++sent) {
             flight_log_record_t item;
             if (!flight_log_get((uint32_t)log_offset + sent, &item)) break;
-            reply("@CFG FLIGHT_LOG %lu %d %d %d %d %d %d %d %d %d %u %u %u %u %u %u %u %u %u %u %d %d %d %d %d %d %d %d %d\n",
+            reply("@CFG FLIGHT_LOG %lu %d %d %d %d %d %d %d %d %d %u %u %u %u %u %u %u %u %u %u %d %d %d %d %d %d %d %d %d %d %d %d\n",
                   (unsigned long)((uint32_t)log_offset + sent),
                   item.gyro[0], item.gyro[1], item.gyro[2],
                   item.setpoint[0], item.setpoint[1], item.setpoint[2],
@@ -393,7 +442,8 @@ static void process(const char *command)
                   item.battery_cells,
                   item.p_term[0], item.p_term[1], item.p_term[2],
                   item.i_term[0], item.i_term[1], item.i_term[2],
-                  item.d_term[0], item.d_term[1], item.d_term[2]);
+                   item.d_term[0], item.d_term[1], item.d_term[2],
+                   item.ff_term[0], item.ff_term[1], item.ff_term[2]);
         }
         reply("@CFG FLIGHT_LOG_CHUNK_END %lu\n",
               (unsigned long)((uint32_t)log_offset + sent));
@@ -469,7 +519,7 @@ static void process(const char *command)
     flight_settings_t settings = *flight_settings_get();
     unsigned int blackbox_enabled;
     if (sscanf(command, "SET_BLACKBOX %u", &blackbox_enabled) == 1) {
-#if BOARD_HAS_SDCARD
+#if BOARD_HAS_BLACKBOX_STORAGE
         if (blackbox_enabled > 1U ||
             (blackbox_enabled != 0U &&
              blackbox_sd_state() != BLACKBOX_SD_READY)) {

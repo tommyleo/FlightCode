@@ -7,7 +7,9 @@
 #define FRAME_SIZE 25U
 #define SIGNAL_TIMEOUT_US 100000U
 #define RX_RING_SIZE 256U
+#if BOARD_HAS_SBUS_INVERTER_CONTROL
 #define INVERTER_PROBE_US 400000U
+#endif
 #define RECOVERY_RETRY_US 100000U
 #define FAILSAFE_CONFIRM_US 100000U
 
@@ -18,9 +20,11 @@ static uint8_t irq_byte;
 static volatile uint8_t rx_ring[RX_RING_SIZE];
 static volatile uint16_t rx_head;
 static volatile uint16_t rx_tail;
+#if BOARD_HAS_SBUS_INVERTER_CONTROL
 static uint32_t last_inverter_probe_us;
-static bool inverter_locked;
 static GPIO_PinState inverter_level;
+#endif
+static bool inverter_locked;
 static uint32_t last_recovery_us;
 static volatile bool uart_recovery_pending;
 static volatile bool ring_resync_pending;
@@ -62,12 +66,7 @@ static void decode(void)
     const bool first_valid_frame = data.valid_frame_count == 0U;
 
     if (first_valid_frame) {
-        /*
-         * UART framing/noise errors are expected while the receiver powers up
-         * and the firmware probes the SBUS inverter polarity.  Start the
-         * operational diagnostics only after SBUS has been decoded once, so
-         * the Configurator reports link errors rather than acquisition noise.
-         */
+        /* Start operational diagnostics only after SBUS is acquired. */
         __disable_irq();
         data.uart_error_count = 0U;
         data.recovery_count = 0U;
@@ -117,8 +116,10 @@ void sbus_init(void)
     memset(&data, 0, sizeof(data));
     frame_index = 0;
     rx_head = rx_tail = 0U;
+#if BOARD_HAS_SBUS_INVERTER_CONTROL
     inverter_level = SBUS_INVERTER_ENABLE_LEVEL;
     last_inverter_probe_us = board_micros();
+#endif
     inverter_locked = false;
     last_recovery_us = 0U;
     failsafe_pending = false;
@@ -162,6 +163,7 @@ void sbus_update(void)
         }
     }
     const uint32_t now_us = board_micros();
+#if BOARD_HAS_SBUS_INVERTER_CONTROL
     if (!inverter_locked &&
         (uint32_t)(now_us - last_inverter_probe_us) >= INVERTER_PROBE_US) {
         inverter_level = inverter_level == GPIO_PIN_SET ? GPIO_PIN_RESET
@@ -172,6 +174,7 @@ void sbus_update(void)
         rx_tail = rx_head;
         restart_uart_receive();
     }
+#endif
     data.frame_age_us = data.last_frame_us == 0U
                             ? UINT32_MAX
                             : now_us - data.last_frame_us;

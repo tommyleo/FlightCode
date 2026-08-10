@@ -12,7 +12,7 @@
 #define DSHOT_MIN 48U
 #define DSHOT_MAX 2047U
 #define LOG_FLASH_MAGIC 0x46344C47U
-#define LOG_FLASH_VERSION 3U
+#define LOG_FLASH_VERSION 4U
 #define LOG_PERSIST_DELAY_US 200000U
 #define LOG_MIN_FLIGHT_THROTTLE_PERCENT 1.0f
 
@@ -23,6 +23,7 @@ typedef struct {
     uint32_t rate_hz;
     uint32_t record_size;
     uint32_t checksum;
+    blackbox_sd_diagnostics_t blackbox_diagnostics;
 } flight_log_flash_header_t;
 
 static flight_log_record_t records[FLIGHT_LOG_CAPACITY];
@@ -108,6 +109,8 @@ void flight_log_init(void)
         if (calculated == header->checksum) {
             record_count = header->count;
             using_flash = true;
+            blackbox_sd_restore_diagnostics(
+                &header->blackbox_diagnostics);
         }
     }
 }
@@ -148,7 +151,6 @@ void flight_log_start(void)
     decimation_count = 0U;
     flight_qualified = false;
     recording = true;
-    blackbox_sd_start();
 }
 
 void flight_log_stop(uint8_t stop_flag)
@@ -220,6 +222,7 @@ void flight_log_persist_if_ready(void)
         .record_size = sizeof(flight_log_record_t),
         .checksum = 2166136261U,
     };
+    blackbox_sd_get_diagnostics(&header.blackbox_diagnostics);
     for (uint32_t i = 0U; i < record_count; ++i) {
         header.checksum =
             hash_bytes(header.checksum, ram_record(i), sizeof(*ram_record(i)));
@@ -273,13 +276,17 @@ void flight_log_persist_if_ready(void)
 void flight_log_record(const float gyro[3], const float setpoint[3],
                        const float pid[3], const float p_term[3],
                        const float i_term[3], const float d_term[3],
+                       const float ff_term[3],
                        const uint16_t motors[4],
                        float throttle_percent, bool mixer_saturated,
                        uint16_t loop_us)
 {
     if (!recording || inhibited) return;
-    if (throttle_percent > LOG_MIN_FLIGHT_THROTTLE_PERCENT) {
+    if (!flight_qualified &&
+        throttle_percent > LOG_MIN_FLIGHT_THROTTLE_PERCENT) {
         flight_qualified = true;
+        /* Start persistent logging only once this is a real flight. */
+        blackbox_sd_start();
     }
     if (++decimation_count < LOG_DECIMATION) return;
     decimation_count = 0U;
@@ -292,6 +299,7 @@ void flight_log_record(const float gyro[3], const float setpoint[3],
         item->p_term[i] = scaled_pid(p_term[i]);
         item->i_term[i] = scaled_pid(i_term[i]);
         item->d_term[i] = scaled_pid(d_term[i]);
+        item->ff_term[i] = scaled_pid(ff_term[i]);
     }
     for (uint8_t i = 0U; i < 4U; ++i) {
         float percent = motors[i] == 0U ? 0.0f :
@@ -310,8 +318,6 @@ void flight_log_record(const float gyro[3], const float setpoint[3],
     item->battery_centivolts = battery_centivolts;
     item->cell_centivolts = cell_centivolts;
     item->battery_cells = battery_cells;
-    memset(item->reserved, 0, sizeof(item->reserved));
-
     if (flight_qualified) blackbox_sd_append(item);
 
     write_index = (write_index + 1U) % FLIGHT_LOG_CAPACITY;

@@ -18,6 +18,7 @@
 #define YAW_ITERM_RELAX_THRESHOLD_DPS 20.0f
 #define AIRMODE_ACTIVATION_THROTTLE_PERCENT 10.0f
 #define ARM_THROTTLE_MAX_PERCENT 5.0f
+#define FEEDFORWARD_CENTER_SCALE 0.70f
 
 typedef struct {
     float integral;
@@ -52,7 +53,7 @@ static bool motor_direction_reversed;
 static float motor_idle_percent = 5.0f;
 static float roll_rate_dps = 420.0f;
 static float pitch_rate_dps = 420.0f;
-static float yaw_rate_dps = 320.0f;
+static float yaw_rate_dps = 350.0f;
 static float rate_expo = 0.30f;
 static float roll_feedforward = 0.025f;
 static float pitch_feedforward = 0.025f;
@@ -93,13 +94,25 @@ static float pt1(pt1_filter_t *filter, float input, float cutoff_hz, float dt)
     return filter->value;
 }
 
+static float progressive_feedforward(float gain, float setpoint,
+                                     float max_rate_dps)
+{
+    const float normalized = clampf(fabsf(setpoint) / max_rate_dps,
+                                    0.0f, 1.0f);
+    const float smoothstep = normalized * normalized *
+                             (3.0f - 2.0f * normalized);
+    const float scale = FEEDFORWARD_CENTER_SCALE +
+        (1.0f - FEEDFORWARD_CENTER_SCALE) * smoothstep;
+    return gain * setpoint * scale;
+}
+
 static float pid(pid_state_t *state, const pid_gains_t *gains,
-                 float setpoint, float rate, float feedforward,
-                 float dt, float limit, float tpa_factor,
+                  float setpoint, float rate, float feedforward,
+                  float max_rate_dps, float dt, float limit, float tpa_factor,
                  float dterm_lpf_hz, bool integral_enabled,
-                 bool relax_integral,
-                 float *p_out, float *i_out,
-                 float *d_out)
+                  bool relax_integral,
+                  float *p_out, float *i_out,
+                  float *d_out, float *ff_out)
 {
     const float error = setpoint - rate;
     float integral_factor = 1.0f;
@@ -135,8 +148,9 @@ static float pid(pid_state_t *state, const pid_gains_t *gains,
     *p_out = gains->kp * tpa_factor * error;
     *i_out = state->integral;
     *d_out = gains->kd * tpa_factor * state->dterm;
-    return clampf(*p_out + *i_out + *d_out +
-                      feedforward * setpoint,
+    *ff_out = progressive_feedforward(feedforward, setpoint,
+                                      max_rate_dps);
+    return clampf(*p_out + *i_out + *d_out + *ff_out,
                   -limit, limit);
 }
 
@@ -388,28 +402,31 @@ void flight_control_update(const imu_sample_t *imu,
         throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
         airmode_active = true;
     }
-    float p_term[3], i_term[3], d_term[3];
+    float p_term[3], i_term[3], d_term[3], ff_term[3];
     const float roll = pid(&roll_state, &roll_gains,
                            setpoint_roll,
-                           rate_roll, roll_feedforward, dt, 35.0f,
+                           rate_roll, roll_feedforward, roll_rate_dps,
+                           dt, 35.0f,
                            tpa_factor, settings->dterm_lpf_hz,
-                           airmode_active, false,
-                           &p_term[0], &i_term[0],
-                           &d_term[0]);
+                            airmode_active, false,
+                            &p_term[0], &i_term[0],
+                            &d_term[0], &ff_term[0]);
     const float pitch = pid(&pitch_state, &pitch_gains,
                             setpoint_pitch,
-                            rate_pitch, pitch_feedforward, dt, 35.0f,
+                            rate_pitch, pitch_feedforward, pitch_rate_dps,
+                            dt, 35.0f,
                             tpa_factor, settings->dterm_lpf_hz,
-                            airmode_active, false,
-                            &p_term[1], &i_term[1],
-                            &d_term[1]);
+                             airmode_active, false,
+                             &p_term[1], &i_term[1],
+                             &d_term[1], &ff_term[1]);
     const float yaw = pid(&yaw_state, &yaw_gains,
                           setpoint_yaw,
-                          rate_yaw, yaw_feedforward, dt, 25.0f,
+                          rate_yaw, yaw_feedforward, yaw_rate_dps,
+                          dt, 25.0f,
                           tpa_factor, settings->dterm_lpf_hz,
                           airmode_active, true,
                           &p_term[2], &i_term[2],
-                          &d_term[2]);
+                          &d_term[2], &ff_term[2]);
     const float mixer_yaw = motor_direction_reversed ? -yaw : yaw;
     const float pid_authority = airmode_active ? 1.0f :
         clampf(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT, 0.0f, 1.0f);
@@ -471,7 +488,7 @@ void flight_control_update(const imu_sample_t *imu,
     uint32_t loop_us = (uint32_t)(measured_dt * 1000000.0f + 0.5f);
     if (loop_us > 65535U) loop_us = 65535U;
     flight_log_record(rates, setpoints, pid_output, p_term, i_term, d_term,
-                      motors, throttle,
+                      ff_term, motors, throttle,
                       mixer_saturated, (uint16_t)loop_us);
 }
 

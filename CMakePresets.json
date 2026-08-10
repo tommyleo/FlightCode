@@ -38,12 +38,32 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "flywoof405nano-debug",
+      "displayName": "FlightCode Flywoo F405 Nano Debug",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/flywoof405nano-debug",
+      "cacheVariables": {
+        "BOARD": "FLYWOOF405NANO"
+      }
+    },
+    {
+      "name": "flywoof405nano-release",
+      "displayName": "FlightCode Flywoo F405 Nano Release",
+      "inherits": "flywoof405nano-debug",
+      "binaryDir": "${sourceDir}/build/flywoof405nano-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
     { "name": "release", "configurePreset": "release" },
     { "name": "clracingf4-debug", "configurePreset": "clracingf4-debug" },
-    { "name": "clracingf4-release", "configurePreset": "clracingf4-release" }
+    { "name": "clracingf4-release", "configurePreset": "clracingf4-release" },
+    { "name": "flywoof405nano-debug", "configurePreset": "flywoof405nano-debug" },
+    { "name": "flywoof405nano-release", "configurePreset": "flywoof405nano-release" }
   ]
 }

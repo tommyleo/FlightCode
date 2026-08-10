@@ -5,7 +5,7 @@
 
 #include "board.h"
 
-#if !BOARD_HAS_SDCARD
+#if !BOARD_HAS_SDCARD && !BOARD_HAS_DATAFLASH
 
 void blackbox_sd_init(void) {}
 void blackbox_sd_probe(void) {}
@@ -30,8 +30,15 @@ void blackbox_sd_start(void) {}
 void blackbox_sd_append(const flight_log_record_t *record) { (void)record; }
 void blackbox_sd_stop(uint8_t stop_flag, bool retain)
 { (void)stop_flag; (void)retain; }
+void blackbox_sd_get_diagnostics(blackbox_sd_diagnostics_t *diagnostics)
+{ if (diagnostics != NULL) memset(diagnostics, 0, sizeof(*diagnostics)); }
+void blackbox_sd_restore_diagnostics(
+    const blackbox_sd_diagnostics_t *diagnostics) { (void)diagnostics; }
+bool blackbox_sd_write_test(blackbox_sd_write_test_t *result)
+{ if (result != NULL) memset(result, 0, sizeof(*result)); return false; }
+bool blackbox_sd_session_test(void) { return false; }
 
-#else
+#elif BOARD_HAS_SDCARD
 
 #define SD_BLOCK_SIZE 512U
 #define SD_QUEUE_BLOCKS 8U
@@ -581,7 +588,7 @@ void blackbox_sd_append(const flight_log_record_t *record)
     if (current.record_count == 0U) {
         current.magic = SD_BLOCK_MAGIC; current.flight_id = flight_id;
         current.sequence = sequence++; current.timestamp_us = board_micros();
-        current.version = 1U;
+        current.version = 2U;
     }
     current.records[current.record_count++] = *record;
     if (current.record_count >= SD_RECORDS_PER_BLOCK) queue_current();
@@ -599,5 +606,15 @@ void blackbox_sd_stop(uint8_t stop_flag, bool retain)
     }
     state = BLACKBOX_SD_READY;
 }
+
+void blackbox_sd_get_diagnostics(blackbox_sd_diagnostics_t *diagnostics)
+{
+    if (diagnostics != NULL) memset(diagnostics, 0, sizeof(*diagnostics));
+}
+void blackbox_sd_restore_diagnostics(
+    const blackbox_sd_diagnostics_t *diagnostics) { (void)diagnostics; }
+bool blackbox_sd_write_test(blackbox_sd_write_test_t *result)
+{ if (result != NULL) memset(result, 0, sizeof(*result)); return false; }
+bool blackbox_sd_session_test(void) { return false; }
 
 #endif
