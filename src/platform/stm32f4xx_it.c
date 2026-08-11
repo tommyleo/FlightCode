@@ -25,6 +25,13 @@ void SBUS_UART_IRQ_HANDLER(void)
     HAL_UART_IRQHandler(&hsbus_uart);
 }
 
+#if BOARD_HAS_CRSF
+void CRSF_UART_IRQ_HANDLER(void)
+{
+    HAL_UART_IRQHandler(&hsbus_uart);
+}
+#endif
+
 void DMA1_Stream4_IRQHandler(void)
 {
     HAL_DMA_IRQHandler(&hdma_spi2_tx);

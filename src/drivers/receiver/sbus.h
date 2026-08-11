@@ -26,5 +26,7 @@ typedef struct {
 } sbus_data_t;
 
 void sbus_init(void);
+bool sbus_set_protocol(uint32_t protocol);
+uint32_t sbus_get_protocol(void);
 void sbus_update(void);
 const sbus_data_t *sbus_get(void);

@@ -9,10 +9,12 @@
 #include "imu.h"
 #include "max7456.h"
 #include "blackbox_sd.h"
+#include "sbus.h"
 #include "stm32f4xx_hal.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 14U
+#define SETTINGS_VERSION 15U
+#define SETTINGS_LEGACY_VERSION_14 14U
 #define SETTINGS_LEGACY_VERSION_13 13U
 #define SETTINGS_LEGACY_VERSION_12 12U
 #define SETTINGS_LEGACY_VERSION_11 11U
@@ -147,6 +149,13 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v13_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, receiver_protocol)];
+    uint32_t checksum;
+} legacy_record_v14_t;
+
 _Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
                    sizeof(legacy_settings_v13_t),
                "Flight settings v13 migration layout changed");
@@ -236,6 +245,10 @@ static bool filters_valid(const flight_settings_t *settings)
 static bool receiver_valid(const flight_settings_t *settings)
 {
     return settings->receiver_channel_order <= RECEIVER_ORDER_AETR1234 &&
+           settings->receiver_protocol <= RECEIVER_PROTOCOL_CRSF &&
+#if !BOARD_HAS_CRSF
+           settings->receiver_protocol == RECEIVER_PROTOCOL_SBUS &&
+#endif
            settings->arm_channel >= 4U && settings->arm_channel < 16U &&
            settings->beep_channel >= 4U && settings->beep_channel < 16U &&
            settings->arm_min_us >= 900U && settings->arm_max_us <= 2100U &&
@@ -268,6 +281,7 @@ static void apply(void)
     (void)max7456_set_config(current_settings.osd_enabled != 0U,
                              (uint8_t)current_settings.osd_position);
     blackbox_sd_set_enabled(current_settings.blackbox_enabled != 0U);
+    (void)sbus_set_protocol(current_settings.receiver_protocol);
 }
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
@@ -307,6 +321,7 @@ void flight_settings_reset_defaults(void)
         .osd_enabled = 0U,
         .osd_position = 4U,
         .blackbox_enabled = 0U,
+        .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -330,6 +345,19 @@ void flight_settings_init(void)
         (const legacy_record_v12_t *)SETTINGS_ADDRESS;
     const legacy_record_v13_t *legacy_v13 =
         (const legacy_record_v13_t *)SETTINGS_ADDRESS;
+    const legacy_record_v14_t *legacy_v14 =
+        (const legacy_record_v14_t *)SETTINGS_ADDRESS;
+    if (legacy_v14->magic == SETTINGS_MAGIC &&
+        legacy_v14->version == SETTINGS_LEGACY_VERSION_14 &&
+        legacy_v14->checksum == checksum_bytes(
+            legacy_v14, offsetof(legacy_record_v14_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v14->settings,
+               sizeof(legacy_v14->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v13->magic == SETTINGS_MAGIC &&
         legacy_v13->version == SETTINGS_LEGACY_VERSION_13 &&
         legacy_v13->checksum == checksum_bytes(

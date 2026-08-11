@@ -13,4 +13,5 @@ typedef struct {
 
 bool imu_init(void);
 bool imu_read(imu_sample_t *sample);
+const char *imu_get_name(void);
 void imu_set_board_alignment(float roll_deg, float pitch_deg, float yaw_deg);

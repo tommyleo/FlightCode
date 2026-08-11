@@ -37,10 +37,13 @@ typedef struct {
     uint32_t blackbox_enabled;
     float gyro_lpf_hz;
     float dterm_lpf_hz;
+    uint32_t receiver_protocol;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U
 #define RECEIVER_ORDER_AETR1234 1U
+#define RECEIVER_PROTOCOL_SBUS 0U
+#define RECEIVER_PROTOCOL_CRSF 1U
 
 void flight_settings_init(void);
 const flight_settings_t *flight_settings_get(void);

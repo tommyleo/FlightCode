@@ -74,6 +74,15 @@ bool imu_init(void)
 #endif
 }
 
+const char *imu_get_name(void)
+{
+#if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
+    return "MPU6000";
+#else
+    return "ICM42688P";
+#endif
+}
+
 bool imu_read(imu_sample_t *sample)
 {
 #if BOARD_IMU_TYPE == IMU_TYPE_MPU6000

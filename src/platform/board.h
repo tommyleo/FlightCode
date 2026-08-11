@@ -158,6 +158,14 @@
 #define SBUS_RX_PORT GPIOD
 #define SBUS_RX_PIN GPIO_PIN_2
 #define SBUS_RX_AF GPIO_AF8_UART5
+#define BOARD_HAS_CRSF 1
+#define CRSF_UART_INSTANCE UART4
+#define CRSF_UART_IRQn UART4_IRQn
+#define CRSF_UART_IRQ_HANDLER UART4_IRQHandler
+#define CRSF_UART_CLOCK_ENABLE() __HAL_RCC_UART4_CLK_ENABLE()
+#define CRSF_RX_PORT GPIOA
+#define CRSF_RX_PIN GPIO_PIN_1
+#define CRSF_RX_AF GPIO_AF8_UART4
 
 /* Keep the final two 128 KiB sectors for the flight log and settings. */
 #define SETTINGS_ADDRESS 0x080E0000U
@@ -197,6 +205,9 @@
 #ifndef BOARD_HAS_DATAFLASH
 #define BOARD_HAS_DATAFLASH 0
 #endif
+#ifndef BOARD_HAS_CRSF
+#define BOARD_HAS_CRSF 0
+#endif
 #define BOARD_HAS_BLACKBOX_STORAGE (BOARD_HAS_SDCARD || BOARD_HAS_DATAFLASH)
 
 extern SPI_HandleTypeDef hspi1;
@@ -206,6 +217,7 @@ extern DMA_HandleTypeDef hdma_spi2_tx;
 extern UART_HandleTypeDef hsbus_uart;
 
 void board_init(void);
+bool board_receiver_uart_configure(bool crsf);
 void board_fatal_error(void);
 uint32_t board_micros(void);
 void board_status_led_set(bool enabled);

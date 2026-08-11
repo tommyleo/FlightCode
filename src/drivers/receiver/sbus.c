@@ -12,8 +12,11 @@
 #endif
 #define RECOVERY_RETRY_US 100000U
 #define FAILSAFE_CONFIRM_US 100000U
+#define CRSF_BAUD_RATE 420000U
+#define CRSF_RC_CHANNELS_PACKED 0x16U
+#define CRSF_MAX_FRAME_SIZE 64U
 
-static uint8_t frame[FRAME_SIZE];
+static uint8_t frame[CRSF_MAX_FRAME_SIZE];
 static uint8_t frame_index;
 static sbus_data_t data;
 static uint8_t irq_byte;
@@ -30,6 +33,8 @@ static volatile bool uart_recovery_pending;
 static volatile bool ring_resync_pending;
 static bool failsafe_pending;
 static uint32_t failsafe_started_us;
+static uint32_t receiver_protocol;
+static bool driver_initialized;
 
 static void restart_uart_receive(void)
 {
@@ -111,6 +116,48 @@ static void decode(void)
 
 }
 
+static uint8_t crsf_crc8(const uint8_t *bytes, uint8_t length)
+{
+    uint8_t crc = 0U;
+    while (length-- > 0U) {
+        crc ^= *bytes++;
+        for (uint8_t bit = 0U; bit < 8U; ++bit)
+            crc = (crc & 0x80U) != 0U ? (uint8_t)((crc << 1U) ^ 0xD5U)
+                                      : (uint8_t)(crc << 1U);
+    }
+    return crc;
+}
+
+static void decode_crsf(void)
+{
+    const uint8_t length = frame[1];
+    if (length != 24U || frame[2] != CRSF_RC_CHANNELS_PACKED ||
+        crsf_crc8(&frame[2], (uint8_t)(length - 1U)) != frame[length + 1U]) {
+        ++data.invalid_frame_count;
+        return;
+    }
+    const uint8_t *payload = &frame[3];
+    uint32_t accumulator = 0U;
+    uint8_t bits = 0U, offset = 0U;
+    for (uint8_t channel = 0U; channel < SBUS_CHANNEL_COUNT; ++channel) {
+        while (bits < 11U) {
+            accumulator |= (uint32_t)payload[offset++] << bits;
+            bits += 8U;
+        }
+        uint16_t raw = (uint16_t)(accumulator & 0x07FFU);
+        if (raw < 172U) raw = 172U;
+        if (raw > 1811U) raw = 1811U;
+        data.channel_us[channel] =
+            (uint16_t)(988U + ((uint32_t)(raw - 172U) * 1024U + 819U) / 1639U);
+        accumulator >>= 11U;
+        bits -= 11U;
+    }
+    data.last_frame_us = board_micros();
+    ++data.valid_frame_count;
+    data.failsafe = false;
+    inverter_locked = true;
+}
+
 void sbus_init(void)
 {
     memset(&data, 0, sizeof(data));
@@ -124,7 +171,24 @@ void sbus_init(void)
     last_recovery_us = 0U;
     failsafe_pending = false;
     failsafe_started_us = 0U;
+    driver_initialized = true;
     HAL_UART_Receive_IT(&hsbus_uart, &irq_byte, 1U);
+}
+
+bool sbus_set_protocol(uint32_t protocol)
+{
+    if (protocol > 1U || (protocol == 1U && !BOARD_HAS_CRSF)) return false;
+    if (receiver_protocol == protocol && hsbus_uart.Instance != NULL) return true;
+    if (driver_initialized) HAL_UART_AbortReceive(&hsbus_uart);
+    if (!board_receiver_uart_configure(protocol == 1U)) return false;
+    receiver_protocol = protocol;
+    if (driver_initialized) sbus_init();
+    return true;
+}
+
+uint32_t sbus_get_protocol(void)
+{
+    return receiver_protocol;
 }
 
 void sbus_update(void)
@@ -147,6 +211,18 @@ void sbus_update(void)
     while (rx_tail != rx_head) {
         const uint8_t byte = rx_ring[rx_tail];
         rx_tail = (uint16_t)((rx_tail + 1U) % RX_RING_SIZE);
+        if (receiver_protocol == 1U) {
+            if (frame_index == 0U && byte != 0xC8U && byte != 0xEEU) continue;
+            frame[frame_index++] = byte;
+            if (frame_index == 2U && (frame[1] < 2U || frame[1] > CRSF_MAX_FRAME_SIZE - 2U)) {
+                ++data.invalid_frame_count;
+                frame_index = 0U;
+            } else if (frame_index >= 2U && frame_index == (uint8_t)(frame[1] + 2U)) {
+                decode_crsf();
+                frame_index = 0U;
+            }
+            continue;
+        }
         if (frame_index == 0U && byte != 0x0FU) {
             continue;
         }
@@ -210,7 +286,7 @@ const sbus_data_t *sbus_get(void)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
-    if (uart->Instance != SBUS_UART_INSTANCE) {
+    if (uart != &hsbus_uart) {
         return;
     }
     const uint16_t next = (uint16_t)((rx_head + 1U) % RX_RING_SIZE);
@@ -226,7 +302,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
-    if (uart->Instance == SBUS_UART_INSTANCE) {
+    if (uart == &hsbus_uart) {
         ++data.uart_error_count;
         ++data.recovery_count;
         last_recovery_us = board_micros();

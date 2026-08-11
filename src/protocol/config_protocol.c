@@ -124,7 +124,8 @@ static void send_filters(void)
 static void send_receiver_config(void)
 {
     const flight_settings_t *s = flight_settings_get();
-    reply("@CFG RECEIVER_CONFIG %s %lu %lu %lu %lu %lu %lu %u\n",
+    reply("@CFG RECEIVER_CONFIG %s %s %lu %lu %lu %lu %lu %lu %u\n",
+          s->receiver_protocol == RECEIVER_PROTOCOL_CRSF ? "ELRS" : "SBUS",
           s->receiver_channel_order == RECEIVER_ORDER_AETR1234
               ? "AETR1234" : "TAER1234",
           (unsigned long)(s->arm_channel + 1U),
@@ -183,6 +184,12 @@ static void process(const char *command)
         client_active = true;
         last_activity_us = board_micros();
         reply("@CFG HELLO FlightCode 3 %s\n", BOARD_NAME);
+        reply("@CFG IMU %s 1\n", imu_get_name());
+#if BOARD_HAS_CRSF
+        reply("@CFG RECEIVER_PROTOCOLS SBUS ELRS\n");
+#else
+        reply("@CFG RECEIVER_PROTOCOLS SBUS\n");
+#endif
 #if BOARD_HAS_BATTERY_VOLTAGE
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
@@ -561,17 +568,54 @@ static void process(const char *command)
         }
         return;
     }
-    char receiver_order[16];
+    char receiver_protocol[8], receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
-    if (sscanf(command, "SET_RECEIVER_CONFIG %15s %u %u %u %u %u %u",
-               receiver_order, &arm_channel, &arm_min, &arm_max,
-               &beep_channel, &beep_min, &beep_max) == 7) {
+    if (sscanf(command, "SET_RECEIVER_CONFIG %7s %15s %u %u %u %u %u %u",
+               receiver_protocol, receiver_order, &arm_channel, &arm_min, &arm_max,
+               &beep_channel, &beep_min, &beep_max) == 8) {
+        if (strcmp(receiver_protocol, "SBUS") == 0) {
+            settings.receiver_protocol = RECEIVER_PROTOCOL_SBUS;
+        } else if (strcmp(receiver_protocol, "ELRS") == 0) {
+            settings.receiver_protocol = RECEIVER_PROTOCOL_CRSF;
+        } else {
+            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+            return;
+        }
         if (strcmp(receiver_order, "TAER1234") == 0) {
             settings.receiver_channel_order = RECEIVER_ORDER_TAER1234;
         } else if (strcmp(receiver_order, "AETR1234") == 0) {
             settings.receiver_channel_order = RECEIVER_ORDER_AETR1234;
         } else {
+            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+            return;
+        }
+        if (arm_channel < 5U || arm_channel > 16U ||
+            beep_channel < 5U || beep_channel > 16U) {
+            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+            return;
+        }
+        settings.arm_channel = arm_channel - 1U;
+        settings.arm_min_us = arm_min;
+        settings.arm_max_us = arm_max;
+        settings.beep_channel = beep_channel - 1U;
+        settings.beep_min_us = beep_min;
+        settings.beep_max_us = beep_max;
+        reply(flight_settings_set(&settings)
+                  ? "@CFG OK SET_RECEIVER_CONFIG\n"
+                  : "@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+        send_receiver_config();
+        return;
+    }
+    if (sscanf(command, "SET_RECEIVER_CONFIG %15s %u %u %u %u %u %u",
+               receiver_order, &arm_channel, &arm_min, &arm_max,
+               &beep_channel, &beep_min, &beep_max) == 7) {
+        settings.receiver_protocol = RECEIVER_PROTOCOL_SBUS;
+        if (strcmp(receiver_order, "TAER1234") == 0)
+            settings.receiver_channel_order = RECEIVER_ORDER_TAER1234;
+        else if (strcmp(receiver_order, "AETR1234") == 0)
+            settings.receiver_channel_order = RECEIVER_ORDER_AETR1234;
+        else {
             reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
             return;
         }

@@ -330,8 +330,46 @@ static void sdcard_spi_init(void)
 #endif
 }
 
-static void sbus_uart_init(void)
+bool board_receiver_uart_configure(bool crsf)
 {
+    if (crsf && !BOARD_HAS_CRSF) {
+        return false;
+    }
+    if (hsbus_uart.Instance != NULL) {
+        HAL_NVIC_DisableIRQ(hsbus_uart.Instance == SBUS_UART_INSTANCE
+                                ? SBUS_UART_IRQn
+#if BOARD_HAS_CRSF
+                                : CRSF_UART_IRQn
+#else
+                                : SBUS_UART_IRQn
+#endif
+        );
+        (void)HAL_UART_DeInit(&hsbus_uart);
+    }
+#if BOARD_HAS_CRSF
+    if (crsf) {
+        CRSF_UART_CLOCK_ENABLE();
+        GPIO_InitTypeDef gpio = {0};
+        gpio.Pin = CRSF_RX_PIN;
+        gpio.Mode = GPIO_MODE_AF_PP;
+        gpio.Pull = GPIO_NOPULL;
+        gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        gpio.Alternate = CRSF_RX_AF;
+        HAL_GPIO_Init(CRSF_RX_PORT, &gpio);
+        hsbus_uart.Instance = CRSF_UART_INSTANCE;
+        hsbus_uart.Init.BaudRate = 420000;
+        hsbus_uart.Init.WordLength = UART_WORDLENGTH_8B;
+        hsbus_uart.Init.StopBits = UART_STOPBITS_1;
+        hsbus_uart.Init.Parity = UART_PARITY_NONE;
+        hsbus_uart.Init.Mode = UART_MODE_RX;
+        hsbus_uart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+        hsbus_uart.Init.OverSampling = UART_OVERSAMPLING_16;
+        if (HAL_UART_Init(&hsbus_uart) != HAL_OK) return false;
+        HAL_NVIC_SetPriority(CRSF_UART_IRQn, 5U, 0U);
+        HAL_NVIC_EnableIRQ(CRSF_UART_IRQn);
+        return true;
+    }
+#endif
     SBUS_UART_CLOCK_ENABLE();
     GPIO_InitTypeDef gpio = {0};
     gpio.Pin = SBUS_RX_PIN;
@@ -350,10 +388,11 @@ static void sbus_uart_init(void)
     hsbus_uart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
     hsbus_uart.Init.OverSampling = UART_OVERSAMPLING_16;
     if (HAL_UART_Init(&hsbus_uart) != HAL_OK) {
-        board_fatal_error();
+        return false;
     }
     HAL_NVIC_SetPriority(SBUS_UART_IRQn, 5U, 0U);
     HAL_NVIC_EnableIRQ(SBUS_UART_IRQn);
+    return true;
 }
 
 static void battery_adc_init(void)
@@ -399,7 +438,7 @@ void board_init(void)
     osd_spi_init();
     dataflash_spi_init();
     sdcard_spi_init();
-    sbus_uart_init();
+    if (!board_receiver_uart_configure(false)) board_fatal_error();
     battery_adc_init();
 
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
