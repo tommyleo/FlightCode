@@ -110,6 +110,7 @@ int main(void)
         }
         flight_log_persist_if_ready();
         blackbox_sd_update();
+        board_battery_update();
 
         const uint32_t now_us = board_micros();
         if ((uint32_t)(now_us - last_osd_us) >= 200000U) {

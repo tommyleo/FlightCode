@@ -225,6 +225,7 @@ void board_status_led_update(bool receiver_signal_valid,
                              bool gyro_calibration_active);
 void board_buzzer_set(bool enabled);
 void board_buzzer_update(bool requested);
+void board_battery_update(void);
 float board_battery_voltage(void);
 void board_check_dfu_request(void);
 void board_enter_dfu(void) __attribute__((noreturn));

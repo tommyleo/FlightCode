@@ -123,15 +123,12 @@ static bool write_enable(void)
     select_flash(false);
     if (!ok) return false;
 
-    /* Winbond requires WEL before accepting program/erase.  Betaflight polls
-     * this explicitly instead of assuming that WREN succeeded. */
-    const uint32_t deadline = board_micros() + 1000U;
-    do {
-        const uint8_t status = status_register();
-        if (status != 0xFFU && (status & STATUS_WRITE_ENABLED) != 0U)
-            return true;
-    } while ((int32_t)(board_micros() - deadline) < 0);
-    return false;
+    /* WEL is latched when CS rises after WREN.  Check it once: retrying here
+     * could otherwise stall the 8 kHz control loop for up to one millisecond
+     * when the flash is absent or faulty.  The state machine reports failure
+     * and disables logging instead of compromising flight control timing. */
+    const uint8_t status = status_register();
+    return status != 0xFFU && (status & STATUS_WRITE_ENABLED) != 0U;
 }
 
 static bool reset_device(void)

@@ -446,25 +446,52 @@ void board_init(void)
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
+#if BOARD_HAS_BATTERY_VOLTAGE
+static uint32_t battery_adc_total;
+static uint32_t battery_adc_next_sample_us;
+static uint8_t battery_adc_samples;
+static bool battery_adc_pending;
+static float battery_voltage_filtered;
+#endif
+
+void board_battery_update(void)
+{
+#if BOARD_HAS_BATTERY_VOLTAGE
+    if (!battery_adc_pending) {
+        const uint32_t now_us = board_micros();
+        if ((int32_t)(now_us - battery_adc_next_sample_us) < 0) return;
+        if (HAL_ADC_Start(&hadc1) == HAL_OK) {
+            battery_adc_pending = true;
+            battery_adc_next_sample_us = now_us + 25000U;
+        }
+        return;
+    }
+
+    /* Never wait for the ADC from the 8 kHz control loop. */
+    if (HAL_ADC_PollForConversion(&hadc1, 0U) != HAL_OK) return;
+
+    battery_adc_total += HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Stop(&hadc1);
+    battery_adc_pending = false;
+    ++battery_adc_samples;
+
+    if (battery_adc_samples < 8U) return;
+
+    const float measured =
+        ((float)battery_adc_total / 8.0f) * 3.3f *
+        BATTERY_VOLTAGE_DIVIDER / 4095.0f;
+    battery_voltage_filtered = battery_voltage_filtered <= 0.0f
+        ? measured
+        : battery_voltage_filtered * 0.85f + measured * 0.15f;
+    battery_adc_total = 0U;
+    battery_adc_samples = 0U;
+#endif
+}
+
 float board_battery_voltage(void)
 {
 #if BOARD_HAS_BATTERY_VOLTAGE
-    uint32_t total = 0U;
-    for (uint8_t i = 0U; i < 8U; ++i) {
-        if (HAL_ADC_Start(&hadc1) != HAL_OK ||
-            HAL_ADC_PollForConversion(&hadc1, 100U) != HAL_OK) {
-            HAL_ADC_Stop(&hadc1);
-            return 0.0f;
-        }
-        total += HAL_ADC_GetValue(&hadc1);
-        HAL_ADC_Stop(&hadc1);
-    }
-    const float measured =
-        ((float)total / 8.0f) * 3.3f *
-        BATTERY_VOLTAGE_DIVIDER / 4095.0f;
-    static float filtered;
-    filtered = filtered <= 0.0f ? measured : filtered * 0.85f + measured * 0.15f;
-    return filtered;
+    return battery_voltage_filtered;
 #else
     return 0.0f;
 #endif
