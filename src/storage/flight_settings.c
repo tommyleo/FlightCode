@@ -213,7 +213,7 @@ static bool angle_valid(float angle)
 
 static bool main_loop_valid(uint32_t hz)
 {
-    return hz == 8000U || hz == 16000U || hz == 32000U;
+    return hz == 8000U || hz == 16000U;
 }
 
 static bool rates_valid(const flight_settings_t *settings)

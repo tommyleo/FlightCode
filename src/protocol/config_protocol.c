@@ -26,6 +26,8 @@ static float motor_test_percent[4];
 static uint32_t last_motor_test_us;
 static bool dfu_pending;
 static uint32_t dfu_deadline_us;
+static bool reboot_pending;
+static uint32_t reboot_deadline_us;
 
 static bool arm_mode_active(const sbus_data_t *receiver)
 {
@@ -200,7 +202,7 @@ static void process(const char *command)
 #if BOARD_HAS_BATTERY_VOLTAGE
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
 #if BOARD_HAS_DATAFLASH
               "BLACKBOX_SD BLACKBOX_FLASH BLACKBOX_CATALOG "
@@ -211,7 +213,7 @@ static void process(const char *command)
 #else
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG\n");
 #endif
         send_pids();
@@ -485,6 +487,16 @@ static void process(const char *command)
         dfu_pending = true;
         dfu_deadline_us = board_micros() + 200000U;
         reply("@CFG OK ENTER_DFU\n");
+        return;
+    }
+    if (strcmp(command, "REBOOT") == 0) {
+        if (flight_control_is_armed()) {
+            reply("@CFG ERROR ARMED\n");
+            return;
+        }
+        reboot_pending = true;
+        reboot_deadline_us = board_micros() + 200000U;
+        reply("@CFG OK REBOOT\n");
         return;
     }
 
@@ -816,6 +828,7 @@ void config_protocol_init(void)
     motor_test_enabled = false;
     pid_simulation_enabled = false;
     dfu_pending = false;
+    reboot_pending = false;
     memset(motor_test_percent, 0, sizeof(motor_test_percent));
     usb_cdc_init();
 }
@@ -851,6 +864,10 @@ void config_protocol_update(void)
         usb_cdc_deinit();
         HAL_Delay(100U);
         board_enter_dfu();
+    }
+    if (reboot_pending &&
+        (int32_t)(board_micros() - reboot_deadline_us) >= 0) {
+        NVIC_SystemReset();
     }
     if (client_active &&
         (uint32_t)(board_micros() - last_activity_us) > CLIENT_TIMEOUT_US) {
