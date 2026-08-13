@@ -65,12 +65,13 @@ static void apply_common_sensor_axes(float *x, float *y, float *z)
     *z = -sensor_z;
 }
 
-bool imu_init(void)
+bool imu_init(uint32_t sample_rate_hz)
 {
 #if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
+    (void)sample_rate_hz;
     return mpu6000_init();
 #else
-    return icm42688p_init();
+    return icm42688p_init(sample_rate_hz);
 #endif
 }
 

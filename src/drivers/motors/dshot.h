@@ -5,8 +5,8 @@
 
 typedef enum {
     MOTOR_PROTOCOL_DSHOT300 = 0,
-    MOTOR_PROTOCOL_ONESHOT125 = 1,
-    MOTOR_PROTOCOL_MULTISHOT = 2
+    MOTOR_PROTOCOL_DSHOT600 = 3,
+    MOTOR_PROTOCOL_DSHOT1200 = 4
 } motor_protocol_t;
 
 void dshot_init(void);

@@ -22,7 +22,8 @@
 #define WHO_AM_I_ICM42688P 0x47U
 #define DEVICE_SOFT_RESET 0x01U
 #define PWR_GYRO_ACCEL_LOW_NOISE 0x0FU
-#define ODR_8KHZ_FS_MAX 0x03U
+#define ODR_16KHZ_FS_MAX 0x02U
+#define ODR_32KHZ_FS_MAX 0x01U
 #define UI_FILTER_LOW_LATENCY 0xFFU
 #define INTF_CONFIG1_AFSR_MASK 0xC0U
 #define INTF_CONFIG1_AFSR_DISABLE 0x40U
@@ -91,7 +92,7 @@ static int16_t be16(const uint8_t *data)
     return (int16_t)(((uint16_t)data[0] << 8U) | data[1]);
 }
 
-bool icm42688p_init(void)
+bool icm42688p_init(uint32_t sample_rate_hz)
 {
     /* Configure and identify the sensor below its 1 MHz startup limit. */
     if (!set_spi_prescaler(SPI_BAUDRATEPRESCALER_128)) {
@@ -146,11 +147,13 @@ bool icm42688p_init(void)
         return false;
     }
     HAL_Delay(1U);
-    if (!write_reg(REG_GYRO_CONFIG0, ODR_8KHZ_FS_MAX)) {
+    const uint8_t odr = sample_rate_hz >= 32000U
+        ? ODR_32KHZ_FS_MAX : ODR_16KHZ_FS_MAX;
+    if (!write_reg(REG_GYRO_CONFIG0, odr)) {
         return false;
     }
     HAL_Delay(15U);
-    if (!write_reg(REG_ACCEL_CONFIG0, ODR_8KHZ_FS_MAX)) {
+    if (!write_reg(REG_ACCEL_CONFIG0, odr)) {
         return false;
     }
     HAL_Delay(15U);

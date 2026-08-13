@@ -13,7 +13,8 @@
 #include "stm32f4xx_hal.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 15U
+#define SETTINGS_VERSION 16U
+#define SETTINGS_LEGACY_VERSION_15 15U
 #define SETTINGS_LEGACY_VERSION_14 14U
 #define SETTINGS_LEGACY_VERSION_13 13U
 #define SETTINGS_LEGACY_VERSION_12 12U
@@ -156,6 +157,13 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v14_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, main_loop_hz)];
+    uint32_t checksum;
+} legacy_record_v15_t;
+
 _Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
                    sizeof(legacy_settings_v13_t),
                "Flight settings v13 migration layout changed");
@@ -201,6 +209,11 @@ static bool gains_valid(const pid_gains_t *gains)
 static bool angle_valid(float angle)
 {
     return isfinite(angle) && angle >= -180.0f && angle <= 180.0f;
+}
+
+static bool main_loop_valid(uint32_t hz)
+{
+    return hz == 8000U || hz == 16000U || hz == 32000U;
 }
 
 static bool rates_valid(const flight_settings_t *settings)
@@ -322,6 +335,7 @@ void flight_settings_reset_defaults(void)
         .osd_position = 4U,
         .blackbox_enabled = 0U,
         .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
+        .main_loop_hz = 16000U,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -347,6 +361,24 @@ void flight_settings_init(void)
         (const legacy_record_v13_t *)SETTINGS_ADDRESS;
     const legacy_record_v14_t *legacy_v14 =
         (const legacy_record_v14_t *)SETTINGS_ADDRESS;
+    const legacy_record_v15_t *legacy_v15 =
+        (const legacy_record_v15_t *)SETTINGS_ADDRESS;
+    if (legacy_v15->magic == SETTINGS_MAGIC &&
+        legacy_v15->version == SETTINGS_LEGACY_VERSION_15 &&
+        legacy_v15->checksum == checksum_bytes(
+            legacy_v15, offsetof(legacy_record_v15_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v15->settings,
+               sizeof(legacy_v15->settings));
+        if (current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT300 &&
+            current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT600 &&
+            current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT1200) {
+            current_settings.motor_protocol = MOTOR_PROTOCOL_DSHOT300;
+        }
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v14->magic == SETTINGS_MAGIC &&
         legacy_v14->version == SETTINGS_LEGACY_VERSION_14 &&
         legacy_v14->checksum == checksum_bytes(
@@ -458,6 +490,7 @@ void flight_settings_init(void)
         !feedforward_valid(&stored->settings) ||
         !filters_valid(&stored->settings) ||
         !receiver_valid(&stored->settings) ||
+        !main_loop_valid(stored->settings.main_loop_hz) ||
         stored->settings.osd_enabled > 1U ||
         stored->settings.osd_position > 8U ||
         stored->settings.blackbox_enabled > 1U ||
@@ -475,8 +508,8 @@ void flight_settings_init(void)
         stored->settings.motor_idle_percent < 1.0f ||
         stored->settings.motor_idle_percent > 10.0f ||
         (stored->settings.motor_protocol != MOTOR_PROTOCOL_DSHOT300 &&
-         stored->settings.motor_protocol != MOTOR_PROTOCOL_ONESHOT125 &&
-         stored->settings.motor_protocol != MOTOR_PROTOCOL_MULTISHOT)) {
+         stored->settings.motor_protocol != MOTOR_PROTOCOL_DSHOT600 &&
+         stored->settings.motor_protocol != MOTOR_PROTOCOL_DSHOT1200)) {
         flight_settings_reset_defaults();
         return;
     }
@@ -499,6 +532,7 @@ bool flight_settings_set(const flight_settings_t *settings)
         !feedforward_valid(settings) ||
         !filters_valid(settings) ||
         !receiver_valid(settings) ||
+        !main_loop_valid(settings->main_loop_hz) ||
         settings->osd_enabled > 1U || settings->osd_position > 8U ||
         settings->blackbox_enabled > 1U ||
         !isfinite(settings->tpa_attenuation) ||
@@ -515,8 +549,8 @@ bool flight_settings_set(const flight_settings_t *settings)
         settings->motor_idle_percent < 1.0f ||
         settings->motor_idle_percent > 10.0f ||
         (settings->motor_protocol != MOTOR_PROTOCOL_DSHOT300 &&
-         settings->motor_protocol != MOTOR_PROTOCOL_ONESHOT125 &&
-         settings->motor_protocol != MOTOR_PROTOCOL_MULTISHOT)) {
+         settings->motor_protocol != MOTOR_PROTOCOL_DSHOT600 &&
+         settings->motor_protocol != MOTOR_PROTOCOL_DSHOT1200)) {
         return false;
     }
     const bool alignment_changed =

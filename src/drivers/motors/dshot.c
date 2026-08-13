@@ -9,6 +9,13 @@
 
 static motor_protocol_t active_protocol = MOTOR_PROTOCOL_DSHOT300;
 
+static uint32_t dshot_period_ticks(void)
+{
+    if (active_protocol == MOTOR_PROTOCOL_DSHOT1200) return 10U;
+    if (active_protocol == MOTOR_PROTOCOL_DSHOT600) return 20U;
+    return 40U;
+}
+
 enum { DSHOT_FRAME_WORDS = 18 };
 static uint32_t dshot_dma_buffer[4][DSHOT_FRAME_WORDS];
 
@@ -91,15 +98,16 @@ static void hardware_dshot_init(void)
 #endif
 
     const uint32_t psc = timer_clock_hz() / 12000000U - 1U;
+    const uint32_t period_ticks = dshot_period_ticks();
 #if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
-    TIM3->PSC = psc; TIM3->ARR = 39U; TIM3->CCR3 = TIM3->CCR4 = 0U;
+    TIM3->PSC = psc; TIM3->ARR = period_ticks - 1U; TIM3->CCR3 = TIM3->CCR4 = 0U;
     TIM3->CCMR2 = (6U << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE |
                   (6U << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
     TIM3->CCER = TIM_CCER_CC3E | TIM_CCER_CC4E; TIM3->EGR = TIM_EGR_UG;
     TIM3->DIER = 0U;
     TIM3->CR1 = TIM_CR1_ARPE;
 
-    TIM2->PSC = psc; TIM2->ARR = 39U; TIM2->CCR3 = TIM2->CCR4 = 0U;
+    TIM2->PSC = psc; TIM2->ARR = period_ticks - 1U; TIM2->CCR3 = TIM2->CCR4 = 0U;
     TIM2->CCMR2 = (6U << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE |
                   (6U << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
     TIM2->CCER = TIM_CCER_CC3E | TIM_CCER_CC4E; TIM2->EGR = TIM_EGR_UG;
@@ -111,17 +119,17 @@ static void hardware_dshot_init(void)
     dma_stream_setup(DMA1_Stream6, DMA_CHANNEL_3, &TIM2->CCR4);
     dma_stream_setup(DMA1_Stream1, DMA_CHANNEL_3, &TIM2->CCR3);
 #else
-    TIM2->PSC = psc; TIM2->ARR = 39U; TIM2->CCR2 = 0U;
+    TIM2->PSC = psc; TIM2->ARR = period_ticks - 1U; TIM2->CCR2 = 0U;
     TIM2->CCMR1 = (6U << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE;
     TIM2->CCER = TIM_CCER_CC2E; TIM2->EGR = TIM_EGR_UG;
     TIM2->DIER = 0U; TIM2->CR1 = TIM_CR1_ARPE;
 
-    TIM3->PSC = psc; TIM3->ARR = 39U; TIM3->CCR1 = 0U;
+    TIM3->PSC = psc; TIM3->ARR = period_ticks - 1U; TIM3->CCR1 = 0U;
     TIM3->CCMR1 = (6U << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE;
     TIM3->CCER = TIM_CCER_CC1E; TIM3->EGR = TIM_EGR_UG;
     TIM3->DIER = 0U; TIM3->CR1 = TIM_CR1_ARPE;
 
-    TIM4->PSC = psc; TIM4->ARR = 39U; TIM4->CCR1 = TIM4->CCR2 = 0U;
+    TIM4->PSC = psc; TIM4->ARR = period_ticks - 1U; TIM4->CCR1 = TIM4->CCR2 = 0U;
     TIM4->CCMR1 = (6U << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE |
                   (6U << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE;
     TIM4->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E; TIM4->EGR = TIM_EGR_UG;
@@ -225,6 +233,7 @@ static uint16_t packet(uint16_t value)
     return (payload << 4U) | (checksum & 0x0FU);
 }
 
+#if 0 /* Removed legacy analogue ESC protocols. */
 static void oneshot125_init(void)
 {
     __HAL_RCC_TIM2_CLK_ENABLE();
@@ -332,6 +341,7 @@ static void multishot_init(void)
     TIM4->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
 #endif
 }
+#endif
 
 void dshot_init(void)
 {
@@ -340,7 +350,7 @@ void dshot_init(void)
 
 void dshot_write(const uint16_t values[4])
 {
-    if (active_protocol == MOTOR_PROTOCOL_DSHOT300) {
+    {
         /*
          * Non interrompere un frame ancora in corso. Un loop anticipato o
          * ravvicinato allungherebbe un impulso e potrebbe trasformare lo STOP
@@ -353,9 +363,12 @@ void dshot_write(const uint16_t values[4])
         for (uint8_t motor = 0U; motor < 4U; ++motor) {
             const uint16_t frame = packet(
                 dshot_sanitize_value(values[motor]));
+            const uint32_t period_ticks = dshot_period_ticks();
             for (uint8_t bit = 0U; bit < 16U; ++bit) {
                 dshot_dma_buffer[motor][bit] =
-                    (frame & (1U << (15U - bit))) != 0U ? 30U : 15U;
+                    (frame & (1U << (15U - bit))) != 0U
+                        ? (period_ticks * 3U + 2U) / 4U
+                        : (period_ticks * 3U + 4U) / 8U;
             }
             dshot_dma_buffer[motor][16] = 0U;
             dshot_dma_buffer[motor][17] = 0U;
@@ -378,6 +391,7 @@ void dshot_write(const uint16_t values[4])
         dshot_timers_start();
         return;
     }
+#if 0 /* Removed legacy analogue ESC protocols. */
     if (active_protocol == MOTOR_PROTOCOL_ONESHOT125) {
         uint16_t pulse[4];
         for (uint8_t i = 0U; i < 4U; ++i) {
@@ -424,15 +438,12 @@ void dshot_write(const uint16_t values[4])
 #endif
         return;
     }
+#endif
 
 }
 
 void dshot_startup_sequence(void)
 {
-    if (active_protocol != MOTOR_PROTOCOL_DSHOT300) {
-        return;
-    }
-
     static const uint16_t stopped[4] = {0U, 0U, 0U, 0U};
     const uint32_t started_ms = HAL_GetTick();
     do {
@@ -444,8 +455,8 @@ void dshot_startup_sequence(void)
 bool motor_protocol_set(motor_protocol_t protocol)
 {
     if (protocol != MOTOR_PROTOCOL_DSHOT300 &&
-        protocol != MOTOR_PROTOCOL_ONESHOT125 &&
-        protocol != MOTOR_PROTOCOL_MULTISHOT) {
+        protocol != MOTOR_PROTOCOL_DSHOT600 &&
+        protocol != MOTOR_PROTOCOL_DSHOT1200) {
         return false;
     }
     if (protocol == active_protocol) {
@@ -457,13 +468,7 @@ bool motor_protocol_set(motor_protocol_t protocol)
     TIM4->CR1 = 0U;
 #endif
     active_protocol = protocol;
-    if (protocol == MOTOR_PROTOCOL_ONESHOT125) {
-        oneshot125_init();
-    } else if (protocol == MOTOR_PROTOCOL_MULTISHOT) {
-        multishot_init();
-    } else {
-        hardware_dshot_init();
-    }
+    hardware_dshot_init();
     return true;
 }
 
@@ -474,8 +479,8 @@ motor_protocol_t motor_protocol_get(void)
 
 const char *motor_protocol_name(motor_protocol_t protocol)
 {
-    if (protocol == MOTOR_PROTOCOL_ONESHOT125) return "ONESHOT125";
-    if (protocol == MOTOR_PROTOCOL_MULTISHOT) return "MULTISHOT";
+    if (protocol == MOTOR_PROTOCOL_DSHOT1200) return "DSHOT1200";
+    if (protocol == MOTOR_PROTOCOL_DSHOT600) return "DSHOT600";
     return "DSHOT300";
 }
 

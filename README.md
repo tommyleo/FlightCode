@@ -4,9 +4,10 @@ Experimental Quad X rate-mode firmware for the DIAT MAMBAF411 (STM32F411),
 CL Racing CLRacingF4 (STM32F405), and Flywoo GOKU GN405 Nano HD V3
 (`FLYWOOF405NANO`, STM32F405).
 
-The gyroscope/PID control loop runs at 8 kHz, matching the highest useful data
-rate of the supported MPU6000 and ICM-42688-P sensors. DSHOT300 is the default
-ESC protocol; OneShot125 and MultiShot can also be selected from the
+The PID and motor-output loop runs at 16 kHz. The ICM-42688-P is sampled at
+16 kHz; MPU6000 targets retain their hardware-limited 8 kHz sampling and reuse
+each sample for the following control tick. DSHOT300 is the default
+ESC protocol; DSHOT600 and DSHOT1200 can also be selected from the
 Configurator.
 
 ## Supported boards and enabled hardware
@@ -18,7 +19,7 @@ Configurator.
 | IMU | MPU6000, SPI1 | MPU6000, SPI1 | ICM-42688-P, SPI1 |
 | Receiver | SBUS, USART1 with controllable inverter | SBUS, USART1 with controllable inverter | SBUS(5), UART5 with fixed inverter |
 | Motor outputs | PB3, PB4, PB6, PB7 | PB0, PB1, PA3, PA2 | PB0, PB1, PA3, PA2 |
-| ESC protocols | DSHOT300, OneShot125, MultiShot | DSHOT300, OneShot125, MultiShot | DSHOT300, OneShot125, MultiShot |
+| ESC protocols | DSHOT300/600/1200 | DSHOT300/600/1200 | DSHOT300/600/1200 |
 | Battery voltage | ADC PA0 | ADC PC2 | ADC PC3 |
 | Analog OSD | MAX7456/AT7456E, SPI2 | MAX7456/AT7456E, SPI3 | Not fitted on HD V3 |
 | Persistent Blackbox | No external storage | microSD on SPI2 | 16 MiB W25Q128 internal flash on SPI3 |
@@ -129,7 +130,7 @@ src/
 ├── control/             Rate controller, PID logic and motor mixer
 ├── drivers/
 │   ├── imu/             MPU6000 and ICM-42688-P drivers
-│   ├── motors/          DSHOT, OneShot125 and MultiShot outputs
+│   ├── motors/          DSHOT300, DSHOT600 and DSHOT1200 outputs
 │   ├── receiver/        SBUS receiver and frame decoder
 │   └── usb/             USB device and CDC transport
 ├── platform/            STM32 board mapping, HAL configuration and interrupts
@@ -145,7 +146,7 @@ tools/                   Build helpers
 The CLRacingF4 target supports the onboard microSD socket on SPI2
 (PB13/PB14/PB15, CS PB12, detect PB7). Long-flight records are packed into
 independent 512-byte sectors and transferred through DMA from a RAM queue, so
-SD busy time never blocks the 8 kHz control loop. Recording is optional in the
+SD busy time never blocks the 16 kHz control loop. Recording is optional in the
 Configurator. A new log is retained as soon as throttle rises above the 1%
 idle-noise threshold; arming and disarming without touching throttle preserves
 the previous log.

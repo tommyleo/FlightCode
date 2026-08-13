@@ -66,6 +66,13 @@ static void send_motor_protocol(void)
           flight_settings_are_saved() ? 1U : 0U);
 }
 
+static void send_main_loop(void)
+{
+    reply("@CFG MAIN_LOOP %lu %u\n",
+          (unsigned long)flight_settings_get()->main_loop_hz,
+          flight_settings_are_saved() ? 1U : 0U);
+}
+
 static void send_board_alignment(void)
 {
     const flight_settings_t *s = flight_settings_get();
@@ -191,7 +198,7 @@ static void process(const char *command)
         reply("@CFG RECEIVER_PROTOCOLS SBUS\n");
 #endif
 #if BOARD_HAS_BATTERY_VOLTAGE
-        reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
+        reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
@@ -202,7 +209,7 @@ static void process(const char *command)
 #endif
               "\n");
 #else
-        reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
+        reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
               "TELEMETRY_EXT RECEIVER_CONFIG\n");
@@ -245,6 +252,11 @@ static void process(const char *command)
         send_motor_protocol();
         return;
     }
+    if (strcmp(command, "GET_MAIN_LOOP") == 0) {
+        last_activity_us = board_micros();
+        send_main_loop();
+        return;
+    }
     if (strcmp(command, "GET_BOARD_ALIGNMENT") == 0) {
         last_activity_us = board_micros();
         send_board_alignment();
@@ -278,6 +290,7 @@ static void process(const char *command)
     if (strcmp(command, "GET_FILTERS") == 0) {
         last_activity_us = board_micros();
         send_filters();
+        send_main_loop();
         return;
     }
     if (strcmp(command, "GET_RECEIVER_CONFIG") == 0) {
@@ -745,6 +758,7 @@ static void process(const char *command)
         send_feedforward();
         send_tpa();
         send_filters();
+        send_main_loop();
         return;
     }
     if (strcmp(command, "RESET_PIDS") == 0) {
@@ -759,15 +773,29 @@ static void process(const char *command)
         send_filters();
         return;
     }
+    unsigned int main_loop_hz;
+    if (sscanf(command, "SET_MAIN_LOOP %u", &main_loop_hz) == 1) {
+        settings = *flight_settings_get();
+        settings.main_loop_hz = main_loop_hz;
+        if (flight_control_is_armed()) {
+            reply("@CFG ERROR ARMED\n");
+        } else if (flight_settings_set(&settings)) {
+            reply("@CFG OK SET_MAIN_LOOP REBOOT_REQUIRED\n");
+            send_main_loop();
+        } else {
+            reply("@CFG ERROR INVALID_MAIN_LOOP\n");
+        }
+        return;
+    }
     char protocol_name[24];
     if (sscanf(command, "SET_MOTOR_PROTOCOL %23s", protocol_name) == 1) {
         settings = *flight_settings_get();
-        if (strcmp(protocol_name, "ONESHOT125") == 0) {
-            settings.motor_protocol = MOTOR_PROTOCOL_ONESHOT125;
-        } else if (strcmp(protocol_name, "MULTISHOT") == 0) {
-            settings.motor_protocol = MOTOR_PROTOCOL_MULTISHOT;
-        } else if (strcmp(protocol_name, "DSHOT300") == 0) {
+        if (strcmp(protocol_name, "DSHOT300") == 0) {
             settings.motor_protocol = MOTOR_PROTOCOL_DSHOT300;
+        } else if (strcmp(protocol_name, "DSHOT600") == 0) {
+            settings.motor_protocol = MOTOR_PROTOCOL_DSHOT600;
+        } else if (strcmp(protocol_name, "DSHOT1200") == 0) {
+            settings.motor_protocol = MOTOR_PROTOCOL_DSHOT1200;
         } else {
             reply("@CFG ERROR INVALID_MOTOR_PROTOCOL\n");
             return;
