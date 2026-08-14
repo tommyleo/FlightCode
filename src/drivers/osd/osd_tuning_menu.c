@@ -15,8 +15,8 @@
 #define STICK_CENTER_LOW_US 1350U
 #define STICK_CENTER_HIGH_US 1650U
 #define MENU_ITEM_COUNT 18U
-#define PID_GAIN_STEP 0.00001f
-#define PID_GAIN_SCALE 100000.0f
+#define PID_GAIN_STEP 0.0001f
+#define PID_GAIN_SCALE 10000.0f
 
 typedef enum {
     ITEM_ROLL_P,
@@ -82,17 +82,17 @@ static void format_item(char label[20], char value[20])
     };
     (void)snprintf(label, 20U, "%s", labels[selected_item]);
     switch ((menu_item_t)selected_item) {
-    case ITEM_ROLL_P: (void)snprintf(value, 20U, "%.5f", edited_settings.roll.kp); break;
-    case ITEM_ROLL_I: (void)snprintf(value, 20U, "%.5f", edited_settings.roll.ki); break;
-    case ITEM_ROLL_D: (void)snprintf(value, 20U, "%.5f", edited_settings.roll.kd); break;
+    case ITEM_ROLL_P: (void)snprintf(value, 20U, "%.4f", edited_settings.roll.kp); break;
+    case ITEM_ROLL_I: (void)snprintf(value, 20U, "%.4f", edited_settings.roll.ki); break;
+    case ITEM_ROLL_D: (void)snprintf(value, 20U, "%.4f", edited_settings.roll.kd); break;
     case ITEM_ROLL_FF: (void)snprintf(value, 20U, "%.3f", edited_settings.roll_feedforward); break;
-    case ITEM_PITCH_P: (void)snprintf(value, 20U, "%.5f", edited_settings.pitch.kp); break;
-    case ITEM_PITCH_I: (void)snprintf(value, 20U, "%.5f", edited_settings.pitch.ki); break;
-    case ITEM_PITCH_D: (void)snprintf(value, 20U, "%.5f", edited_settings.pitch.kd); break;
+    case ITEM_PITCH_P: (void)snprintf(value, 20U, "%.4f", edited_settings.pitch.kp); break;
+    case ITEM_PITCH_I: (void)snprintf(value, 20U, "%.4f", edited_settings.pitch.ki); break;
+    case ITEM_PITCH_D: (void)snprintf(value, 20U, "%.4f", edited_settings.pitch.kd); break;
     case ITEM_PITCH_FF: (void)snprintf(value, 20U, "%.3f", edited_settings.pitch_feedforward); break;
-    case ITEM_YAW_P: (void)snprintf(value, 20U, "%.5f", edited_settings.yaw.kp); break;
-    case ITEM_YAW_I: (void)snprintf(value, 20U, "%.5f", edited_settings.yaw.ki); break;
-    case ITEM_YAW_D: (void)snprintf(value, 20U, "%.5f", edited_settings.yaw.kd); break;
+    case ITEM_YAW_P: (void)snprintf(value, 20U, "%.4f", edited_settings.yaw.kp); break;
+    case ITEM_YAW_I: (void)snprintf(value, 20U, "%.4f", edited_settings.yaw.ki); break;
+    case ITEM_YAW_D: (void)snprintf(value, 20U, "%.4f", edited_settings.yaw.kd); break;
     case ITEM_YAW_FF: (void)snprintf(value, 20U, "%.3f", edited_settings.yaw_feedforward); break;
     case ITEM_ROLL_RATE: (void)snprintf(value, 20U, "%.0f DPS", edited_settings.roll_rate_dps); break;
     case ITEM_PITCH_RATE: (void)snprintf(value, 20U, "%.0f DPS", edited_settings.pitch_rate_dps); break;

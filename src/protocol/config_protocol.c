@@ -54,7 +54,7 @@ static void reply(const char *format, ...)
 static void send_pids(void)
 {
     const flight_settings_t *s = flight_settings_get();
-    reply("@CFG PIDS %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %u\n",
+    reply("@CFG PIDS %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %u\n",
           s->roll.kp, s->roll.ki, s->roll.kd,
           s->pitch.kp, s->pitch.ki, s->pitch.kd,
           s->yaw.kp, s->yaw.ki, s->yaw.kd,
