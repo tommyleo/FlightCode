@@ -14,7 +14,7 @@
 #define PAGE_BYTES 256U
 #define QUEUE_RECORDS 16U
 #define HEADER_MAGIC 0x42424646U /* FFBB */
-#define HEADER_VERSION 1U
+#define HEADER_VERSION 2U
 #define HEADER_VALID 0xA5U
 #define CMD_JEDEC_ID 0x9FU
 #define CMD_READ 0x03U
@@ -35,7 +35,8 @@ typedef struct __attribute__((packed)) {
     uint8_t stop_flag;
     uint8_t valid;
     uint16_t record_size;
-    uint8_t reserved[BANK_HEADER_BYTES - 20U];
+    flight_log_metadata_t metadata;
+    uint8_t reserved[BANK_HEADER_BYTES - 20U - sizeof(flight_log_metadata_t)];
 } flash_header_t;
 
 _Static_assert(sizeof(flash_header_t) == BANK_HEADER_BYTES,
@@ -73,6 +74,7 @@ typedef enum {
 } flash_error_t;
 static flash_op_t operation;
 static blackbox_sd_diagnostics_t diagnostics;
+static flight_log_metadata_t pending_metadata;
 
 static void fail(flash_error_t code, uint32_t address, uint8_t status)
 {
@@ -191,7 +193,7 @@ static bool start_erase(uint32_t address)
 static bool header_valid(const flash_header_t *header)
 {
     return header->magic == HEADER_MAGIC &&
-           header->version == HEADER_VERSION &&
+           (header->version == 1U || header->version == HEADER_VERSION) &&
            header->valid == HEADER_VALID &&
            header->record_size == sizeof(flight_log_record_t) &&
            header->record_count <=
@@ -475,6 +477,20 @@ bool blackbox_sd_get_record(uint32_t flight_id, uint32_t index,
                       index * sizeof(*record), record, sizeof(*record));
 }
 
+bool blackbox_sd_get_metadata(uint32_t flight_id,
+                              flight_log_metadata_t *metadata)
+{
+    if (retained_bank > 1U || metadata == NULL || blackbox_sd_is_busy())
+        return false;
+    flash_header_t header;
+    if (!read_bytes(bank_address(retained_bank), &header, sizeof(header)) ||
+        !header_valid(&header) || header.version != HEADER_VERSION ||
+        header.flight_id != flight_id ||
+        header.metadata.version != FLIGHT_LOG_METADATA_VERSION) return false;
+    *metadata = header.metadata;
+    return true;
+}
+
 bool blackbox_sd_clear(void)
 {
     if (recording || blackbox_sd_is_busy()) return false;
@@ -494,12 +510,14 @@ static void begin_recording(void)
     header.version = HEADER_VERSION;
     header.flight_id = next_flight_id++;
     header.record_size = sizeof(flight_log_record_t);
+    header.metadata = pending_metadata;
     record_count = 0U;
     written_bytes = dropped_records = 0U;
     queue_read = queue_write = queue_count = 0U;
     record_program_offset = 0U;
     finalise_pending = false;
-    if (!start_program(bank_address(write_bank), &header, 20U)) {
+    if (!start_program(bank_address(write_bank), &header,
+                       (uint8_t)(20U + sizeof(header.metadata)))) {
         fail(ERR_PROGRAM_WREN, bank_address(write_bank), status_register());
         return;
     }
@@ -508,7 +526,7 @@ static void begin_recording(void)
     state = BLACKBOX_SD_RECORDING;
 }
 
-void blackbox_sd_start(void)
+void blackbox_sd_start(const flight_log_metadata_t *metadata)
 {
     ++diagnostics.start_calls;
     diagnostics.start_reject_mask = 0U;
@@ -522,9 +540,12 @@ void blackbox_sd_start(void)
         if (enabled && erase_active &&
             (diagnostics.start_reject_mask & ~(2U | 4U)) == 0U) {
             start_pending = true;
+            if (metadata != NULL) pending_metadata = *metadata;
         }
         return;
     }
+    if (metadata == NULL) return;
+    pending_metadata = *metadata;
     start_pending = false;
     begin_recording();
 }
@@ -641,7 +662,8 @@ bool blackbox_sd_session_test(void)
     record.gyro[2] = 789;
     record.throttle = 20U;
     record.loop_us = 125U;
-    blackbox_sd_start();
+    flight_log_metadata_t metadata = {0};
+    blackbox_sd_start(&metadata);
     if (!recording) return false;
     blackbox_sd_append(&record);
     blackbox_sd_stop(FLIGHT_LOG_FLAG_STOP_DISARM, true);

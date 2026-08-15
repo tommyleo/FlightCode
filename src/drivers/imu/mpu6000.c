@@ -9,6 +9,7 @@
 #define REG_ACCEL_XOUT_H 0x3BU
 #define REG_SIGNAL_PATH_RESET 0x68U
 #define REG_PWR_MGMT_1 0x6BU
+#define REG_PWR_MGMT_2 0x6CU
 #define REG_USER_CTRL 0x6AU
 #define REG_WHO_AM_I 0x75U
 
@@ -82,47 +83,66 @@ bool mpu6000_init(void)
     if (!set_spi_prescaler(SPI_BAUDRATEPRESCALER_128)) {
         return false;
     }
-    HAL_Delay(100);
-    uint8_t who = 0;
-    if (!read_regs(REG_WHO_AM_I, &who, 1) ||
+    HAL_Delay(1U);
+    if (!write_reg(REG_PWR_MGMT_1, 0x80U)) return false;
+    HAL_Delay(100U);
+    if (!write_reg(REG_SIGNAL_PATH_RESET, 0x07U)) return false;
+    HAL_Delay(100U);
+
+    uint8_t who = 0U;
+    if (!read_regs(REG_WHO_AM_I, &who, 1U) ||
         (who != 0x68U && who != 0x70U)) {
         return false;
     }
+    HAL_Delay(1U);
 
-    if (!write_reg(REG_PWR_MGMT_1, 0x80U)) return false;
-    HAL_Delay(100);
-    if (!write_reg(REG_SIGNAL_PATH_RESET, 0x07U)) return false;
-    HAL_Delay(100);
-    if (!write_reg(REG_PWR_MGMT_1, 0x01U) ||
-        !write_reg(REG_USER_CTRL, 0x10U) ||
-        /* DLPF_CFG=0 enables the MPU6000 8 kHz gyro output rate. */
-        !write_reg(REG_CONFIG, 0x00U) ||
-        !write_reg(REG_SMPLRT_DIV, 0x00U) ||
-        !write_reg(REG_GYRO_CONFIG, 0x18U) ||
-        !write_reg(REG_ACCEL_CONFIG, 0x10U)) {
-        return false;
-    }
+    /*
+     * Follow the proven Betaflight MPU6000 warm-start sequence.  In
+     * particular, use the Z-gyro PLL and leave enough CS-high/settling time
+     * between register writes.  A CPU reset does not power-cycle the IMU.
+     */
+    if (!write_reg(REG_PWR_MGMT_1, 0x03U)) return false;
+    HAL_Delay(1U);
+    if (!write_reg(REG_USER_CTRL, 0x10U)) return false;
+    HAL_Delay(1U);
+    if (!write_reg(REG_PWR_MGMT_2, 0x00U)) return false;
+    HAL_Delay(1U);
+    if (!write_reg(REG_SMPLRT_DIV, 0x00U)) return false;
+    HAL_Delay(1U);
+    if (!write_reg(REG_GYRO_CONFIG, 0x18U)) return false;
+    HAL_Delay(1U);
+    if (!write_reg(REG_ACCEL_CONFIG, 0x18U)) return false;
+    HAL_Delay(1U);
+    /* DLPF_CFG=0 enables the MPU6000 8 kHz gyro output rate. */
+    if (!write_reg(REG_CONFIG, 0x00U)) return false;
 
     HAL_Delay(10U);
     uint8_t gyro_config = 0U;
     uint8_t accel_config = 0U;
+    uint8_t power_management_2 = 0U;
     /*
      * Read back the ranges, but do not reject a working IMU merely because a
      * clone/revision reports different non-range bits.  The effective scales
      * below are derived from the values actually returned by the device.
      */
-    if (!read_regs(REG_GYRO_CONFIG, &gyro_config, 1U) ||
-        !read_regs(REG_ACCEL_CONFIG, &accel_config, 1U)) {
+    if (!read_regs(REG_GYRO_CONFIG, &gyro_config, 1U)) {
         return false;
     }
-    static const float gyro_sensitivity[4] =
-        {131.0f, 65.5f, 32.8f, 16.4f};
-    static const float accel_sensitivity[4] =
-        {16384.0f, 8192.0f, 4096.0f, 2048.0f};
-    gyro_lsb_per_dps =
-        gyro_sensitivity[(gyro_config >> 3U) & 0x03U];
-    accel_lsb_per_g =
-        accel_sensitivity[(accel_config >> 3U) & 0x03U];
+    HAL_Delay(1U);
+    if (!read_regs(REG_ACCEL_CONFIG, &accel_config, 1U)) {
+        return false;
+    }
+    HAL_Delay(1U);
+    if (!read_regs(REG_PWR_MGMT_2, &power_management_2, 1U)) {
+        return false;
+    }
+    if ((gyro_config & 0x18U) != 0x18U ||
+        (accel_config & 0x18U) != 0x18U ||
+        (power_management_2 & 0x3FU) != 0U) {
+        return false;
+    }
+    gyro_lsb_per_dps = 16.4f;
+    accel_lsb_per_g = 2048.0f;
 
     /* Use a conservative live-data SPI clock on every supported target. */
     if (!set_spi_prescaler(SPI_BAUDRATEPRESCALER_16)) {

@@ -5,6 +5,7 @@
 
 #include "board.h"
 #include "blackbox_sd.h"
+#include "flight_settings.h"
 
 #define FLIGHT_LOG_CAPACITY BOARD_FLIGHT_LOG_CAPACITY
 #define CONTROL_LOOP_HZ 16000U
@@ -12,7 +13,7 @@
 #define DSHOT_MIN 48U
 #define DSHOT_MAX 2047U
 #define LOG_FLASH_MAGIC 0x46344C47U
-#define LOG_FLASH_VERSION 4U
+#define LOG_FLASH_VERSION 5U
 #define LOG_PERSIST_DELAY_US 200000U
 #define LOG_MIN_FLIGHT_THROTTLE_PERCENT 1.0f
 
@@ -24,6 +25,7 @@ typedef struct {
     uint32_t record_size;
     uint32_t checksum;
     blackbox_sd_diagnostics_t blackbox_diagnostics;
+    flight_log_metadata_t metadata;
 } flight_log_flash_header_t;
 
 static flight_log_record_t records[FLIGHT_LOG_CAPACITY];
@@ -40,6 +42,7 @@ static uint32_t preserved_flash_count;
 static uint16_t battery_centivolts;
 static uint16_t cell_centivolts;
 static uint8_t battery_cells;
+static flight_log_metadata_t flight_metadata;
 
 static uint32_t hash_bytes(uint32_t hash, const void *data, size_t length)
 {
@@ -150,6 +153,42 @@ void flight_log_start(void)
     record_count = 0U;
     decimation_count = 0U;
     flight_qualified = false;
+    const flight_settings_t *const settings = flight_settings_get();
+    memset(&flight_metadata, 0, sizeof(flight_metadata));
+    flight_metadata.version = FLIGHT_LOG_METADATA_VERSION;
+    flight_metadata.main_loop_hz = settings->main_loop_hz;
+#if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
+    flight_metadata.gyro_rate_hz = 8000U;
+#else
+    flight_metadata.gyro_rate_hz = settings->main_loop_hz;
+#endif
+    flight_metadata.log_rate_hz = FLIGHT_LOG_RATE_HZ;
+    const pid_gains_t gains[3] = {settings->roll, settings->pitch, settings->yaw};
+    for (uint8_t i = 0U; i < 3U; ++i) {
+        flight_metadata.pids[i * 3U] = gains[i].kp;
+        flight_metadata.pids[i * 3U + 1U] = gains[i].ki;
+        flight_metadata.pids[i * 3U + 2U] = gains[i].kd;
+    }
+    flight_metadata.rates[0] = settings->roll_rate_dps;
+    flight_metadata.rates[1] = settings->pitch_rate_dps;
+    flight_metadata.rates[2] = settings->yaw_rate_dps;
+    flight_metadata.rates[3] = settings->rate_expo;
+    flight_metadata.feedforward[0] = settings->roll_feedforward;
+    flight_metadata.feedforward[1] = settings->pitch_feedforward;
+    flight_metadata.feedforward[2] = settings->yaw_feedforward;
+    flight_metadata.tpa[0] = settings->tpa_attenuation;
+    flight_metadata.tpa[1] = settings->tpa_breakpoint_percent;
+    flight_metadata.filters[0] = settings->gyro_lpf_hz;
+    flight_metadata.filters[1] = settings->dterm_lpf_hz;
+    flight_metadata.alignment[0] = settings->board_roll_deg;
+    flight_metadata.alignment[1] = settings->board_pitch_deg;
+    flight_metadata.alignment[2] = settings->board_yaw_deg;
+    flight_metadata.motor_idle_percent = settings->motor_idle_percent;
+    flight_metadata.motor_protocol = settings->motor_protocol;
+    flight_metadata.motor_direction_reversed = settings->motor_direction_reversed;
+    flight_metadata.receiver_protocol = settings->receiver_protocol;
+    flight_metadata.initial_battery_centivolts = battery_centivolts;
+    flight_metadata.initial_battery_cells = battery_cells;
     recording = true;
 }
 
@@ -201,6 +240,20 @@ bool flight_log_get(uint32_t index, flight_log_record_t *record)
     return true;
 }
 
+bool flight_log_get_metadata(flight_log_metadata_t *metadata)
+{
+    if (metadata == NULL) return false;
+    if (using_flash) {
+        const flight_log_flash_header_t *const header =
+            (const flight_log_flash_header_t *)FLIGHT_LOG_ADDRESS;
+        if (header->version != LOG_FLASH_VERSION) return false;
+        *metadata = header->metadata;
+    } else {
+        *metadata = flight_metadata;
+    }
+    return metadata->version == FLIGHT_LOG_METADATA_VERSION;
+}
+
 bool flight_log_persist_pending(void)
 {
     return persist_pending;
@@ -223,6 +276,7 @@ void flight_log_persist_if_ready(void)
         .checksum = 2166136261U,
     };
     blackbox_sd_get_diagnostics(&header.blackbox_diagnostics);
+    header.metadata = flight_metadata;
     for (uint32_t i = 0U; i < record_count; ++i) {
         header.checksum =
             hash_bytes(header.checksum, ram_record(i), sizeof(*ram_record(i)));
@@ -286,7 +340,7 @@ void flight_log_record(const float gyro[3], const float setpoint[3],
         throttle_percent > LOG_MIN_FLIGHT_THROTTLE_PERCENT) {
         flight_qualified = true;
         /* Start persistent logging only once this is a real flight. */
-        blackbox_sd_start();
+        blackbox_sd_start(&flight_metadata);
     }
     if (++decimation_count < LOG_DECIMATION) return;
     decimation_count = 0U;

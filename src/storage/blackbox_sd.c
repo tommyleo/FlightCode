@@ -25,8 +25,10 @@ bool blackbox_sd_get_flight(uint32_t index, blackbox_sd_flight_info_t *info)
 bool blackbox_sd_get_record(uint32_t flight_id, uint32_t record_index,
                             flight_log_record_t *record)
 { (void)flight_id; (void)record_index; (void)record; return false; }
+bool blackbox_sd_get_metadata(uint32_t flight_id, flight_log_metadata_t *metadata)
+{ (void)flight_id; (void)metadata; return false; }
 bool blackbox_sd_clear(void) { return false; }
-void blackbox_sd_start(void) {}
+void blackbox_sd_start(const flight_log_metadata_t *metadata) { (void)metadata; }
 void blackbox_sd_append(const flight_log_record_t *record) { (void)record; }
 void blackbox_sd_stop(uint8_t stop_flag, bool retain)
 { (void)stop_flag; (void)retain; }
@@ -364,6 +366,26 @@ static void queue_current(void)
     memset(&current, 0, sizeof(current));
 }
 
+static bool queue_metadata(const flight_log_metadata_t *metadata)
+{
+    if (metadata == NULL || sizeof(*metadata) > sizeof(current.records) ||
+        queue_count >= SD_QUEUE_BLOCKS) return false;
+    memset(&current, 0, sizeof(current));
+    current.magic = SD_BLOCK_MAGIC;
+    current.flight_id = flight_id;
+    current.sequence = sequence++;
+    current.timestamp_us = board_micros();
+    current.version = 3U;
+    memcpy(current.records, metadata, sizeof(*metadata));
+    current.checksum = checksum_block(&current);
+    queue[queue_write] = current;
+    queue_write = (uint8_t)((queue_write + 1U) % SD_QUEUE_BLOCKS);
+    ++queue_count;
+    ++current_block_count;
+    memset(&current, 0, sizeof(current));
+    return true;
+}
+
 void blackbox_sd_init(void)
 {
     state = BOARD_HAS_SDCARD ? BLACKBOX_SD_ABSENT : BLACKBOX_SD_UNSUPPORTED;
@@ -524,7 +546,19 @@ bool blackbox_sd_get_record(uint32_t requested_flight_id,
         }
     }
     if (entry == NULL || record_index >= entry->record_count) return false;
-    const uint32_t block_index = record_index / SD_RECORDS_PER_BLOCK;
+    uint32_t metadata_blocks = 0U;
+    if ((!read_cache_valid || read_cache_sector != entry->start_sector) &&
+        !read_sector(entry->start_sector, &read_cache)) return false;
+    read_cache_valid = true;
+    read_cache_sector = entry->start_sector;
+    if (read_cache.magic == SD_BLOCK_MAGIC &&
+        read_cache.flight_id == requested_flight_id &&
+        read_cache.version == 3U && read_cache.record_count == 0U &&
+        read_cache.checksum == checksum_block(&read_cache)) {
+        metadata_blocks = 1U;
+    }
+    const uint32_t block_index = metadata_blocks +
+        record_index / SD_RECORDS_PER_BLOCK;
     const uint32_t record_in_block = record_index % SD_RECORDS_PER_BLOCK;
     if (block_index >= entry->block_count) return false;
     const uint32_t sector = entry->start_sector + block_index;
@@ -540,6 +574,28 @@ bool blackbox_sd_get_record(uint32_t requested_flight_id,
         read_cache.checksum != checksum_block(&read_cache)) return false;
     *record = read_cache.records[record_in_block];
     return true;
+}
+
+bool blackbox_sd_get_metadata(uint32_t requested_flight_id,
+                              flight_log_metadata_t *metadata)
+{
+    if (metadata == NULL || state != BLACKBOX_SD_READY ||
+        blackbox_sd_is_busy()) return false;
+    const blackbox_catalog_entry_t *entry = NULL;
+    for (uint32_t i = 0U; i < catalog.flight_count; ++i) {
+        if (catalog.flights[i].flight_id == requested_flight_id) {
+            entry = &catalog.flights[i]; break;
+        }
+    }
+    if (entry == NULL || !read_sector(entry->start_sector, &read_cache) ||
+        read_cache.magic != SD_BLOCK_MAGIC ||
+        read_cache.flight_id != requested_flight_id ||
+        read_cache.version != 3U || read_cache.record_count != 0U ||
+        read_cache.checksum != checksum_block(&read_cache)) return false;
+    memcpy(metadata, read_cache.records, sizeof(*metadata));
+    read_cache_valid = true;
+    read_cache_sector = entry->start_sector;
+    return metadata->version == FLIGHT_LOG_METADATA_VERSION;
 }
 
 bool blackbox_sd_clear(void)
@@ -562,7 +618,7 @@ const char *blackbox_sd_state_name(void)
     return names[(unsigned)state <= BLACKBOX_SD_ERROR ? state : BLACKBOX_SD_ERROR];
 }
 
-void blackbox_sd_start(void)
+void blackbox_sd_start(const flight_log_metadata_t *metadata)
 {
     if (!enabled || state != BLACKBOX_SD_READY ||
         write_state != WRITE_IDLE || queue_count != 0U ||
@@ -579,6 +635,7 @@ void blackbox_sd_start(void)
     current_record_count = 0U;
     memset(&current, 0, sizeof(current));
     read_cache_valid = false;
+    if (!queue_metadata(metadata)) return;
     state = BLACKBOX_SD_RECORDING;
 }
 

@@ -357,6 +357,70 @@ static void process(const char *command)
         reply("@CFG BLACKBOX_CATALOG_END\n");
         return;
     }
+    if (strcmp(command, "GET_FLIGHT_LOG_METADATA") == 0) {
+        flight_log_metadata_t metadata;
+        if (!flight_log_get_metadata(&metadata)) {
+            reply("@CFG FLIGHT_LOG_METADATA_UNAVAILABLE\n");
+            return;
+        }
+        reply("@CFG FLIGHT_LOG_METADATA_CORE %lu %lu %lu %lu %lu %lu %lu %u %.2f\n",
+              (unsigned long)metadata.version,
+              (unsigned long)metadata.main_loop_hz,
+              (unsigned long)metadata.gyro_rate_hz,
+              (unsigned long)metadata.log_rate_hz,
+              (unsigned long)metadata.motor_protocol,
+              (unsigned long)metadata.motor_direction_reversed,
+              (unsigned long)metadata.receiver_protocol,
+              metadata.initial_battery_cells,
+              metadata.initial_battery_centivolts / 100.0f);
+        reply("@CFG FLIGHT_LOG_METADATA_PIDS %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n",
+              metadata.pids[0], metadata.pids[1], metadata.pids[2],
+              metadata.pids[3], metadata.pids[4], metadata.pids[5],
+              metadata.pids[6], metadata.pids[7], metadata.pids[8]);
+        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+              metadata.rates[0], metadata.rates[1], metadata.rates[2],
+              metadata.rates[3], metadata.feedforward[0],
+              metadata.feedforward[1], metadata.feedforward[2],
+              metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
+              metadata.filters[1], metadata.alignment[0],
+              metadata.alignment[1], metadata.alignment[2],
+              metadata.motor_idle_percent);
+        reply("@CFG FLIGHT_LOG_METADATA_END\n");
+        return;
+    }
+    unsigned int metadata_flight;
+    if (sscanf(command, "GET_BLACKBOX_METADATA %u", &metadata_flight) == 1) {
+        flight_log_metadata_t metadata;
+        if (!blackbox_sd_get_metadata((uint32_t)metadata_flight, &metadata)) {
+            reply("@CFG BLACKBOX_METADATA_UNAVAILABLE %u\n", metadata_flight);
+            return;
+        }
+        reply("@CFG BLACKBOX_METADATA_CORE %u %lu %lu %lu %lu %lu %lu %lu %u %.2f\n",
+              metadata_flight, (unsigned long)metadata.version,
+              (unsigned long)metadata.main_loop_hz,
+              (unsigned long)metadata.gyro_rate_hz,
+              (unsigned long)metadata.log_rate_hz,
+              (unsigned long)metadata.motor_protocol,
+              (unsigned long)metadata.motor_direction_reversed,
+              (unsigned long)metadata.receiver_protocol,
+              metadata.initial_battery_cells,
+              metadata.initial_battery_centivolts / 100.0f);
+        reply("@CFG BLACKBOX_METADATA_PIDS %u %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n",
+              metadata_flight, metadata.pids[0], metadata.pids[1],
+              metadata.pids[2], metadata.pids[3], metadata.pids[4],
+              metadata.pids[5], metadata.pids[6], metadata.pids[7],
+              metadata.pids[8]);
+        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+              metadata_flight, metadata.rates[0], metadata.rates[1],
+              metadata.rates[2], metadata.rates[3], metadata.feedforward[0],
+              metadata.feedforward[1], metadata.feedforward[2],
+              metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
+              metadata.filters[1], metadata.alignment[0],
+              metadata.alignment[1], metadata.alignment[2],
+              metadata.motor_idle_percent);
+        reply("@CFG BLACKBOX_METADATA_END %u\n", metadata_flight);
+        return;
+    }
     unsigned int blackbox_flight, blackbox_offset, blackbox_count;
     if (sscanf(command, "GET_BLACKBOX_CHUNK %u %u %u",
                &blackbox_flight, &blackbox_offset,

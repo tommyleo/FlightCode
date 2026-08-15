@@ -109,7 +109,13 @@ int main(void)
         const bool imu_updated = imu_ready && imu_read_due && imu_read(&imu);
         if (imu_updated) {
             consecutive_imu_failures = 0U;
-            const float control_dt = 1.0f / (float)loop_hz;
+            /*
+             * The MPU6000 produces samples at 8 kHz even when the scheduler
+             * and motor output run faster.  PID integration, differentiation
+             * and software-filter coefficients must use the interval between
+             * IMU samples, not the scheduler interval.
+             */
+            const float control_dt = 1.0f / (float)imu_task.rate_hz;
             if (!tuning_menu_active) {
                 flight_control_update(&imu, receiver, control_dt, motors);
             } else {
