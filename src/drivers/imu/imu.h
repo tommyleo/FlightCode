@@ -15,4 +15,5 @@ typedef struct {
 bool imu_init(uint32_t sample_rate_hz);
 bool imu_read(imu_sample_t *sample);
 const char *imu_get_name(void);
+uint32_t imu_get_gyro_rate_hz(void);
 void imu_set_board_alignment(float roll_deg, float pitch_deg, float yaw_deg);

@@ -84,6 +84,15 @@ const char *imu_get_name(void)
 #endif
 }
 
+uint32_t imu_get_gyro_rate_hz(void)
+{
+#if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
+    return mpu6000_get_gyro_rate_hz();
+#else
+    return icm42688p_get_gyro_rate_hz();
+#endif
+}
+
 bool imu_read(imu_sample_t *sample)
 {
 #if BOARD_IMU_TYPE == IMU_TYPE_MPU6000

@@ -15,6 +15,12 @@
 
 static float gyro_lsb_per_dps = 131.0f;
 static float accel_lsb_per_g = 16384.0f;
+
+uint32_t mpu6000_get_gyro_rate_hz(void)
+{
+    return 8000U;
+}
+
 static bool write_reg(uint8_t reg, uint8_t value)
 {
     uint8_t data[2] = {reg, value};

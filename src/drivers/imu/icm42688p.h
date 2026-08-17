@@ -6,3 +6,4 @@
 
 bool icm42688p_init(uint32_t sample_rate_hz);
 bool icm42688p_read(imu_sample_t *sample);
+uint32_t icm42688p_get_gyro_rate_hz(void);

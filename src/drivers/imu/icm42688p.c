@@ -31,6 +31,13 @@
 #define GYRO_LSB_PER_DPS 16.4f
 #define ACCEL_LSB_PER_G 2048.0f
 
+static uint32_t gyro_rate_hz = 16000U;
+
+uint32_t icm42688p_get_gyro_rate_hz(void)
+{
+    return gyro_rate_hz;
+}
+
 static bool write_reg(uint8_t reg, uint8_t value)
 {
     uint8_t data[2] = {reg, value};
@@ -94,6 +101,7 @@ static int16_t be16(const uint8_t *data)
 
 bool icm42688p_init(uint32_t sample_rate_hz)
 {
+    gyro_rate_hz = sample_rate_hz >= 32000U ? 32000U : 16000U;
     /* Configure and identify the sensor below its 1 MHz startup limit. */
     if (!set_spi_prescaler(SPI_BAUDRATEPRESCALER_128)) {
         return false;
@@ -147,7 +155,7 @@ bool icm42688p_init(uint32_t sample_rate_hz)
         return false;
     }
     HAL_Delay(1U);
-    const uint8_t odr = sample_rate_hz >= 32000U
+    const uint8_t odr = gyro_rate_hz == 32000U
         ? ODR_32KHZ_FS_MAX : ODR_16KHZ_FS_MAX;
     if (!write_reg(REG_GYRO_CONFIG0, odr)) {
         return false;

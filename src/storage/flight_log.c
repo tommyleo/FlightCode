@@ -6,6 +6,7 @@
 #include "board.h"
 #include "blackbox_sd.h"
 #include "flight_settings.h"
+#include "imu.h"
 
 #define FLIGHT_LOG_CAPACITY BOARD_FLIGHT_LOG_CAPACITY
 #define CONTROL_LOOP_HZ 16000U
@@ -157,11 +158,7 @@ void flight_log_start(void)
     memset(&flight_metadata, 0, sizeof(flight_metadata));
     flight_metadata.version = FLIGHT_LOG_METADATA_VERSION;
     flight_metadata.main_loop_hz = settings->main_loop_hz;
-#if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
-    flight_metadata.gyro_rate_hz = 8000U;
-#else
-    flight_metadata.gyro_rate_hz = settings->main_loop_hz;
-#endif
+    flight_metadata.gyro_rate_hz = imu_get_gyro_rate_hz();
     flight_metadata.log_rate_hz = FLIGHT_LOG_RATE_HZ;
     const pid_gains_t gains[3] = {settings->roll, settings->pitch, settings->yaw};
     for (uint8_t i = 0U; i < 3U; ++i) {
