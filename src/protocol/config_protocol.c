@@ -75,6 +75,15 @@ static void send_main_loop(void)
           flight_settings_are_saved() ? 1U : 0U);
 }
 
+#if BOARD_HAS_VBAT_CALIBRATION
+static void send_vbat_multiplier(void)
+{
+    reply("@CFG VBAT_MULTIPLIER %.3f %u\n",
+          flight_settings_get()->vbat_multiplier,
+          flight_settings_are_saved() ? 1U : 0U);
+}
+#endif
+
 static void send_board_alignment(void)
 {
     const flight_settings_t *s = flight_settings_get();
@@ -204,6 +213,9 @@ static void process(const char *command)
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
+#if BOARD_HAS_VBAT_CALIBRATION
+              "VBAT_CALIBRATION "
+#endif
 #if BOARD_HAS_DATAFLASH
               "BLACKBOX_SD BLACKBOX_FLASH BLACKBOX_CATALOG "
 #elif BOARD_HAS_SDCARD
@@ -226,6 +238,9 @@ static void process(const char *command)
         send_tpa();
         send_filters();
         send_receiver_config();
+#if BOARD_HAS_VBAT_CALIBRATION
+        send_vbat_multiplier();
+#endif
 #if BOARD_HAS_OSD
         send_osd_status();
 #endif
@@ -355,6 +370,15 @@ static void process(const char *command)
                   info.stop_flag);
         }
         reply("@CFG BLACKBOX_CATALOG_END\n");
+        return;
+    }
+    if (strcmp(command, "GET_VBAT_MULTIPLIER") == 0) {
+#if BOARD_HAS_VBAT_CALIBRATION
+        last_activity_us = board_micros();
+        send_vbat_multiplier();
+#else
+        reply("@CFG ERROR VBAT_CALIBRATION_UNSUPPORTED\n");
+#endif
         return;
     }
     if (strcmp(command, "GET_FLIGHT_LOG_METADATA") == 0) {
@@ -613,6 +637,19 @@ static void process(const char *command)
     }
 
     flight_settings_t settings = *flight_settings_get();
+#if BOARD_HAS_VBAT_CALIBRATION
+    float vbat_multiplier;
+    if (sscanf(command, "SET_VBAT_MULTIPLIER %f", &vbat_multiplier) == 1) {
+        settings.vbat_multiplier = vbat_multiplier;
+        if (flight_settings_set(&settings)) {
+            reply("@CFG OK SET_VBAT_MULTIPLIER\n");
+            send_vbat_multiplier();
+        } else {
+            reply("@CFG ERROR INVALID_VBAT_MULTIPLIER\n");
+        }
+        return;
+    }
+#endif
     unsigned int blackbox_enabled;
     if (sscanf(command, "SET_BLACKBOX %u", &blackbox_enabled) == 1) {
 #if BOARD_HAS_BLACKBOX_STORAGE

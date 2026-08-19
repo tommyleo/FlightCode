@@ -38,6 +38,10 @@ USB DFU requests. Persistent settings are stored in a dedicated internal flash
 sector. Configuration changes and diagnostic motor output are rejected while
 armed.
 
+CLRACINGF4 and FLYWOOF405NANO use Betaflight's standard `vbat_scale=110`
+(11:1 base ratio). A persistent 0.500–1.500 multiplier is available in the
+Configurator Setup page for final calibration against a multimeter.
+
 The Balanced, Racing and Freestyle quick profiles share the proven base P/I
 values and vary rates, expo, feedforward, D-term and filtering. Factory Racing
 defaults are 420/420/350 deg/s, expo 0.30, progressive FF 0.025/0.025/0.015,

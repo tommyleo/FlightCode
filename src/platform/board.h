@@ -112,8 +112,9 @@
 #define BATTERY_ADC_PORT GPIOC
 #define BATTERY_ADC_PIN GPIO_PIN_2
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_12
-/* Calibrated: 16.13 V at the battery measured as 15.42 V by the ADC. */
-#define BATTERY_VOLTAGE_DIVIDER 11.276f
+/* Betaflight's standard vbat_scale=110 corresponds to an 11:1 divider. */
+#define BATTERY_VOLTAGE_DIVIDER 11.00f
+#define BOARD_HAS_VBAT_CALIBRATION 1
 #define BOARD_HAS_OSD 1
 #define BOARD_HAS_SDCARD 1
 #define BOARD_FLIGHT_LOG_CAPACITY 2688U
@@ -184,6 +185,7 @@
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_13
 /* Betaflight's default vbat_scale=110 corresponds to an 11:1 divider. */
 #define BATTERY_VOLTAGE_DIVIDER 11.00f
+#define BOARD_HAS_VBAT_CALIBRATION 1
 
 /* The HD V3 has no MAX7456 and exposes no analog CAM/VTX video path. */
 #define BOARD_HAS_OSD 0
@@ -209,6 +211,9 @@
 #ifndef BOARD_HAS_CRSF
 #define BOARD_HAS_CRSF 0
 #endif
+#ifndef BOARD_HAS_VBAT_CALIBRATION
+#define BOARD_HAS_VBAT_CALIBRATION 0
+#endif
 #define BOARD_HAS_BLACKBOX_STORAGE (BOARD_HAS_SDCARD || BOARD_HAS_DATAFLASH)
 
 extern SPI_HandleTypeDef hspi1;
@@ -228,5 +233,6 @@ void board_buzzer_set(bool enabled);
 void board_buzzer_update(bool requested);
 void board_battery_update(void);
 float board_battery_voltage(void);
+void board_battery_set_multiplier(float multiplier);
 void board_check_dfu_request(void);
 void board_enter_dfu(void) __attribute__((noreturn));

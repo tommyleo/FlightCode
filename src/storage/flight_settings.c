@@ -13,7 +13,8 @@
 #include "stm32f4xx_hal.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 16U
+#define SETTINGS_VERSION 17U
+#define SETTINGS_LEGACY_VERSION_16 16U
 #define SETTINGS_LEGACY_VERSION_15 15U
 #define SETTINGS_LEGACY_VERSION_14 14U
 #define SETTINGS_LEGACY_VERSION_13 13U
@@ -164,6 +165,13 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v15_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, vbat_multiplier)];
+    uint32_t checksum;
+} legacy_record_v16_t;
+
 _Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
                    sizeof(legacy_settings_v13_t),
                "Flight settings v13 migration layout changed");
@@ -214,6 +222,11 @@ static bool angle_valid(float angle)
 static bool main_loop_valid(uint32_t hz)
 {
     return hz == 8000U || hz == 16000U;
+}
+
+static bool vbat_multiplier_valid(float multiplier)
+{
+    return isfinite(multiplier) && multiplier >= 0.5f && multiplier <= 1.5f;
 }
 
 static bool rates_valid(const flight_settings_t *settings)
@@ -295,6 +308,7 @@ static void apply(void)
                              (uint8_t)current_settings.osd_position);
     blackbox_sd_set_enabled(current_settings.blackbox_enabled != 0U);
     (void)sbus_set_protocol(current_settings.receiver_protocol);
+    board_battery_set_multiplier(current_settings.vbat_multiplier);
 }
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
@@ -336,6 +350,7 @@ void flight_settings_reset_defaults(void)
         .blackbox_enabled = 0U,
         .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
         .main_loop_hz = 16000U,
+        .vbat_multiplier = 1.0f,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -363,6 +378,19 @@ void flight_settings_init(void)
         (const legacy_record_v14_t *)SETTINGS_ADDRESS;
     const legacy_record_v15_t *legacy_v15 =
         (const legacy_record_v15_t *)SETTINGS_ADDRESS;
+    const legacy_record_v16_t *legacy_v16 =
+        (const legacy_record_v16_t *)SETTINGS_ADDRESS;
+    if (legacy_v16->magic == SETTINGS_MAGIC &&
+        legacy_v16->version == SETTINGS_LEGACY_VERSION_16 &&
+        legacy_v16->checksum == checksum_bytes(
+            legacy_v16, offsetof(legacy_record_v16_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v16->settings,
+               sizeof(legacy_v16->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v15->magic == SETTINGS_MAGIC &&
         legacy_v15->version == SETTINGS_LEGACY_VERSION_15 &&
         legacy_v15->checksum == checksum_bytes(
@@ -491,6 +519,7 @@ void flight_settings_init(void)
         !filters_valid(&stored->settings) ||
         !receiver_valid(&stored->settings) ||
         !main_loop_valid(stored->settings.main_loop_hz) ||
+        !vbat_multiplier_valid(stored->settings.vbat_multiplier) ||
         stored->settings.osd_enabled > 1U ||
         stored->settings.osd_position > 8U ||
         stored->settings.blackbox_enabled > 1U ||
@@ -533,6 +562,7 @@ bool flight_settings_set(const flight_settings_t *settings)
         !filters_valid(settings) ||
         !receiver_valid(settings) ||
         !main_loop_valid(settings->main_loop_hz) ||
+        !vbat_multiplier_valid(settings->vbat_multiplier) ||
         settings->osd_enabled > 1U || settings->osd_position > 8U ||
         settings->blackbox_enabled > 1U ||
         !isfinite(settings->tpa_attenuation) ||

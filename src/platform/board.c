@@ -1,5 +1,7 @@
 #include "board.h"
 
+#include <math.h>
+
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi3;
@@ -452,7 +454,23 @@ static uint32_t battery_adc_next_sample_us;
 static uint8_t battery_adc_samples;
 static bool battery_adc_pending;
 static float battery_voltage_filtered;
+static float battery_voltage_multiplier = 1.0f;
 #endif
+
+void board_battery_set_multiplier(float multiplier)
+{
+#if BOARD_HAS_BATTERY_VOLTAGE
+    if (!isfinite(multiplier) || multiplier < 0.5f || multiplier > 1.5f) {
+        return;
+    }
+    if (battery_voltage_filtered > 0.0f) {
+        battery_voltage_filtered *= multiplier / battery_voltage_multiplier;
+    }
+    battery_voltage_multiplier = multiplier;
+#else
+    (void)multiplier;
+#endif
+}
 
 void board_battery_update(void)
 {
@@ -479,7 +497,7 @@ void board_battery_update(void)
 
     const float measured =
         ((float)battery_adc_total / 8.0f) * 3.3f *
-        BATTERY_VOLTAGE_DIVIDER / 4095.0f;
+        BATTERY_VOLTAGE_DIVIDER * battery_voltage_multiplier / 4095.0f;
     battery_voltage_filtered = battery_voltage_filtered <= 0.0f
         ? measured
         : battery_voltage_filtered * 0.85f + measured * 0.15f;
