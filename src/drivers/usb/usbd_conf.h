@@ -3,7 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(PLATFORM_STM32H7)
+#include "stm32h7xx_hal.h"
+#else
 #include "stm32f4xx_hal.h"
+#endif
 
 #define USBD_MAX_NUM_INTERFACES 1U
 #define USBD_MAX_NUM_CONFIGURATION 1U

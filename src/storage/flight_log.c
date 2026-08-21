@@ -280,6 +280,13 @@ void flight_log_persist_if_ready(void)
     }
 
     board_status_led_set(true);
+#if defined(PLATFORM_STM32H7)
+    /* Halo stores long-flight Blackbox data in its onboard W25Q128. */
+    persist_pending = false;
+    using_flash = false;
+    board_status_led_set(false);
+    return;
+#else
     HAL_FLASH_Unlock();
     FLASH_EraseInitTypeDef erase = {
         .TypeErase = FLASH_TYPEERASE_SECTORS,
@@ -322,6 +329,7 @@ void flight_log_persist_if_ready(void)
         HAL_Delay(120U);
         board_buzzer_set(false);
     }
+#endif
 }
 
 void flight_log_record(const float gyro[3], const float setpoint[3],

@@ -23,6 +23,7 @@
 #define DEVICE_SOFT_RESET 0x01U
 #define PWR_GYRO_ACCEL_LOW_NOISE 0x0FU
 #define ODR_16KHZ_FS_MAX 0x02U
+#define ODR_8KHZ_FS_MAX 0x03U
 #define ODR_32KHZ_FS_MAX 0x01U
 #define UI_FILTER_LOW_LATENCY 0xFFU
 #define INTF_CONFIG1_AFSR_MASK 0xC0U
@@ -81,6 +82,10 @@ static bool read_reg(uint8_t reg, uint8_t *value)
 
 static bool set_spi_prescaler(uint32_t prescaler)
 {
+#if defined(PLATFORM_STM32H7)
+    hspi1.Init.BaudRatePrescaler = prescaler;
+    return HAL_SPI_Init(&hspi1) == HAL_OK;
+#else
     const uint32_t started = HAL_GetTick();
     while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_BSY) != RESET) {
         if ((HAL_GetTick() - started) > 10U) {
@@ -92,6 +97,7 @@ static bool set_spi_prescaler(uint32_t prescaler)
     hspi1.Init.BaudRatePrescaler = prescaler;
     __HAL_SPI_ENABLE(&hspi1);
     return true;
+#endif
 }
 
 static int16_t be16(const uint8_t *data)
@@ -101,7 +107,8 @@ static int16_t be16(const uint8_t *data)
 
 bool icm42688p_init(uint32_t sample_rate_hz)
 {
-    gyro_rate_hz = sample_rate_hz >= 32000U ? 32000U : 16000U;
+    gyro_rate_hz = sample_rate_hz >= 32000U ? 32000U
+        : sample_rate_hz >= 16000U ? 16000U : 8000U;
     /* Configure and identify the sensor below its 1 MHz startup limit. */
     if (!set_spi_prescaler(SPI_BAUDRATEPRESCALER_128)) {
         return false;
@@ -155,8 +162,9 @@ bool icm42688p_init(uint32_t sample_rate_hz)
         return false;
     }
     HAL_Delay(1U);
-    const uint8_t odr = gyro_rate_hz == 32000U
-        ? ODR_32KHZ_FS_MAX : ODR_16KHZ_FS_MAX;
+    const uint8_t odr = gyro_rate_hz == 32000U ? ODR_32KHZ_FS_MAX
+        : gyro_rate_hz == 16000U ? ODR_16KHZ_FS_MAX
+        : ODR_8KHZ_FS_MAX;
     if (!write_reg(REG_GYRO_CONFIG0, odr)) {
         return false;
     }

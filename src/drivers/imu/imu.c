@@ -4,12 +4,20 @@
 
 #include "board.h"
 
-#if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
+#if BOARD_IMU_TYPE == IMU_TYPE_MPU6000 || BOARD_IMU_TYPE == IMU_TYPE_AUTODETECT
 #include "mpu6000.h"
-#elif BOARD_IMU_TYPE == IMU_TYPE_ICM42688P
+#endif
+#if BOARD_IMU_TYPE == IMU_TYPE_ICM42688P || BOARD_IMU_TYPE == IMU_TYPE_AUTODETECT
 #include "icm42688p.h"
-#else
+#endif
+#if BOARD_IMU_TYPE != IMU_TYPE_MPU6000 && \
+    BOARD_IMU_TYPE != IMU_TYPE_ICM42688P && \
+    BOARD_IMU_TYPE != IMU_TYPE_AUTODETECT
 #error "Unsupported board IMU"
+#endif
+
+#if BOARD_IMU_TYPE == IMU_TYPE_AUTODETECT
+static uint8_t detected_imu_type;
 #endif
 
 static float alignment[3][3] = {
@@ -70,8 +78,22 @@ bool imu_init(uint32_t sample_rate_hz)
 #if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
     (void)sample_rate_hz;
     return mpu6000_init();
-#else
+#elif BOARD_IMU_TYPE == IMU_TYPE_ICM42688P
     return icm42688p_init(sample_rate_hz);
+#else
+    for (uint8_t candidate = 0U; candidate < 2U; ++candidate) {
+        board_imu_select(candidate);
+        if (mpu6000_init()) {
+            detected_imu_type = IMU_TYPE_MPU6000;
+            return true;
+        }
+        if (icm42688p_init(sample_rate_hz)) {
+            detected_imu_type = IMU_TYPE_ICM42688P;
+            return true;
+        }
+    }
+    detected_imu_type = 0U;
+    return false;
 #endif
 }
 
@@ -79,8 +101,13 @@ const char *imu_get_name(void)
 {
 #if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
     return "MPU6000";
-#else
+#elif BOARD_IMU_TYPE == IMU_TYPE_ICM42688P
     return "ICM42688P";
+#else
+    return detected_imu_type == IMU_TYPE_MPU6000
+        ? "MPU6000"
+        : detected_imu_type == IMU_TYPE_ICM42688P
+            ? "ICM42688P" : "Not detected";
 #endif
 }
 
@@ -88,8 +115,12 @@ uint32_t imu_get_gyro_rate_hz(void)
 {
 #if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
     return mpu6000_get_gyro_rate_hz();
-#else
+#elif BOARD_IMU_TYPE == IMU_TYPE_ICM42688P
     return icm42688p_get_gyro_rate_hz();
+#else
+    return detected_imu_type == IMU_TYPE_MPU6000
+        ? mpu6000_get_gyro_rate_hz()
+        : icm42688p_get_gyro_rate_hz();
 #endif
 }
 
@@ -97,8 +128,11 @@ bool imu_read(imu_sample_t *sample)
 {
 #if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
     const bool read_ok = mpu6000_read(sample);
-#else
+#elif BOARD_IMU_TYPE == IMU_TYPE_ICM42688P
     const bool read_ok = icm42688p_read(sample);
+#else
+    const bool read_ok = detected_imu_type == IMU_TYPE_MPU6000
+        ? mpu6000_read(sample) : icm42688p_read(sample);
 #endif
     if (!read_ok) {
         return false;

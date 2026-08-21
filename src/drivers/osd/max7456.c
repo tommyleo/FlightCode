@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "board.h"
+#include "font_flightcode.h"
 
 #define REG_VM0 0x00U
 #define REG_DMM 0x04U
@@ -29,7 +30,9 @@
 #define STAT_NTSC 0x02U
 #define STAT_LOS 0x04U
 #define SCREEN_COLUMNS 30U
-#define BATTERY_FIELD_LENGTH 7U
+#define SCREEN_ROWS 16U
+#define OSD_ELEMENT_COUNT 5U
+#define OSD_TEXT_LENGTH 12U
 #define BATTERY_CRITICAL_CELL_VOLTAGE 3.50f
 #define BATTERY_BLINK_HALF_PERIOD_US 400000U
 
@@ -41,58 +44,18 @@ static bool video_pal = true;
 static bool enabled;
 static bool menu_active;
 static uint8_t selected_position = 4U;
-static uint8_t battery_column = 11U;
-static uint8_t battery_row = 7U;
-static uint8_t detected_battery_cells;
-static char previous[BATTERY_FIELD_LENGTH + 1U];
-
-/* Compact 5x7 font: blank, digits, punctuation, and uppercase letters. */
-static const uint8_t font_5x7[][7] = {
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-    {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E},
-    {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E},
-    {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F},
-    {0x1E, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1E},
-    {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02},
-    {0x1F, 0x10, 0x10, 0x1E, 0x01, 0x01, 0x1E},
-    {0x0E, 0x10, 0x10, 0x1E, 0x11, 0x11, 0x0E},
-    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08},
-    {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E},
-    {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x0E},
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C},
-    {0x11, 0x11, 0x11, 0x11, 0x0A, 0x0A, 0x04},
-    {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, /* A */
-    {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E}, /* B */
-    {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E}, /* C */
-    {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E}, /* D */
-    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F}, /* E */
-    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10}, /* F */
-    {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F}, /* G */
-    {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, /* H */
-    {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}, /* I */
-    {0x07, 0x02, 0x02, 0x02, 0x12, 0x12, 0x0C}, /* J */
-    {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}, /* K */
-    {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}, /* L */
-    {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11}, /* M */
-    {0x11, 0x19, 0x19, 0x15, 0x13, 0x13, 0x11}, /* N */
-    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, /* O */
-    {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10}, /* P */
-    {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D}, /* Q */
-    {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11}, /* R */
-    {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E}, /* S */
-    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}, /* T */
-    {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, /* U */
-    {0x11, 0x11, 0x11, 0x11, 0x0A, 0x0A, 0x04}, /* V */
-    {0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11}, /* W */
-    {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}, /* X */
-    {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}, /* Y */
-    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F}, /* Z */
-    {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00}, /* - */
-    {0x10, 0x08, 0x04, 0x02, 0x04, 0x08, 0x10}, /* > */
-    {0x01, 0x02, 0x04, 0x08, 0x04, 0x02, 0x01}, /* < */
-    {0x19, 0x1A, 0x02, 0x04, 0x08, 0x0B, 0x13}, /* % */
-    {0x01, 0x02, 0x02, 0x04, 0x08, 0x08, 0x10}, /* / */
+static uint32_t layout_enabled_mask = 1U;
+static uint32_t layout_positions[OSD_ELEMENT_COUNT] = {
+    31U, 61U, 51U, 340U, 369U,
 };
+static char pilot_name[OSD_TEXT_LENGTH + 1U] = "PILOT";
+static uint8_t detected_battery_cells;
+static bool previous_armed;
+static bool timer_started;
+static uint32_t flight_started_us;
+static uint32_t flight_duration_us;
+static char previous_screen[SCREEN_COLUMNS * SCREEN_ROWS];
+static bool render_cache_valid;
 
 static uint8_t transfer(uint8_t address, uint8_t value)
 {
@@ -130,6 +93,11 @@ static void end_pending_transaction(void)
 static bool configure_spi_mode(uint8_t mode)
 {
 #if BOARD_HAS_OSD
+#if BOARD_OSD_SHARES_DATAFLASH_SPI
+    /* The MAX7456 and W25Q128 on the analog Flywoo share SPI3.  Mode 0 is
+     * supported by both devices, so keep one bus configuration at runtime. */
+    if (mode != 0U) return false;
+#endif
     static const uint32_t polarity[4] = {
         SPI_POLARITY_LOW, SPI_POLARITY_LOW,
         SPI_POLARITY_HIGH, SPI_POLARITY_HIGH,
@@ -141,7 +109,11 @@ static bool configure_spi_mode(uint8_t mode)
     (void)HAL_SPI_DeInit(&OSD_SPI_HANDLE);
     OSD_SPI_HANDLE.Init.CLKPolarity = polarity[mode];
     OSD_SPI_HANDLE.Init.CLKPhase = phase[mode];
+#if BOARD_OSD_SHARES_DATAFLASH_SPI
+    OSD_SPI_HANDLE.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+#else
     OSD_SPI_HANDLE.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+#endif
     return HAL_SPI_Init(&OSD_SPI_HANDLE) == HAL_OK;
 #else
     (void)mode;
@@ -158,44 +130,6 @@ static bool wait_nvm(void)
     return false;
 }
 
-static bool glyph_pixel_is_white(uint8_t character, int8_t x, int8_t y)
-{
-    if (x < 1 || x >= 11 || y < 2 || y >= 16) return false;
-    const uint8_t source_x = (uint8_t)(x - 1) / 2U;
-    const uint8_t source_y = (uint8_t)(y - 2) / 2U;
-    return (font_5x7[character][source_y] &
-            (uint8_t)(1U << (4U - source_x))) != 0U;
-}
-
-static void build_glyph(uint8_t character, uint8_t glyph[54])
-{
-    for (uint8_t y = 0U; y < 18U; ++y) {
-        for (uint8_t group = 0U; group < 3U; ++group) {
-            uint8_t packed = 0U;
-            for (uint8_t part = 0U; part < 4U; ++part) {
-                const uint8_t x = (uint8_t)(group * 4U + part);
-                uint8_t pixel = 0x01U; /* Transparent. */
-                if (glyph_pixel_is_white(character, (int8_t)x, (int8_t)y)) {
-                    pixel = 0x02U; /* White fill. */
-                } else {
-                    for (int8_t dy = -1; dy <= 1 && pixel != 0x00U; ++dy) {
-                        for (int8_t dx = -1; dx <= 1; ++dx) {
-                            if (glyph_pixel_is_white(character,
-                                                     (int8_t)x + dx,
-                                                     (int8_t)y + dy)) {
-                                pixel = 0x00U; /* Black outline. */
-                                break;
-                            }
-                        }
-                    }
-                }
-                packed |= (uint8_t)(pixel << (6U - part * 2U));
-            }
-            glyph[y * 3U + group] = packed;
-        }
-    }
-}
-
 static bool glyph_matches(uint8_t character, const uint8_t glyph[54])
 {
     write_register(REG_CMAH, character);
@@ -208,41 +142,99 @@ static bool glyph_matches(uint8_t character, const uint8_t glyph[54])
     return true;
 }
 
+static bool glyph_pixel_is_white(const flightcode_font_glyph_t *glyph,
+                                 int8_t x, int8_t y)
+{
+    if (x < 3 || x >= 8 || y < 5 || y >= 12) return false;
+    return (glyph->rows[(uint8_t)(y - 5)] &
+            (uint8_t)(1U << (7 - x))) != 0U;
+}
+
+static void build_glyph(const flightcode_font_glyph_t *source,
+                        uint8_t glyph[54])
+{
+    for (uint8_t y = 0U; y < 18U; ++y) {
+        for (uint8_t group = 0U; group < 3U; ++group) {
+            uint8_t packed = 0U;
+            for (uint8_t part = 0U; part < 4U; ++part) {
+                const uint8_t x = (uint8_t)(group * 4U + part);
+                uint8_t pixel = 0x01U;
+                if (glyph_pixel_is_white(source, (int8_t)x, (int8_t)y)) {
+                    pixel = 0x02U;
+                } else {
+                    for (int8_t dy = -1; dy <= 1 && pixel != 0x00U; ++dy) {
+                        for (int8_t dx = -1; dx <= 1; ++dx) {
+                            if (glyph_pixel_is_white(source,
+                                                     (int8_t)x + dx,
+                                                     (int8_t)y + dy)) {
+                                pixel = 0x00U;
+                                break;
+                            }
+                        }
+                    }
+                }
+                packed |= (uint8_t)(pixel << (6U - part * 2U));
+            }
+            glyph[y * 3U + group] = packed;
+        }
+    }
+}
+
 static bool install_font(void)
 {
     uint8_t glyph[54];
-    for (uint8_t character = 0U;
-         character < (uint8_t)(sizeof(font_5x7) / sizeof(font_5x7[0]));
-         ++character) {
-        build_glyph(character, glyph);
-        if (glyph_matches(character, glyph)) continue;
-        write_register(REG_CMAH, character);
-        for (uint8_t i = 0U; i < 54U; ++i) {
-            write_register(REG_CMAL, i);
-            write_register(REG_CMDI, glyph[i]);
+    for (uint8_t attempt = 0U; attempt < 3U; ++attempt) {
+        bool all_glyphs_ready = true;
+        for (size_t i = 0U; i < FLIGHTCODE_FONT_GLYPH_COUNT; ++i) {
+            const flightcode_font_glyph_t *source =
+                &flightcode_font_glyphs[i];
+            build_glyph(source, glyph);
+            if (glyph_matches(source->character, glyph)) continue;
+            write_register(REG_CMAH, source->character);
+            for (uint8_t byte = 0U; byte < 54U; ++byte) {
+                write_register(REG_CMAL, byte);
+                write_register(REG_CMDI, glyph[byte]);
+            }
+            write_register(REG_CMM, CMM_WRITE_NVM);
+            HAL_Delay(1U);
+            if (!wait_nvm()) {
+                all_glyphs_ready = false;
+                continue;
+            }
+            HAL_Delay(1U);
+            if (!glyph_matches(source->character, glyph)) {
+                all_glyphs_ready = false;
+            }
         }
-        write_register(REG_CMM, CMM_WRITE_NVM);
-        if (!wait_nvm()) return false;
+        if (all_glyphs_ready) return true;
+        HAL_Delay(5U);
     }
-    return true;
+    return false;
 }
 
 static uint8_t font_character(char character)
 {
-    if (character >= '0' && character <= '9') {
-        return (uint8_t)(character - '0' + 1);
+    const uint8_t code = (uint8_t)character;
+    if (code >= FLIGHTCODE_GLYPH_CLOCK &&
+        code <= FLIGHTCODE_GLYPH_BATTERY_THREE) {
+        return code;
     }
-    if (character == '.') return 11U;
-    if (character == 'V') return 12U;
-    if (character >= 'A' && character <= 'Z') {
-        return (uint8_t)(character - 'A' + 13);
+    if (character == ' ' || character == '%' || character == '-' ||
+        character == '.' || character == '/' || character == ':' || character == '<' ||
+        character == '>' ||
+        (character >= '0' && character <= '9') ||
+        (character >= 'A' && character <= 'Z')) {
+        return (uint8_t)character;
     }
-    if (character == '-') return 39U;
-    if (character == '>') return 40U;
-    if (character == '<') return 41U;
-    if (character == '%') return 42U;
-    if (character == '/') return 43U;
-    return 0U;
+    return (uint8_t)' ';
+}
+
+static uint8_t battery_glyph(float cell_voltage)
+{
+    if (cell_voltage >= 4.00f) return FLIGHTCODE_GLYPH_BATTERY_THREE;
+    if (cell_voltage >= 3.75f) return FLIGHTCODE_GLYPH_BATTERY_TWO;
+    if (cell_voltage >= 3.50f) return FLIGHTCODE_GLYPH_BATTERY_ONE;
+    return FLIGHTCODE_GLYPH_BATTERY_EMPTY;
 }
 
 static void write_character(uint16_t position, uint8_t character)
@@ -252,21 +244,18 @@ static void write_character(uint16_t position, uint8_t character)
     write_register(REG_DMDI, character);
 }
 
-static void clear_battery_field(void)
+static void reset_render_cache(void)
 {
-    const uint16_t start = battery_row * SCREEN_COLUMNS + battery_column;
-    for (uint8_t i = 0U; i < BATTERY_FIELD_LENGTH; ++i) {
-        write_character((uint16_t)(start + i), 0U);
-    }
+    render_cache_valid = false;
 }
 
-static void select_position(uint8_t position)
+static uint32_t legacy_position(uint8_t position)
 {
     static const uint8_t columns[3] = {1U, 11U, 22U};
     static const uint8_t pal_rows[3] = {1U, 7U, 14U};
     static const uint8_t ntsc_rows[3] = {1U, 6U, 11U};
-    battery_column = columns[position % 3U];
-    battery_row = (video_pal ? pal_rows : ntsc_rows)[position / 3U];
+    const uint8_t row = (video_pal ? pal_rows : ntsc_rows)[position / 3U];
+    return (uint32_t)row * SCREEN_COLUMNS + columns[position % 3U];
 }
 
 bool max7456_init(void)
@@ -300,11 +289,11 @@ bool max7456_init(void)
         else if ((video_status & STAT_PAL) != 0U) video_pal = true;
     }
     const uint8_t video_mode = video_pal ? VM0_PAL : 0U;
-    select_position(selected_position);
+    layout_positions[0] = legacy_position(selected_position);
     write_register(REG_DMM, DMM_CLEAR);
     HAL_Delay(1U);
     write_register(REG_VM0, video_mode | (enabled ? VM0_ENABLE : 0U));
-    memset(previous, 0, sizeof(previous));
+    reset_render_cache();
     return true;
 #else
     return false;
@@ -349,25 +338,90 @@ uint8_t max7456_position(void)
 bool max7456_set_config(bool requested_enabled, uint8_t position)
 {
     if (position > 8U) return false;
-    if (available && enabled && !menu_active) clear_battery_field();
     selected_position = position;
-    select_position(position);
+    layout_positions[0] = legacy_position(position);
     enabled = requested_enabled;
-    memset(previous, 0, sizeof(previous));
+    reset_render_cache();
     if (!available) return true;
     if (!menu_active) {
+        max7456_clear_screen();
         write_register(REG_VM0, (video_pal ? VM0_PAL : 0U) |
                                 (enabled ? VM0_ENABLE : 0U));
     }
     return true;
 }
 
-void max7456_update_battery(float voltage)
+bool max7456_set_layout(uint32_t enabled_mask,
+                        const uint32_t positions[OSD_ELEMENT_COUNT],
+                        const char *requested_pilot_name)
+{
+    if (positions == NULL || requested_pilot_name == NULL ||
+        enabled_mask >= (1U << OSD_ELEMENT_COUNT)) return false;
+    for (uint8_t i = 0U; i < OSD_ELEMENT_COUNT; ++i) {
+        if (positions[i] >= SCREEN_COLUMNS * SCREEN_ROWS) return false;
+    }
+    size_t pilot_length = 0U;
+    while (pilot_length <= OSD_TEXT_LENGTH &&
+           requested_pilot_name[pilot_length] != '\0') ++pilot_length;
+    if (pilot_length > OSD_TEXT_LENGTH) return false;
+    layout_enabled_mask = enabled_mask;
+    memcpy(layout_positions, positions, sizeof(layout_positions));
+    (void)snprintf(pilot_name, sizeof(pilot_name), "%s",
+                   requested_pilot_name);
+    reset_render_cache();
+    if (available && !menu_active) max7456_clear_screen();
+    return true;
+}
+
+static void compose_element(char screen[SCREEN_COLUMNS * SCREEN_ROWS],
+                            uint8_t element, const char *value)
+{
+    if ((layout_enabled_mask & (1U << element)) == 0U) return;
+    const uint32_t position = layout_positions[element];
+    const uint8_t column = (uint8_t)(position % SCREEN_COLUMNS);
+    for (uint8_t i = 0U; i < OSD_TEXT_LENGTH && value[i] != '\0' &&
+         column + i < SCREEN_COLUMNS; ++i) {
+        screen[position + i] = value[i];
+    }
+}
+
+static void render_layout(const char *total_voltage, const char *cell_text,
+                          const char *timer)
+{
+    char screen[SCREEN_COLUMNS * SCREEN_ROWS];
+    memset(screen, ' ', sizeof(screen));
+    compose_element(screen, 0U, total_voltage);
+    compose_element(screen, 1U, cell_text);
+    compose_element(screen, 2U, timer);
+    compose_element(screen, 3U, "FLIGHTCODE");
+    compose_element(screen, 4U, pilot_name);
+
+    for (uint16_t position = 0U; position < sizeof(screen); ++position) {
+        const bool changed = render_cache_valid
+            ? screen[position] != previous_screen[position]
+            : screen[position] != ' ';
+        if (changed) {
+            write_character(position, font_character(screen[position]));
+        }
+    }
+    memcpy(previous_screen, screen, sizeof(previous_screen));
+    render_cache_valid = true;
+}
+
+void max7456_update(float voltage, bool armed, uint32_t now_us)
 {
     if (!available || !enabled || menu_active) return;
-    char text[BATTERY_FIELD_LENGTH + 1U];
-    memset(text, ' ', BATTERY_FIELD_LENGTH);
-    text[BATTERY_FIELD_LENGTH] = '\0';
+    if (armed && !previous_armed) {
+        flight_started_us = now_us;
+        flight_duration_us = 0U;
+        timer_started = true;
+    } else if (armed && timer_started) {
+        flight_duration_us = now_us - flight_started_us;
+    }
+    previous_armed = armed;
+
+    char total_voltage[OSD_TEXT_LENGTH + 1U] = "";
+    char cell_text[OSD_TEXT_LENGTH + 1U] = "";
     bool show_voltage = true;
     if (voltage >= 1.0f && voltage < 100.0f) {
         uint8_t candidate_cells = (uint8_t)ceilf(voltage / 4.25f);
@@ -375,29 +429,36 @@ void max7456_update_battery(float voltage)
         if (candidate_cells > detected_battery_cells) {
             detected_battery_cells = candidate_cells;
         }
-        const float cell_voltage =
+        const float per_cell_voltage =
             voltage / (float)detected_battery_cells;
+        const char icon = (char)battery_glyph(per_cell_voltage);
         const bool critical =
-            cell_voltage < BATTERY_CRITICAL_CELL_VOLTAGE;
+            per_cell_voltage < BATTERY_CRITICAL_CELL_VOLTAGE;
         if (critical) {
-            show_voltage = ((board_micros() / BATTERY_BLINK_HALF_PERIOD_US) &
+            show_voltage = ((now_us / BATTERY_BLINK_HALF_PERIOD_US) &
                             1U) == 0U;
         }
+        total_voltage[0] = icon;
+        cell_text[0] = icon;
         if (show_voltage) {
-            char value[BATTERY_FIELD_LENGTH + 1U];
-            const int length =
-                snprintf(value, sizeof(value), "%5.2fV", cell_voltage);
-            if (length > 0) memcpy(text, value, (size_t)length);
+            (void)snprintf(&total_voltage[1], sizeof(total_voltage) - 1U,
+                           "%.2fV", voltage);
+            (void)snprintf(&cell_text[1], sizeof(cell_text) - 1U,
+                           "%.2fV", per_cell_voltage);
         }
     } else {
         detected_battery_cells = 0U;
     }
-    if (memcmp(text, previous, BATTERY_FIELD_LENGTH) == 0) return;
-    const uint16_t start = battery_row * SCREEN_COLUMNS + battery_column;
-    for (uint8_t i = 0U; i < BATTERY_FIELD_LENGTH; ++i) {
-        write_character((uint16_t)(start + i), font_character(text[i]));
+    const uint32_t total_seconds = flight_duration_us / 1000000U;
+    char timer[OSD_TEXT_LENGTH + 1U];
+    const int timer_length = snprintf(timer, sizeof(timer), "%02lu:%02lu",
+                   (unsigned long)((total_seconds / 60U) % 100U),
+                   (unsigned long)(total_seconds % 60U));
+    if (timer_length > 0 && timer_length < (int)OSD_TEXT_LENGTH) {
+        timer[timer_length] = (char)FLIGHTCODE_GLYPH_CLOCK;
+        timer[timer_length + 1] = '\0';
     }
-    memcpy(previous, text, sizeof(previous));
+    render_layout(total_voltage, cell_text, timer);
 }
 
 void max7456_clear_screen(void)
@@ -432,7 +493,7 @@ void max7456_menu_end(void)
     if (!menu_active) return;
     max7456_clear_screen();
     menu_active = false;
-    memset(previous, 0, sizeof(previous));
+    reset_render_cache();
     write_register(REG_VM0, (video_pal ? VM0_PAL : 0U) |
                             (enabled ? VM0_ENABLE : 0U));
 }

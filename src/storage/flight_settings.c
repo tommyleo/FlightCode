@@ -10,10 +10,10 @@
 #include "max7456.h"
 #include "blackbox_sd.h"
 #include "sbus.h"
-#include "stm32f4xx_hal.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 17U
+#define SETTINGS_VERSION 18U
+#define SETTINGS_LEGACY_VERSION_17 17U
 #define SETTINGS_LEGACY_VERSION_16 16U
 #define SETTINGS_LEGACY_VERSION_15 15U
 #define SETTINGS_LEGACY_VERSION_14 14U
@@ -172,6 +172,13 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v16_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, osd_element_enabled_mask)];
+    uint32_t checksum;
+} legacy_record_v17_t;
+
 _Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
                    sizeof(legacy_settings_v13_t),
                "Flight settings v13 migration layout changed");
@@ -227,6 +234,22 @@ static bool main_loop_valid(uint32_t hz)
 static bool vbat_multiplier_valid(float multiplier)
 {
     return isfinite(multiplier) && multiplier >= 0.5f && multiplier <= 1.5f;
+}
+
+static bool osd_layout_valid(const flight_settings_t *settings)
+{
+    if (settings->osd_element_enabled_mask >= (1U << OSD_ELEMENT_COUNT) ||
+        memchr(settings->osd_pilot_name, '\0',
+               sizeof(settings->osd_pilot_name)) == NULL) return false;
+    for (uint8_t i = 0U; i < OSD_ELEMENT_COUNT; ++i) {
+        if (settings->osd_element_positions[i] >= 30U * 16U) return false;
+    }
+    for (size_t i = 0U; settings->osd_pilot_name[i] != '\0'; ++i) {
+        const char c = settings->osd_pilot_name[i];
+        if (c != ' ' && c != '-' &&
+            !(c >= '0' && c <= '9') && !(c >= 'A' && c <= 'Z')) return false;
+    }
+    return true;
 }
 
 static bool rates_valid(const flight_settings_t *settings)
@@ -306,6 +329,9 @@ static void apply(void)
     flight_control_set_motor_idle_percent(current_settings.motor_idle_percent);
     (void)max7456_set_config(current_settings.osd_enabled != 0U,
                              (uint8_t)current_settings.osd_position);
+    (void)max7456_set_layout(current_settings.osd_element_enabled_mask,
+                             current_settings.osd_element_positions,
+                             current_settings.osd_pilot_name);
     blackbox_sd_set_enabled(current_settings.blackbox_enabled != 0U);
     (void)sbus_set_protocol(current_settings.receiver_protocol);
     board_battery_set_multiplier(current_settings.vbat_multiplier);
@@ -348,9 +374,12 @@ void flight_settings_reset_defaults(void)
         .osd_enabled = 0U,
         .osd_position = 4U,
         .blackbox_enabled = 0U,
-        .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
+        .receiver_protocol = BOARD_DEFAULT_RECEIVER_PROTOCOL,
         .main_loop_hz = 16000U,
         .vbat_multiplier = 1.0f,
+        .osd_element_enabled_mask = 1U,
+        .osd_element_positions = {31U, 61U, 51U, 340U, 369U},
+        .osd_pilot_name = "PILOT",
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -380,6 +409,21 @@ void flight_settings_init(void)
         (const legacy_record_v15_t *)SETTINGS_ADDRESS;
     const legacy_record_v16_t *legacy_v16 =
         (const legacy_record_v16_t *)SETTINGS_ADDRESS;
+    const legacy_record_v17_t *legacy_v17 =
+        (const legacy_record_v17_t *)SETTINGS_ADDRESS;
+    if (legacy_v17->magic == SETTINGS_MAGIC &&
+        legacy_v17->version == SETTINGS_LEGACY_VERSION_17 &&
+        legacy_v17->checksum == checksum_bytes(
+            legacy_v17, offsetof(legacy_record_v17_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v17->settings,
+               sizeof(legacy_v17->settings));
+        current_settings.osd_element_enabled_mask =
+            current_settings.osd_enabled != 0U ? 1U : 0U;
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v16->magic == SETTINGS_MAGIC &&
         legacy_v16->version == SETTINGS_LEGACY_VERSION_16 &&
         legacy_v16->checksum == checksum_bytes(
@@ -520,6 +564,7 @@ void flight_settings_init(void)
         !receiver_valid(&stored->settings) ||
         !main_loop_valid(stored->settings.main_loop_hz) ||
         !vbat_multiplier_valid(stored->settings.vbat_multiplier) ||
+        !osd_layout_valid(&stored->settings) ||
         stored->settings.osd_enabled > 1U ||
         stored->settings.osd_position > 8U ||
         stored->settings.blackbox_enabled > 1U ||
@@ -563,6 +608,7 @@ bool flight_settings_set(const flight_settings_t *settings)
         !receiver_valid(settings) ||
         !main_loop_valid(settings->main_loop_hz) ||
         !vbat_multiplier_valid(settings->vbat_multiplier) ||
+        !osd_layout_valid(settings) ||
         settings->osd_enabled > 1U || settings->osd_position > 8U ||
         settings->blackbox_enabled > 1U ||
         !isfinite(settings->tpa_attenuation) ||
@@ -616,17 +662,33 @@ bool flight_settings_save(void)
         .TypeErase = FLASH_TYPEERASE_SECTORS,
         .Sector = SETTINGS_FLASH_SECTOR,
         .NbSectors = 1U,
+#if defined(PLATFORM_STM32H7)
+        .Banks = SETTINGS_FLASH_BANK,
+#else
         .VoltageRange = FLASH_VOLTAGE_RANGE_3,
+#endif
     };
     uint32_t sector_error = 0U;
     bool ok = HAL_FLASHEx_Erase(&erase, &sector_error) == HAL_OK;
 
     const uint32_t *words = (const uint32_t *)&record;
+#if defined(PLATFORM_STM32H7)
+    uint32_t flash_word[8] __attribute__((aligned(32)));
+    const size_t word_count = (sizeof(record) + 3U) / 4U;
+    for (size_t base = 0U; ok && base < word_count; base += 8U) {
+        for (size_t i = 0U; i < 8U; ++i)
+            flash_word[i] = base + i < word_count ? words[base + i] : 0xFFFFFFFFU;
+        ok = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD,
+                               SETTINGS_ADDRESS + (uint32_t)base * 4U,
+                               (uint32_t)flash_word) == HAL_OK;
+    }
+#else
     for (size_t i = 0; ok && i < sizeof(record) / sizeof(uint32_t); ++i) {
         ok = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                                SETTINGS_ADDRESS + (uint32_t)i * 4U,
                                words[i]) == HAL_OK;
     }
+#endif
     HAL_FLASH_Lock();
     settings_saved = ok;
     return ok;

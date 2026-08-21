@@ -1,36 +1,39 @@
 # FlightCode - STM32 flight controllers
 
-Experimental Quad X rate-mode firmware for the DIAT MAMBAF411 (STM32F411),
-CL Racing CLRacingF4 (STM32F405), and Flywoo GOKU GN405 Nano HD V3
-(`FLYWOOF405NANO`, STM32F405).
+*Born to race.*
 
-The PID and motor-output loop runs at 16 kHz. The ICM-42688-P is sampled at
-16 kHz; MPU6000 targets retain their hardware-limited 8 kHz sampling and reuse
-each sample for the following control tick. DSHOT300 is the default
+Experimental Quad X rate-mode firmware for the DIAT MAMBAF411 (STM32F411),
+CL Racing CLRacingF4 (STM32F405), Flywoo GOKU GN405 Nano HD V3
+(`FLYWOOF405NANO`, STM32F405), its legacy analog variant
+(`FLYWOOF405NANO_ANALOG`), and HDZero Halo (`HDZERO_HALO`, STM32H743).
+
+The PID and motor-output loop runs at 8 or 16 kHz. The ICM-42688-P follows the
+selected main-loop rate, while MPU6000 targets retain their hardware-limited
+8 kHz sampling and reuse each sample on a 16 kHz control loop. DSHOT300 is the default
 ESC protocol; DSHOT600 and DSHOT1200 can also be selected from the
 Configurator.
 
 ## Supported boards and enabled hardware
 
-| Feature | MAMBAF411 | CLRACINGF4 | FLYWOOF405NANO |
-| --- | --- | --- | --- |
-| Flight controller | DIAT Mamba F411 | CL Racing F4 | Flywoo GOKU GN405 Nano HD V3 |
-| MCU / clock | STM32F411 / 96 MHz | STM32F405 / 168 MHz | STM32F405 / 168 MHz |
-| IMU | MPU6000, SPI1 | MPU6000, SPI1 | ICM-42688-P, SPI1 |
-| Receiver | SBUS, USART1 with controllable inverter | SBUS, USART1 with controllable inverter | SBUS(5), UART5 with fixed inverter |
-| Motor outputs | PB3, PB4, PB6, PB7 | PB0, PB1, PA3, PA2 | PB0, PB1, PA3, PA2 |
-| ESC protocols | DSHOT300/600/1200 | DSHOT300/600/1200 | DSHOT300/600/1200 |
-| Battery voltage | ADC PA0 | ADC PC2 | ADC PC3 |
-| Analog OSD | MAX7456/AT7456E, SPI2 | MAX7456/AT7456E, SPI3 | Not fitted on HD V3 |
-| Persistent Blackbox | No external storage | microSD on SPI2 | 16 MiB W25Q128 internal flash on SPI3 |
-| RAM flight log | 2,944 records | 2,688 records | 2,688 records |
-| Status LED / buzzer | PC13 / PB2 | PB5 / PB4 | PC14 / PC13 |
-| USB configuration | USB CDC | USB CDC | USB CDC |
-| Firmware update | STM32 DFU | STM32 DFU | STM32 DFU |
+| Feature | MAMBAF411 | CLRACINGF4 | FLYWOOF405NANO | FLYWOOF405NANO_ANALOG | HDZERO_HALO |
+| --- | --- | --- | --- | --- | --- |
+| Flight controller | DIAT Mamba F411 | CL Racing F4 | Flywoo GOKU GN405 Nano HD V3 | Flywoo GOKU GN405 Nano analog | HDZero Halo |
+| MCU / clock | STM32F411 / 96 MHz | STM32F405 / 168 MHz | STM32F405 / 168 MHz | STM32F405 / 168 MHz | STM32H743 / 480 MHz |
+| IMU | MPU6000, SPI1 | MPU6000, SPI1 | ICM-42688-P, SPI1 | MPU6000 or ICM-42688-P, auto-detect | MPU6000 or ICM-42688-P, auto-detect |
+| Receiver | SBUS, USART1 with controllable inverter | SBUS, USART1 with controllable inverter | SBUS(5), UART5 with fixed inverter | SBUS(5), UART5 with fixed inverter | Integrated Gemini ELRS, CRSF on USART1 |
+| Motor outputs | PB3, PB4, PB6, PB7 | PB0, PB1, PA3, PA2 | PB0, PB1, PA3, PA2 | PB0, PB1, PA3, PA2 | PC6, PC7, PC8, PC9 |
+| ESC protocols | DSHOT300/600/1200 | DSHOT300/600/1200 | DSHOT300/600/1200 | DSHOT300/600/1200 | DSHOT300/600/1200 |
+| Battery voltage | ADC PA0 | ADC PC2 | ADC PC3 | ADC PC3 | ADC PC0 |
+| Analog OSD | MAX7456/AT7456E, SPI2 | MAX7456/AT7456E, SPI3 | Not fitted on HD V3 | MAX7456/AT7456E, SPI3, CS PB14 | Not fitted; digital VTX |
+| Persistent Blackbox | No external storage | microSD on SPI2 | 16 MiB W25Q128 on SPI3 | 16 MiB W25Q128 on shared SPI3 | 16 MiB W25Q128 on SPI2 |
+| RAM flight log | 2,944 records | 2,688 records | 2,688 records | 2,688 records | 2,688 records |
+| Status LED / buzzer | PC13 / PB2 | PB5 / PB4 | PC14 / PC13 | PC14 / PC13 | PE2 / PD12 |
+| USB configuration | USB CDC | USB CDC | USB CDC | USB CDC | USB CDC |
+| Firmware update | STM32 DFU | STM32 DFU | STM32 DFU | STM32 DFU | STM32 DFU |
 
 ## Firmware features
 
-All three targets enable rate mode, Quad X mixing, configurable PID/rates/expo,
+All four targets enable rate mode, Quad X mixing, configurable PID/rates/expo,
 progressive feedforward, TPA, gyro and D-term filters, board alignment, motor
 direction and idle, receiver mapping, battery telemetry, protected motor test,
 guided IMU and PID/mixer diagnostics, RAM flight logging, failsafe, buzzer and
@@ -79,11 +82,37 @@ current ELRS V3 hardware:
 - built-in ELRS remains unused by FlightCode on UART6.
 
 The HD V3 has no MAX7456/AT7456E and no analog `CAM`/`VTX` video path, so
-analog OSD is intentionally reported as unavailable. Digital video hardware
+analog OSD is intentionally reported as unavailable on this target. Digital video hardware
 can still provide its own OSD when driven by a separately implemented MSP
 DisplayPort link; that link is not part of this target yet. Betaflight's
-`FLYWOOF405NANO` definition also covers older revisions and still lists a
-MAX7456, so the V3 hardware specification takes precedence for this target.
+historical `FLYWOOF405NANO` definition also covers older revisions and lists a
+MAX7456; FlightCode exposes that hardware separately as
+`FLYWOOF405NANO_ANALOG` to prevent flashing the wrong board variant.
+
+### Flywoo GOKU GN405 Nano analog
+
+The `FLYWOOF405NANO_ANALOG` target enables the onboard MAX7456/AT7456E using
+the official legacy mapping: SPI3 on PC10/PC11/PC12 and OSD chip-select PB14.
+The W25Q128 Blackbox flash remains available on the same bus with its separate
+PB3 chip-select. Both devices use a shared mode-0 SPI configuration. MPU6000
+and ICM-42688-P variants are detected automatically on SPI1, CS PB12.
+
+### HDZero Halo
+
+The `HDZERO_HALO` target follows the official Betaflight hardware mapping:
+
+- STM32H743 at 480 MHz;
+- automatic detection of the MPU6000 and ICM-42688-P Halo variants on SPI1;
+- integrated Gemini ExpressLRS receiver using CRSF on USART1 by default;
+- motor outputs M1 PC6, M2 PC7, M3 PC8 and M4 PC9, with synchronized DShot;
+- battery ADC PC0, status LED PE2 and active-low buzzer PD12;
+- onboard 16 MiB W25Q128 Blackbox flash on SPI2.
+
+The Halo BLHeli_32 4-in-1 ESC is driven directly with DShot300, DShot600 or
+DSHOT1200 through the supplied eight-pin stack cable. ESC telemetry, HDZero
+MSP DisplayPort OSD, VTX control, switchable 9 V BEC control and ELRS telemetry
+back to the receiver are not implemented yet; these omissions do not affect
+basic gyro, receiver or motor operation.
 
 ## OSD tuning menu
 
@@ -97,6 +126,22 @@ changes to flash.  Motor output remains inhibited while the menu is open.
 The menu includes roll, pitch, and yaw P/I/D/feedforward values, maximum rates,
 expo, TPA attenuation, and the TPA breakpoint.
 
+The configurator also provides a 30x16 drag-and-drop OSD layout editor. The
+firmware persists independent visibility and position settings for total
+battery voltage, per-cell voltage, flight timer, the FlightCode label and a
+custom pilot name (up to 12 uppercase characters). The timer starts on arming,
+stops on disarming and remains visible until the next arming cycle.
+
+The MAX7456 character memory uses FlightCode Sans, an original upright compact
+font defined in `src/drivers/osd/font_flightcode.h`. Its 5x7 source strokes are
+centred without scaling inside each native 12x18 MAX7456 cell and receive a
+one-pixel black outline for contrast. FlightCode installs only the ASCII glyphs
+it currently displays, skips glyphs already present in the chip, and verifies
+each changed glyph after programming. Transient NVM failures are retried without
+preventing the remaining glyphs from being installed. No third-party font data
+is included. The font also provides a clock glyph and four battery states; the
+battery segments follow per-cell voltage rather than total pack voltage.
+
 ## Building on Windows
 
 From PowerShell:
@@ -107,6 +152,8 @@ cd C:\SvilST\FlightCode
 .\tools\build.ps1 -Board MAMBAF411
 .\tools\build.ps1 -Board CLRACINGF4
 .\tools\build.ps1 -Board FLYWOOF405NANO
+.\tools\build.ps1 -Board FLYWOOF405NANO_ANALOG
+.\tools\build.ps1 -Board HDZERO_HALO
 
 # All boards (Release)
 .\tools\build.ps1 -Board All
@@ -120,6 +167,8 @@ Default Release firmware images:
 - `build/release/FlightCode-MAMBAF411.hex`
 - `build/clracingf4-release/FlightCode-CLRACINGF4.hex`
 - `build/flywoof405nano-release/FlightCode-FLYWOOF405NANO.hex`
+- `build/flywoof405nano-analog-release/FlightCode-FLYWOOF405NANO_ANALOG.hex`
+- `build/hdzero-halo-release/FlightCode-HDZERO_HALO.hex`
 
 Debug builds are stored in the matching `build/*-debug` directory.
 

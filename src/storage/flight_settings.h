@@ -6,6 +6,17 @@
 #include "flight_control.h"
 #include "dshot.h"
 
+#define OSD_ELEMENT_COUNT 5U
+#define OSD_PILOT_NAME_LENGTH 12U
+
+typedef enum {
+    OSD_ELEMENT_TOTAL_VOLTAGE = 0,
+    OSD_ELEMENT_CELL_VOLTAGE,
+    OSD_ELEMENT_FLIGHT_TIMER,
+    OSD_ELEMENT_FLIGHTCODE,
+    OSD_ELEMENT_PILOT_NAME,
+} osd_element_t;
+
 typedef struct {
     pid_gains_t roll;
     pid_gains_t pitch;
@@ -40,6 +51,9 @@ typedef struct {
     uint32_t receiver_protocol;
     uint32_t main_loop_hz;
     float vbat_multiplier;
+    uint32_t osd_element_enabled_mask;
+    uint32_t osd_element_positions[OSD_ELEMENT_COUNT];
+    char osd_pilot_name[OSD_PILOT_NAME_LENGTH + 1U];
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U

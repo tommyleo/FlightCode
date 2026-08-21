@@ -1,6 +1,10 @@
 #include "usbd_desc.h"
 
+#if defined(PLATFORM_STM32H7)
+#include "stm32h7xx_hal.h"
+#else
 #include "stm32f4xx_hal.h"
+#endif
 #include "usbd_core.h"
 
 #define USB_VID 0x0483U

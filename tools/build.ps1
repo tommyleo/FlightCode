@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("MAMBAF411", "CLRACINGF4", "FLYWOOF405NANO", "All")]
+    [ValidateSet("MAMBAF411", "CLRACINGF4", "FLYWOOF405NANO", "FLYWOOF405NANO_ANALOG", "HDZERO_HALO", "All")]
     [string]$Board = "MAMBAF411",
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release"
@@ -17,7 +17,7 @@ if (-not $cmake -or -not $ninja) {
 }
 
 $boards = if ($Board -eq "All") {
-    @("MAMBAF411", "CLRACINGF4", "FLYWOOF405NANO")
+    @("MAMBAF411", "CLRACINGF4", "FLYWOOF405NANO", "FLYWOOF405NANO_ANALOG", "HDZERO_HALO")
 } else {
     @($Board)
 }
@@ -27,6 +27,8 @@ foreach ($selectedBoard in $boards) {
         "MAMBAF411" { "" }
         "CLRACINGF4" { "clracingf4-" }
         "FLYWOOF405NANO" { "flywoof405nano-" }
+        "FLYWOOF405NANO_ANALOG" { "flywoof405nano-analog-" }
+        "HDZERO_HALO" { "hdzero-halo-" }
     }
     $preset = $prefix + $Configuration.ToLowerInvariant()
 

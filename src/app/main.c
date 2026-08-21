@@ -65,7 +65,8 @@ static void update_osd_if_due(main_loop_state_t *state)
         flight_log_set_battery_voltage(battery_voltage);
         increment_osd_retry_ticks(state);
         retry_osd_if_needed(state, battery_voltage);
-        max7456_update_battery(battery_voltage);
+        max7456_update(battery_voltage, flight_control_is_armed(),
+                       board_micros());
     }
 }
 

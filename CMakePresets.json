@@ -56,6 +56,42 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "flywoof405nano-analog-debug",
+      "displayName": "FlightCode Flywoo F405 Nano Analog Debug",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/flywoof405nano-analog-debug",
+      "cacheVariables": {
+        "BOARD": "FLYWOOF405NANO_ANALOG"
+      }
+    },
+    {
+      "name": "flywoof405nano-analog-release",
+      "displayName": "FlightCode Flywoo F405 Nano Analog Release",
+      "inherits": "flywoof405nano-analog-debug",
+      "binaryDir": "${sourceDir}/build/flywoof405nano-analog-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "hdzero-halo-debug",
+      "displayName": "FlightCode HDZero Halo Debug",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/hdzero-halo-debug",
+      "cacheVariables": {
+        "BOARD": "HDZERO_HALO"
+      }
+    },
+    {
+      "name": "hdzero-halo-release",
+      "displayName": "FlightCode HDZero Halo Release",
+      "inherits": "hdzero-halo-debug",
+      "binaryDir": "${sourceDir}/build/hdzero-halo-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -64,6 +100,10 @@
     { "name": "clracingf4-debug", "configurePreset": "clracingf4-debug" },
     { "name": "clracingf4-release", "configurePreset": "clracingf4-release" },
     { "name": "flywoof405nano-debug", "configurePreset": "flywoof405nano-debug" },
-    { "name": "flywoof405nano-release", "configurePreset": "flywoof405nano-release" }
+    { "name": "flywoof405nano-release", "configurePreset": "flywoof405nano-release" },
+    { "name": "flywoof405nano-analog-debug", "configurePreset": "flywoof405nano-analog-debug" },
+    { "name": "flywoof405nano-analog-release", "configurePreset": "flywoof405nano-analog-release" },
+    { "name": "hdzero-halo-debug", "configurePreset": "hdzero-halo-debug" },
+    { "name": "hdzero-halo-release", "configurePreset": "hdzero-halo-release" }
   ]
 }

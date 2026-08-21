@@ -24,6 +24,29 @@ static ADC_HandleTypeDef hadc1;
 
 static void jump_to_system_bootloader(void) __attribute__((noreturn));
 
+static void isolate_receiver_from_bootloader(void)
+{
+#if BOARD_HAS_SBUS_INVERTER_CONTROL
+    /*
+     * STM32F4 ROM probes USART1 as well as USB DFU. Continuous inverted SBUS
+     * traffic can therefore select the serial bootloader before USB appears.
+     * Keep the external inverter disabled while ROM performs detection.
+     */
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = SBUS_INVERTER_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(SBUS_INVERTER_PORT, &gpio);
+    HAL_GPIO_WritePin(
+        SBUS_INVERTER_PORT, SBUS_INVERTER_PIN,
+        SBUS_INVERTER_ENABLE_LEVEL == GPIO_PIN_SET ? GPIO_PIN_RESET
+                                                   : GPIO_PIN_SET);
+#endif
+}
+
 static void jump_to_system_bootloader(void)
 {
     const uint32_t boot_stack =
@@ -123,7 +146,8 @@ static void gpio_init(void)
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
-#if defined(BOARD_FLYWOOF405NANO)
+#if defined(BOARD_FLYWOOF405NANO) || \
+    defined(BOARD_FLYWOOF405NANO_ANALOG)
     __HAL_RCC_GPIOD_CLK_ENABLE();
 #endif
 
@@ -203,7 +227,8 @@ static void spi1_init(void)
 static void osd_spi_init(void)
 {
 #if BOARD_HAS_OSD
-#if defined(BOARD_CLRACINGF4)
+#if defined(BOARD_CLRACINGF4) || \
+    defined(BOARD_FLYWOOF405NANO_ANALOG)
     __HAL_RCC_SPI3_CLK_ENABLE();
     GPIO_InitTypeDef gpio = {0};
     gpio.Pin = GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
@@ -448,6 +473,18 @@ void board_init(void)
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
+#if !defined(PLATFORM_STM32H7)
+void board_imu_select(uint8_t candidate)
+{
+    /* F4 targets expose one physical IMU chip-select.  The candidate selects
+     * which supported driver probes that same device. */
+    (void)candidate;
+}
+
+GPIO_TypeDef *board_imu_cs_port(void) { return IMU_CS_PORT; }
+uint16_t board_imu_cs_pin(void) { return IMU_CS_PIN; }
+#endif
+
 #if BOARD_HAS_BATTERY_VOLTAGE
 static uint32_t battery_adc_total;
 static uint32_t battery_adc_next_sample_us;
@@ -627,6 +664,7 @@ void board_check_dfu_request(void)
     if (*request == DFU_REQUEST_MAGIC) {
         *request = 0U;
         __DSB();
+        isolate_receiver_from_bootloader();
         jump_to_system_bootloader();
     }
 }

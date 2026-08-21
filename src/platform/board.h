@@ -2,13 +2,19 @@
 
 #include <stdbool.h>
 
+#if defined(PLATFORM_STM32H7)
+#include "stm32h7xx_hal.h"
+#else
 #include "stm32f4xx_hal.h"
+#endif
 
 #define MOTOR_OUTPUT_LAYOUT_TIM2_TIM3_TIM4 1
 #define MOTOR_OUTPUT_LAYOUT_TIM2_TIM3 2
+#define MOTOR_OUTPUT_LAYOUT_TIM3_CH1_4 3
 
 #define IMU_TYPE_MPU6000 1
 #define IMU_TYPE_ICM42688P 2
+#define IMU_TYPE_AUTODETECT 3
 
 #if defined(BOARD_MAMBAF411)
 #define BOARD_NAME "MAMBAF411"
@@ -131,9 +137,14 @@
 #define MAX7456_CS_PORT GPIOA
 #define MAX7456_CS_PIN GPIO_PIN_15
 
-#elif defined(BOARD_FLYWOOF405NANO)
+#elif defined(BOARD_FLYWOOF405NANO) || \
+      defined(BOARD_FLYWOOF405NANO_ANALOG)
+#if defined(BOARD_FLYWOOF405NANO_ANALOG)
+#define BOARD_NAME "FLYWOOF405NANO_ANALOG"
+#else
 #define BOARD_NAME "FLYWOOF405NANO"
-/* Official Betaflight FLWO/FLYWOOF405NANO mapping for the GN405 Nano V3. */
+#endif
+/* Official Betaflight FLWO/FLYWOOF405NANO family mapping. */
 #define MOTOR_1_PORT GPIOB
 #define MOTOR_1_PIN GPIO_PIN_0
 #define MOTOR_2_PORT GPIOB
@@ -177,7 +188,12 @@
 
 #define IMU_CS_PORT GPIOB
 #define IMU_CS_PIN GPIO_PIN_12
+#if defined(BOARD_FLYWOOF405NANO_ANALOG)
+/* Legacy analog revisions were produced with MPU6000 or ICM42688P. */
+#define BOARD_IMU_TYPE IMU_TYPE_AUTODETECT
+#else
 #define BOARD_IMU_TYPE IMU_TYPE_ICM42688P
+#endif
 #define BOARD_CORE_CLOCK_HZ 168000000U
 #define BOARD_HAS_BATTERY_VOLTAGE 1
 #define BATTERY_ADC_PORT GPIOC
@@ -187,8 +203,17 @@
 #define BATTERY_VOLTAGE_DIVIDER 11.00f
 #define BOARD_HAS_VBAT_CALIBRATION 1
 
+#if defined(BOARD_FLYWOOF405NANO_ANALOG)
+/* Legacy analog board: MAX7456 and flash share SPI3 with separate CS pins. */
+#define BOARD_HAS_OSD 1
+#define OSD_SPI_HANDLE hspi3
+#define MAX7456_CS_PORT GPIOB
+#define MAX7456_CS_PIN GPIO_PIN_14
+#define BOARD_OSD_SHARES_DATAFLASH_SPI 1
+#else
 /* The HD V3 has no MAX7456 and exposes no analog CAM/VTX video path. */
 #define BOARD_HAS_OSD 0
+#endif
 #define BOARD_HAS_SDCARD 0
 #define BOARD_HAS_DATAFLASH 1
 #define DATAFLASH_SPI_HANDLE hspi3
@@ -198,6 +223,78 @@
 #define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
 #define BOARD_BUZZER_REQUIRES_TONE 0
 #define BOARD_BUZZER_OUTPUT_OPEN_DRAIN 0
+#elif defined(BOARD_HDZERO_HALO)
+#define BOARD_NAME "HDZERO_HALO"
+/* Official Betaflight HDZO/HDZERO_HALO target mapping. */
+#define MOTOR_1_PORT GPIOC
+#define MOTOR_1_PIN GPIO_PIN_6
+#define MOTOR_2_PORT GPIOC
+#define MOTOR_2_PIN GPIO_PIN_7
+#define MOTOR_3_PORT GPIOC
+#define MOTOR_3_PIN GPIO_PIN_8
+#define MOTOR_4_PORT GPIOC
+#define MOTOR_4_PIN GPIO_PIN_9
+
+#define STATUS_LED_PORT GPIOE
+#define STATUS_LED_PIN GPIO_PIN_2
+#define STATUS_LED_ACTIVE_LEVEL GPIO_PIN_SET
+
+#define BUZZER_PORT GPIOD
+#define BUZZER_PIN GPIO_PIN_12
+#define BUZZER_ACTIVE_LEVEL GPIO_PIN_RESET
+
+/* The integrated Gemini ELRS receiver is connected to USART1. */
+#define BOARD_HAS_SBUS_INVERTER_CONTROL 0
+#define SBUS_UART_INSTANCE USART2
+#define SBUS_UART_IRQn USART2_IRQn
+#define SBUS_UART_IRQ_HANDLER USART2_IRQHandler
+#define SBUS_UART_CLOCK_ENABLE() __HAL_RCC_USART2_CLK_ENABLE()
+#define SBUS_RX_PORT GPIOA
+#define SBUS_RX_PIN GPIO_PIN_3
+#define SBUS_RX_AF GPIO_AF7_USART2
+#define BOARD_HAS_CRSF 1
+#define CRSF_UART_INSTANCE USART1
+#define CRSF_UART_IRQn USART1_IRQn
+#define CRSF_UART_IRQ_HANDLER USART1_IRQHandler
+#define CRSF_UART_CLOCK_ENABLE() __HAL_RCC_USART1_CLK_ENABLE()
+#define CRSF_RX_PORT GPIOB
+#define CRSF_RX_PIN GPIO_PIN_7
+#define CRSF_RX_AF GPIO_AF7_USART1
+#define BOARD_DEFAULT_RECEIVER_PROTOCOL RECEIVER_PROTOCOL_CRSF
+
+/* H743 bank 2 sectors 6/7 are kept outside the firmware image. */
+#define SETTINGS_ADDRESS 0x081E0000U
+#define SETTINGS_FLASH_SECTOR FLASH_SECTOR_7
+#define SETTINGS_FLASH_BANK FLASH_BANK_2
+#define FLIGHT_LOG_ADDRESS 0x081C0000U
+#define FLIGHT_LOG_FLASH_SECTOR FLASH_SECTOR_6
+#define FLIGHT_LOG_FLASH_BANK FLASH_BANK_2
+
+/* Halo variants may populate an MPU6000 or an ICM-42688-P on SPI1. */
+#define IMU_PRIMARY_CS_PORT GPIOB
+#define IMU_PRIMARY_CS_PIN GPIO_PIN_4
+#define IMU_ALT_CS_PORT GPIOB
+#define IMU_ALT_CS_PIN GPIO_PIN_3
+#define IMU_CS_PORT board_imu_cs_port()
+#define IMU_CS_PIN board_imu_cs_pin()
+#define BOARD_IMU_TYPE IMU_TYPE_AUTODETECT
+#define BOARD_CORE_CLOCK_HZ 480000000U
+#define BOARD_HAS_BATTERY_VOLTAGE 1
+#define BATTERY_ADC_PORT GPIOC
+#define BATTERY_ADC_PIN GPIO_PIN_0
+#define BATTERY_ADC_CHANNEL ADC_CHANNEL_10
+#define BATTERY_VOLTAGE_DIVIDER 11.00f
+#define BOARD_HAS_VBAT_CALIBRATION 1
+#define BOARD_HAS_OSD 0
+#define BOARD_HAS_SDCARD 0
+#define BOARD_HAS_DATAFLASH 1
+#define DATAFLASH_SPI_HANDLE hspi2
+#define DATAFLASH_CS_PORT GPIOB
+#define DATAFLASH_CS_PIN GPIO_PIN_12
+#define BOARD_FLIGHT_LOG_CAPACITY 2688U
+#define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM3_CH1_4
+#define BOARD_BUZZER_REQUIRES_TONE 0
+#define BOARD_BUZZER_OUTPUT_OPEN_DRAIN 1
 #else
 #error "No supported board selected"
 #endif
@@ -213,6 +310,12 @@
 #endif
 #ifndef BOARD_HAS_VBAT_CALIBRATION
 #define BOARD_HAS_VBAT_CALIBRATION 0
+#endif
+#ifndef BOARD_OSD_SHARES_DATAFLASH_SPI
+#define BOARD_OSD_SHARES_DATAFLASH_SPI 0
+#endif
+#ifndef BOARD_DEFAULT_RECEIVER_PROTOCOL
+#define BOARD_DEFAULT_RECEIVER_PROTOCOL RECEIVER_PROTOCOL_SBUS
 #endif
 #define BOARD_HAS_BLACKBOX_STORAGE (BOARD_HAS_SDCARD || BOARD_HAS_DATAFLASH)
 
@@ -234,5 +337,8 @@ void board_buzzer_update(bool requested);
 void board_battery_update(void);
 float board_battery_voltage(void);
 void board_battery_set_multiplier(float multiplier);
+void board_imu_select(uint8_t candidate);
+GPIO_TypeDef *board_imu_cs_port(void);
+uint16_t board_imu_cs_pin(void);
 void board_check_dfu_request(void);
 void board_enter_dfu(void) __attribute__((noreturn));

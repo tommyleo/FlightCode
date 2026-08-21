@@ -1,6 +1,10 @@
 #include "usbd_core.h"
 
+#if defined(PLATFORM_STM32H7)
+#include "stm32h7xx_hal.h"
+#else
 #include "stm32f4xx_hal.h"
+#endif
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
@@ -15,7 +19,11 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd)
         .Mode = GPIO_MODE_AF_PP,
         .Pull = GPIO_NOPULL,
         .Speed = GPIO_SPEED_FREQ_VERY_HIGH,
+#if defined(PLATFORM_STM32H7)
+        .Alternate = GPIO_AF10_OTG1_FS,
+#else
         .Alternate = GPIO_AF10_OTG_FS,
+#endif
     };
     HAL_GPIO_Init(GPIOA, &gpio);
     __HAL_RCC_USB_OTG_FS_CLK_ENABLE();

@@ -177,6 +177,27 @@ static void send_osd_status(void)
 #endif
 }
 
+static void send_osd_layout(void)
+{
+#if BOARD_HAS_OSD
+    const flight_settings_t *s = flight_settings_get();
+    char pilot[OSD_PILOT_NAME_LENGTH + 1U];
+    (void)snprintf(pilot, sizeof(pilot), "%s", s->osd_pilot_name);
+    for (size_t i = 0U; pilot[i] != '\0'; ++i) {
+        if (pilot[i] == ' ') pilot[i] = '_';
+    }
+    reply("@CFG OSD_LAYOUT %lu %lu %lu %lu %lu %lu %s %u\n",
+          (unsigned long)s->osd_element_enabled_mask,
+          (unsigned long)s->osd_element_positions[0],
+          (unsigned long)s->osd_element_positions[1],
+          (unsigned long)s->osd_element_positions[2],
+          (unsigned long)s->osd_element_positions[3],
+          (unsigned long)s->osd_element_positions[4],
+          pilot[0] != '\0' ? pilot : "-",
+          flight_settings_are_saved() ? 1U : 0U);
+#endif
+}
+
 static void send_blackbox_status(void)
 {
 #if BOARD_HAS_BLACKBOX_STORAGE
@@ -203,6 +224,8 @@ static void process(const char *command)
         last_activity_us = board_micros();
         reply("@CFG HELLO FlightCode 3 %s\n", BOARD_NAME);
         reply("@CFG IMU %s 1\n", imu_get_name());
+        reply("@CFG GYRO_RATE %lu\n",
+              (unsigned long)imu_get_gyro_rate_hz());
 #if BOARD_HAS_CRSF
         reply("@CFG RECEIVER_PROTOCOLS SBUS ELRS\n");
 #else
@@ -213,6 +236,9 @@ static void process(const char *command)
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
+#if BOARD_HAS_OSD
+              "OSD_LAYOUT "
+#endif
 #if BOARD_HAS_VBAT_CALIBRATION
               "VBAT_CALIBRATION "
 #endif
@@ -243,6 +269,7 @@ static void process(const char *command)
 #endif
 #if BOARD_HAS_OSD
         send_osd_status();
+        send_osd_layout();
 #endif
 #if BOARD_HAS_BLACKBOX_STORAGE
         send_blackbox_status();
@@ -370,6 +397,11 @@ static void process(const char *command)
                   info.stop_flag);
         }
         reply("@CFG BLACKBOX_CATALOG_END\n");
+        return;
+    }
+    if (strcmp(command, "GET_OSD_LAYOUT") == 0) {
+        last_activity_us = board_micros();
+        send_osd_layout();
         return;
     }
     if (strcmp(command, "GET_VBAT_MULTIPLIER") == 0) {
@@ -672,6 +704,16 @@ static void process(const char *command)
         return;
     }
     unsigned int osd_enabled;
+    if (sscanf(command, "SET_OSD_ENABLED %u", &osd_enabled) == 1) {
+        settings.osd_enabled = osd_enabled;
+        if (osd_enabled > 1U || !flight_settings_set(&settings)) {
+            reply("@CFG ERROR INVALID_OSD_CONFIG\n");
+        } else {
+            reply("@CFG OK SET_OSD_ENABLED\n");
+            send_osd_status();
+        }
+        return;
+    }
     char osd_position[20];
     if (sscanf(command, "SET_OSD %u %19s", &osd_enabled, osd_position) == 2) {
         static const char *const names[9] = {
@@ -685,12 +727,45 @@ static void process(const char *command)
         }
         settings.osd_enabled = osd_enabled;
         settings.osd_position = position;
+        static const uint32_t legacy_layout_positions[9] = {
+            31U, 41U, 52U, 181U, 191U, 202U, 331U, 341U, 352U,
+        };
+        if (position < 9U) {
+            settings.osd_element_positions[OSD_ELEMENT_TOTAL_VOLTAGE] =
+                legacy_layout_positions[position];
+            if (osd_enabled != 0U) settings.osd_element_enabled_mask |= 1U;
+            else settings.osd_element_enabled_mask &= ~1U;
+        }
         if (osd_enabled > 1U || position > 8U ||
             !flight_settings_set(&settings)) {
             reply("@CFG ERROR INVALID_OSD_CONFIG\n");
         } else {
             reply("@CFG OK SET_OSD\n");
             send_osd_status();
+        }
+        return;
+    }
+    unsigned int osd_mask, osd_positions[OSD_ELEMENT_COUNT];
+    char osd_pilot[OSD_PILOT_NAME_LENGTH + 1U];
+    if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %12s",
+               &osd_mask, &osd_positions[0], &osd_positions[1],
+               &osd_positions[2], &osd_positions[3], &osd_positions[4],
+               osd_pilot) == 7) {
+        settings.osd_element_enabled_mask = osd_mask;
+        for (uint8_t i = 0U; i < OSD_ELEMENT_COUNT; ++i) {
+            settings.osd_element_positions[i] = osd_positions[i];
+        }
+        if (strcmp(osd_pilot, "-") == 0) osd_pilot[0] = '\0';
+        for (size_t i = 0U; osd_pilot[i] != '\0'; ++i) {
+            if (osd_pilot[i] == '_') osd_pilot[i] = ' ';
+        }
+        (void)snprintf(settings.osd_pilot_name,
+                       sizeof(settings.osd_pilot_name), "%s", osd_pilot);
+        if (!flight_settings_set(&settings)) {
+            reply("@CFG ERROR INVALID_OSD_LAYOUT\n");
+        } else {
+            reply("@CFG OK SET_OSD_LAYOUT\n");
+            send_osd_layout();
         }
         return;
     }
