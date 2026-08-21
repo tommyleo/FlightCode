@@ -2,145 +2,57 @@
 
 *Born to race.*
 
-Experimental Quad X rate-mode firmware for the DIAT MAMBAF411 (STM32F411),
-CL Racing CLRacingF4 (STM32F405), Flywoo GOKU GN405 Nano HD V3
-(`FLYWOOF405NANO`, STM32F405), its legacy analog variant
-(`FLYWOOF405NANO_ANALOG`), and HDZero Halo (`HDZERO_HALO`, STM32H743).
+FlightCode is an experimental Quad X rate-mode firmware for STM32 flight
+controllers. It provides an 8 or 16 kHz main loop, configurable PID and rates,
+DSHOT motor output, receiver support, Blackbox logging, diagnostics and a shared
+USB Configurator.
 
-The PID and motor-output loop runs at 8 or 16 kHz. The ICM-42688-P follows the
-selected main-loop rate, while MPU6000 targets retain their hardware-limited
-8 kHz sampling and reuse each sample on a 16 kHz control loop. DSHOT300 is the default
-ESC protocol; DSHOT600 and DSHOT1200 can also be selected from the
-Configurator.
+## Supported flight controllers
 
-## Supported boards and enabled hardware
+- **[DIAT Mamba F411](docs/boards/mambaf411.md)**<br>
+  `MAMBAF411` · STM32F411 · MPU6000 · SBUS · analog OSD
 
-| Feature | MAMBAF411 | CLRACINGF4 | FLYWOOF405NANO | FLYWOOF405NANO_ANALOG | HDZERO_HALO |
-| --- | --- | --- | --- | --- | --- |
-| Flight controller | DIAT Mamba F411 | CL Racing F4 | Flywoo GOKU GN405 Nano HD V3 | Flywoo GOKU GN405 Nano analog | HDZero Halo |
-| MCU / clock | STM32F411 / 96 MHz | STM32F405 / 168 MHz | STM32F405 / 168 MHz | STM32F405 / 168 MHz | STM32H743 / 480 MHz |
-| IMU | MPU6000, SPI1 | MPU6000, SPI1 | ICM-42688-P, SPI1 | MPU6000 or ICM-42688-P, auto-detect | MPU6000 or ICM-42688-P, auto-detect |
-| Receiver | SBUS, USART1 with controllable inverter | SBUS, USART1 with controllable inverter | SBUS(5), UART5 with fixed inverter | SBUS(5), UART5 with fixed inverter | Integrated Gemini ELRS, CRSF on USART1 |
-| Motor outputs | PB3, PB4, PB6, PB7 | PB0, PB1, PA3, PA2 | PB0, PB1, PA3, PA2 | PB0, PB1, PA3, PA2 | PC6, PC7, PC8, PC9 |
-| ESC protocols | DSHOT300/600/1200 | DSHOT300/600/1200 | DSHOT300/600/1200 | DSHOT300/600/1200 | DSHOT300/600/1200 |
-| Battery voltage | ADC PA0 | ADC PC2 | ADC PC3 | ADC PC3 | ADC PC0 |
-| Analog OSD | MAX7456/AT7456E, SPI2 | MAX7456/AT7456E, SPI3 | Not fitted on HD V3 | MAX7456/AT7456E, SPI3, CS PB14 | Not fitted; digital VTX |
-| Persistent Blackbox | No external storage | microSD on SPI2 | 16 MiB W25Q128 on SPI3 | 16 MiB W25Q128 on shared SPI3 | 16 MiB W25Q128 on SPI2 |
-| RAM flight log | 2,944 records | 2,688 records | 2,688 records | 2,688 records | 2,688 records |
-| Status LED / buzzer | PC13 / PB2 | PB5 / PB4 | PC14 / PC13 | PC14 / PC13 | PE2 / PD12 |
-| USB configuration | USB CDC | USB CDC | USB CDC | USB CDC | USB CDC |
-| Firmware update | STM32 DFU | STM32 DFU | STM32 DFU | STM32 DFU | STM32 DFU |
+- **[CL Racing F4](docs/boards/clracingf4.md)**<br>
+  `CLRACINGF4` · STM32F405 · MPU6000 · SBUS · analog OSD · microSD Blackbox
 
-## Firmware features
+- **[Flywoo GOKU GN405 Nano HD V3](docs/boards/flywoof405nano.md)**<br>
+  `FLYWOOF405NANO` · STM32F405 · ICM-42688-P · SBUS/CRSF · flash Blackbox
 
-All four targets enable rate mode, Quad X mixing, configurable PID/rates/expo,
-progressive feedforward, TPA, gyro and D-term filters, board alignment, motor
-direction and idle, receiver mapping, battery telemetry, protected motor test,
-guided IMU and PID/mixer diagnostics, RAM flight logging, failsafe, buzzer and
-USB DFU requests. Persistent settings are stored in a dedicated internal flash
-sector. Configuration changes and diagnostic motor output are rejected while
-armed.
+- **[Flywoo GOKU GN405 Nano Analog](docs/boards/flywoof405nano-analog.md)**<br>
+  `FLYWOOF405NANO_ANALOG` · STM32F405 · automatic IMU detection · analog OSD · flash Blackbox
 
-CLRACINGF4 and FLYWOOF405NANO use Betaflight's standard `vbat_scale=110`
-(11:1 base ratio). A persistent 0.500–1.500 multiplier is available in the
-Configurator Setup page for final calibration against a multimeter.
+- **[HDZero Halo](docs/boards/hdzero-halo.md)**<br>
+  `HDZERO_HALO` · STM32H743 · automatic IMU detection · integrated Gemini ELRS · flash Blackbox
 
-The Balanced, Racing and Freestyle quick profiles share the proven base P/I
-values and vary rates, expo, feedforward, D-term and filtering. Factory Racing
-defaults are 420/420/350 deg/s, expo 0.30, progressive FF 0.025/0.025/0.015,
-TPA 20% from 70% throttle, and gyro/D-term filters at 90/50 Hz.
+Each board page contains its pin mapping, supported hardware, receiver and OSD
+details, build command and firmware output path.
 
-- STM32F411 MCU, 96 MHz core, and USB CDC
-- MPU6000 on SPI1: CS PA4, SCK PA5, MISO PA6, MOSI PA7; no fixed yaw alignment
-- SBUS on USART1 RX PA10, inverter PB10, 100000 baud 8E2
-- Motors: M1 PB3, M2 PB4, M3 PB6, M4 PB7
-- LED on PC13: fast 100 ms flashes during gyroscope calibration, then one
-  heartbeat flash per second, or two flashes with valid SBUS
-- Active-low buzzer on PB2, controlled by CH5 > 2000 with two beeps every 500 ms
+## Core features
 
-The mapping is based on the official Betaflight `DIAT/MAMBAF411` target.
-Radio channels are CH1 throttle, CH2 roll, CH3 pitch, CH4 yaw, and
-CH6 arm > 2000.
+- Quad X rate mode with configurable PID, rates, expo, feedforward and TPA;
+- selectable 8 or 16 kHz main loop;
+- gyro and D-term low-pass filters plus three-axis board alignment;
+- DSHOT300, DSHOT600 and DSHOT1200;
+- SBUS and CRSF receiver support where provided by the board;
+- configurable motor idle and normal/reversed yaw direction;
+- battery telemetry and persistent voltage calibration on supported targets;
+- protected motor test, guided IMU diagnostics and PID/mixer simulation;
+- RAM flight logging and persistent Blackbox on equipped boards;
+- USB CDC configuration and restart into STM32 DFU;
+- persistent settings stored in a reserved internal flash sector.
 
-The CLRacingF4 uses the Betaflight `CLRA/CLRACINGF4` mapping: MPU6000 on SPI1
-(CS PA4), SBUS on USART1 RX PA10 with inverter PC0, motors on PB0, PB1, PA3,
-and PA2, LED on PB5, and a passive 4 kHz buzzer on PB4. The LED uses the same
-gyroscope-calibration, heartbeat, and receiver-signal patterns as MAMBAF411;
-the buzzer uses the same double-beep pattern.
+The ICM-42688-P follows the selected main-loop rate. MPU6000 targets retain
+their hardware-limited 8 kHz gyro rate and reuse each sample when the main loop
+runs at 16 kHz.
 
-### Flywoo GOKU GN405 Nano HD V3
+## Analog OSD
 
-The `FLYWOOF405NANO` target follows the official Betaflight mapping for the
-current ELRS V3 hardware:
+Boards fitted with a MAX7456/AT7456E provide a 30-column PAL/NTSC OSD layout,
+an in-goggle tuning menu and the original FlightCode Sans font. The layout can
+show total voltage, per-cell voltage, flight time, the FlightCode label and a
+custom pilot name. Battery and clock glyphs are included in the internal font.
 
-- STM32F405 at 168 MHz and ICM-42688-P on SPI1, CS PB12;
-- external SBUS receiver on the pad marked **SBUS(5)**, which is UART5 RX on
-  PD2 through the board's fixed hardware inverter;
-- receiver power from an adjacent **+5V** and **GND** pad;
-- motors M1 PB0, M2 PB1, M3 PA3, M4 PA2;
-- status LED PC14, buzzer control PC13, and battery ADC PC3;
-- built-in ELRS remains unused by FlightCode on UART6.
-
-The HD V3 has no MAX7456/AT7456E and no analog `CAM`/`VTX` video path, so
-analog OSD is intentionally reported as unavailable on this target. Digital video hardware
-can still provide its own OSD when driven by a separately implemented MSP
-DisplayPort link; that link is not part of this target yet. Betaflight's
-historical `FLYWOOF405NANO` definition also covers older revisions and lists a
-MAX7456; FlightCode exposes that hardware separately as
-`FLYWOOF405NANO_ANALOG` to prevent flashing the wrong board variant.
-
-### Flywoo GOKU GN405 Nano analog
-
-The `FLYWOOF405NANO_ANALOG` target enables the onboard MAX7456/AT7456E using
-the official legacy mapping: SPI3 on PC10/PC11/PC12 and OSD chip-select PB14.
-The W25Q128 Blackbox flash remains available on the same bus with its separate
-PB3 chip-select. Both devices use a shared mode-0 SPI configuration. MPU6000
-and ICM-42688-P variants are detected automatically on SPI1, CS PB12.
-
-### HDZero Halo
-
-The `HDZERO_HALO` target follows the official Betaflight hardware mapping:
-
-- STM32H743 at 480 MHz;
-- automatic detection of the MPU6000 and ICM-42688-P Halo variants on SPI1;
-- integrated Gemini ExpressLRS receiver using CRSF on USART1 by default;
-- motor outputs M1 PC6, M2 PC7, M3 PC8 and M4 PC9, with synchronized DShot;
-- battery ADC PC0, status LED PE2 and active-low buzzer PD12;
-- onboard 16 MiB W25Q128 Blackbox flash on SPI2.
-
-The Halo BLHeli_32 4-in-1 ESC is driven directly with DShot300, DShot600 or
-DSHOT1200 through the supplied eight-pin stack cable. ESC telemetry, HDZero
-MSP DisplayPort OSD, VTX control, switchable 9 V BEC control and ELRS telemetry
-back to the receiver are not implemented yet; these omissions do not affect
-basic gyro, receiver or motor operation.
-
-## OSD tuning menu
-
-This menu is available only on targets with an onboard analog OSD chip.
-With the quad disarmed and the ARM switch off, hold throttle high and roll
-right for 0.8 seconds to open the OSD tuning menu.  Center all four sticks
-before navigating.  Pitch selects a parameter, roll changes its value, yaw
-left exits without applying changes, and yaw right applies and saves all
-changes to flash.  Motor output remains inhibited while the menu is open.
-
-The menu includes roll, pitch, and yaw P/I/D/feedforward values, maximum rates,
-expo, TPA attenuation, and the TPA breakpoint.
-
-The configurator also provides a 30x16 drag-and-drop OSD layout editor. The
-firmware persists independent visibility and position settings for total
-battery voltage, per-cell voltage, flight timer, the FlightCode label and a
-custom pilot name (up to 12 uppercase characters). The timer starts on arming,
-stops on disarming and remains visible until the next arming cycle.
-
-The MAX7456 character memory uses FlightCode Sans, an original upright compact
-font defined in `src/drivers/osd/font_flightcode.h`. Its 5x7 source strokes are
-centred without scaling inside each native 12x18 MAX7456 cell and receive a
-one-pixel black outline for contrast. FlightCode installs only the ASCII glyphs
-it currently displays, skips glyphs already present in the chip, and verifies
-each changed glyph after programming. Transient NVM failures are retried without
-preventing the remaining glyphs from being installed. No third-party font data
-is included. The font also provides a clock glyph and four battery states; the
-battery segments follow per-cell voltage rather than total pack voltage.
+Digital OSD through MSP DisplayPort is not implemented yet.
 
 ## Building on Windows
 
@@ -148,32 +60,20 @@ From PowerShell:
 
 ```powershell
 cd C:\SvilST\FlightCode
-# One board (Release, the default)
+
+# Build one Release target
 .\tools\build.ps1 -Board MAMBAF411
 .\tools\build.ps1 -Board CLRACINGF4
 .\tools\build.ps1 -Board FLYWOOF405NANO
 .\tools\build.ps1 -Board FLYWOOF405NANO_ANALOG
 .\tools\build.ps1 -Board HDZERO_HALO
 
-# All boards (Release)
+# Build every target
 .\tools\build.ps1 -Board All
-
-# Debug must be requested explicitly
-.\tools\build.ps1 -Board CLRACINGF4 -Configuration Debug
 ```
 
-Default Release firmware images:
-
-- `build/release/FlightCode-MAMBAF411.hex`
-- `build/clracingf4-release/FlightCode-CLRACINGF4.hex`
-- `build/flywoof405nano-release/FlightCode-FLYWOOF405NANO.hex`
-- `build/flywoof405nano-analog-release/FlightCode-FLYWOOF405NANO_ANALOG.hex`
-- `build/hdzero-halo-release/FlightCode-HDZERO_HALO.hex`
-
-Debug builds are stored in the matching `build/*-debug` directory.
-
-The project can be opened directly in Visual Studio Code with the CMake Tools,
-C/C++, and Cortex-Debug extensions.
+Use `-Configuration Debug` to produce a debug build. The exact output path for
+each target is listed on its dedicated board page.
 
 ## Project structure
 
@@ -181,70 +81,24 @@ C/C++, and Cortex-Debug extensions.
 src/
 ├── app/                 Firmware entry point and main flight loop
 ├── control/             Rate controller, PID logic and motor mixer
-├── drivers/
-│   ├── imu/             MPU6000 and ICM-42688-P drivers
-│   ├── motors/          DSHOT300, DSHOT600 and DSHOT1200 outputs
-│   ├── receiver/        SBUS receiver and frame decoder
-│   └── usb/             USB device and CDC transport
-├── platform/            STM32 board mapping, HAL configuration and interrupts
-├── protocol/            Shared FlightCode Configurator protocol
-└── storage/             Persistent settings and flight log
-linker/                  Board-specific linker scripts
-cmake/                   ARM toolchain configuration
-tools/                   Build helpers
+├── drivers/             IMU, motors, receiver, OSD and USB drivers
+├── platform/            STM32 board mapping, HAL and interrupts
+├── protocol/            FlightCode Configurator protocol
+└── storage/             Settings, flight log and Blackbox storage
+docs/boards/              Board-specific guides
+linker/                   Board-specific linker scripts
+cmake/                    ARM toolchain configuration
+tools/                    Build helpers
 ```
 
-## Persistent Blackbox
+## Configurator
 
-The CLRacingF4 target supports the onboard microSD socket on SPI2
-(PB13/PB14/PB15, CS PB12, detect PB7). Long-flight records are packed into
-independent 512-byte sectors and transferred through DMA from a RAM queue, so
-SD busy time never blocks the 16 kHz control loop. Recording is optional in the
-Configurator. A new log is retained as soon as throttle rises above the 1%
-idle-noise threshold; arming and disarming without touching throttle preserves
-the previous log.
-
-The Blackbox format treats the card as dedicated FlightCode storage; it is not
-a FAT volume and must not contain files that need to be preserved. A persistent
-on-card catalog retains the 20 most recent flight descriptors across power
-cycles. The Configurator can list them, download complete JSON logs through the
-FlightCode USB protocol, or clear the catalog without formatting the card.
-Each sample includes the separated P, I, D and feedforward contributions for
-all three axes. Older blocks remain readable and report a zero feedforward term.
-
-Feedforward uses a smooth progressive curve: 70% of the configured gain around
-stick center, increasing continuously to 100% at the configured maximum rate.
-The Blackbox `ffTerm` field records the resulting contribution after this curve.
-
-The Flywoo target uses its onboard 16 MiB W25Q128 NOR flash. It keeps the most
-recent completed flight and prepares the alternate 8 MiB bank in the
-background. Recording starts only after throttle rises above 1%, so an
-arm/disarm cycle on the bench does not replace the previous flight. The
-Configurator provides physical write/read verification, a synthetic session
-test, detailed flash error diagnostics, catalog listing, JSON download and
-erase controls.
-
-MAMBAF411 has no persistent Blackbox storage in the current target, but its RAM
-flight log remains available through the Configurator.
-
-## USB Configurator
-
-The firmware exposes a USB CDC serial port with telemetry, SBUS channels,
-motor outputs, and PID configuration. After flashing the firmware:
-
-1. restart the board normally without holding BOOT;
-2. launch `C:\SvilST\FlightCodeConfigurator\start-configurator.cmd`;
-3. in Chrome or Edge, select **Connect** and choose FlightCode.
-
-PID settings can only be changed or saved while the quad is disarmed. The last
-sector of internal flash is reserved for persistent settings.
-
-The configurator also exposes persistent gyroscope and D-term low-pass
-cutoffs. Factory defaults are 90 Hz for the gyroscope and 50 Hz for D-term;
-accepted ranges are 50–250 Hz and 20–200 Hz respectively, with the D-term
-cutoff constrained not to exceed the gyroscope cutoff.
+After flashing, restart the board normally, open FlightCode Configurator in
+Chrome or Edge, press **Connect**, and select the FlightCode USB serial device.
+Configuration changes and diagnostic motor output are rejected while armed.
 
 ## Safety
 
 Always perform the first test without propellers. Verify motor order, motor
-direction, gyroscope orientation, failsafe behavior, and the arming command.
+direction, gyroscope orientation, receiver failsafe and the arming command
+before installing propellers.
