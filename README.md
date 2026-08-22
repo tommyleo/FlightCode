@@ -41,9 +41,12 @@ details, build command and firmware output path.
 - USB CDC configuration and restart into STM32 DFU;
 - persistent settings stored in a reserved internal flash sector.
 
-The ICM-42688-P follows the selected main-loop rate. MPU6000 targets retain
-their hardware-limited 8 kHz gyro rate and reuse each sample when the main loop
-runs at 16 kHz.
+The selected main-loop rate controls the main scheduler, motor output and timed
+system tasks. PID updates remain synchronized to fresh gyroscope samples. The
+ICM-42688-P follows the selected 8 or 16 kHz scheduler rate, so its PID update
+rate follows it as well. MPU6000 targets retain their hardware-limited 8 kHz
+gyroscope and PID rate when the main scheduler runs at 16 kHz; the latest motor
+command is held for the intermediate motor-output frame.
 
 ## Analog OSD
 
