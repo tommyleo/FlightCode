@@ -17,6 +17,7 @@ typedef struct {
     uint32_t loop_cycles;
     uint32_t next_loop;
     uint32_t previous_loop_us;
+    uint32_t previous_gyro_update_us;
     uint32_t loop_window_start_us;
     uint32_t loop_window_count;
     uint32_t max_loop_period_us;

@@ -48,6 +48,11 @@ rate follows it as well. MPU6000 targets retain their hardware-limited 8 kHz
 gyroscope and PID rate when the main scheduler runs at 16 kHz; the latest motor
 command is held for the intermediate motor-output frame.
 
+Version 2 Blackbox metadata and version 7 Configurator JSON logs record both
+the measured main-scheduler period and the interval between fresh gyroscope/PID
+updates. Each sample exposes the periods in microseconds and their derived
+frequencies, alongside the separated P/I/D/FF terms.
+
 ## Analog OSD
 
 Boards fitted with a MAX7456/AT7456E provide a 30-column PAL/NTSC OSD layout,

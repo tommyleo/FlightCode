@@ -26,6 +26,8 @@ void flight_control_set_motor_idle_percent(float percent);
 void flight_control_update(const imu_sample_t *imu,
                            const sbus_data_t *receiver,
                            float dt,
+                           uint16_t main_loop_us,
+                           uint16_t gyro_loop_us,
                            uint16_t motor_dshot[4]);
 bool flight_control_is_armed(void);
 bool flight_control_is_calibrated(void);

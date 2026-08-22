@@ -14,11 +14,11 @@
 typedef struct __attribute__((packed)) {
     int16_t gyro[3];       /* 0.1 deg/s */
     int16_t setpoint[3];   /* 0.1 deg/s */
-    int8_t pid[3];         /* 0.5 percent */
     uint8_t motor[4];      /* 0..255 = 0..100 percent */
     uint8_t throttle;      /* 0..200 = 0..100 percent */
     uint8_t flags;         /* bit 0 mixer saturated */
-    uint16_t loop_us;
+    uint16_t main_loop_us;
+    uint16_t gyro_loop_us;
     uint16_t battery_centivolts;
     uint16_t cell_centivolts;
     uint8_t battery_cells;
@@ -26,9 +26,13 @@ typedef struct __attribute__((packed)) {
     int8_t i_term[3];      /* 0.5 percent */
     int8_t d_term[3];      /* 0.5 percent */
     int8_t ff_term[3];     /* 0.5 percent */
+    uint8_t reserved;
 } flight_log_record_t;
 
-#define FLIGHT_LOG_METADATA_VERSION 1U
+_Static_assert(sizeof(flight_log_record_t) == 40U,
+               "flight log record format must remain 40 bytes");
+
+#define FLIGHT_LOG_METADATA_VERSION 2U
 typedef struct __attribute__((packed)) {
     uint32_t version;
     uint32_t main_loop_hz;
@@ -63,9 +67,9 @@ bool flight_log_get_metadata(flight_log_metadata_t *metadata);
 bool flight_log_persist_pending(void);
 void flight_log_persist_if_ready(void);
 void flight_log_record(const float gyro[3], const float setpoint[3],
-                       const float pid[3], const float p_term[3],
+                       const float p_term[3],
                        const float i_term[3], const float d_term[3],
                        const float ff_term[3],
                        const uint16_t motors[4],
                        float throttle_percent, bool mixer_saturated,
-                       uint16_t loop_us);
+                       uint16_t main_loop_us, uint16_t gyro_loop_us);

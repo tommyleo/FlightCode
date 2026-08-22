@@ -9,12 +9,10 @@
 #include "imu.h"
 
 #define FLIGHT_LOG_CAPACITY BOARD_FLIGHT_LOG_CAPACITY
-#define CONTROL_LOOP_HZ 16000U
-#define LOG_DECIMATION (CONTROL_LOOP_HZ / FLIGHT_LOG_RATE_HZ)
 #define DSHOT_MIN 48U
 #define DSHOT_MAX 2047U
 #define LOG_FLASH_MAGIC 0x46344C47U
-#define LOG_FLASH_VERSION 5U
+#define LOG_FLASH_VERSION 6U
 #define LOG_PERSIST_DELAY_US 200000U
 #define LOG_MIN_FLIGHT_THROTTLE_PERCENT 1.0f
 
@@ -33,6 +31,7 @@ static flight_log_record_t records[FLIGHT_LOG_CAPACITY];
 static uint32_t write_index;
 static uint32_t record_count;
 static uint16_t decimation_count;
+static uint16_t log_decimation = 1U;
 static bool recording;
 static bool inhibited;
 static bool using_flash;
@@ -155,6 +154,9 @@ void flight_log_start(void)
     decimation_count = 0U;
     flight_qualified = false;
     const flight_settings_t *const settings = flight_settings_get();
+    log_decimation = (uint16_t)(
+        imu_get_gyro_rate_hz() / FLIGHT_LOG_RATE_HZ);
+    if (log_decimation == 0U) log_decimation = 1U;
     memset(&flight_metadata, 0, sizeof(flight_metadata));
     flight_metadata.version = FLIGHT_LOG_METADATA_VERSION;
     flight_metadata.main_loop_hz = settings->main_loop_hz;
@@ -333,12 +335,12 @@ void flight_log_persist_if_ready(void)
 }
 
 void flight_log_record(const float gyro[3], const float setpoint[3],
-                       const float pid[3], const float p_term[3],
+                       const float p_term[3],
                        const float i_term[3], const float d_term[3],
                        const float ff_term[3],
                        const uint16_t motors[4],
                        float throttle_percent, bool mixer_saturated,
-                       uint16_t loop_us)
+                       uint16_t main_loop_us, uint16_t gyro_loop_us)
 {
     if (!recording || inhibited) return;
     if (!flight_qualified &&
@@ -347,14 +349,13 @@ void flight_log_record(const float gyro[3], const float setpoint[3],
         /* Start persistent logging only once this is a real flight. */
         blackbox_sd_start(&flight_metadata);
     }
-    if (++decimation_count < LOG_DECIMATION) return;
+    if (++decimation_count < log_decimation) return;
     decimation_count = 0U;
 
     flight_log_record_t *const item = &records[write_index];
     for (uint8_t i = 0U; i < 3U; ++i) {
         item->gyro[i] = scaled_i16(gyro[i], 10.0f);
         item->setpoint[i] = scaled_i16(setpoint[i], 10.0f);
-        item->pid[i] = scaled_pid(pid[i]);
         item->p_term[i] = scaled_pid(p_term[i]);
         item->i_term[i] = scaled_pid(i_term[i]);
         item->d_term[i] = scaled_pid(d_term[i]);
@@ -373,10 +374,12 @@ void flight_log_record(const float gyro[3], const float setpoint[3],
     item->throttle = (uint8_t)lroundf(throttle_percent * 2.0f);
     item->flags =
         mixer_saturated ? FLIGHT_LOG_FLAG_MIXER_SATURATED : 0U;
-    item->loop_us = loop_us;
+    item->main_loop_us = main_loop_us;
+    item->gyro_loop_us = gyro_loop_us;
     item->battery_centivolts = battery_centivolts;
     item->cell_centivolts = cell_centivolts;
     item->battery_cells = battery_cells;
+    item->reserved = 0U;
     if (flight_qualified) blackbox_sd_append(item);
 
     write_index = (write_index + 1U) % FLIGHT_LOG_CAPACITY;

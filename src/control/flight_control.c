@@ -253,6 +253,8 @@ void flight_control_set_motor_idle_percent(float percent)
 void flight_control_update(const imu_sample_t *imu,
                            const sbus_data_t *rx,
                            float dt,
+                           uint16_t main_loop_us,
+                           uint16_t gyro_loop_us,
                            uint16_t motors[4])
 {
     const flight_settings_t *settings = flight_settings_get();
@@ -262,7 +264,6 @@ void flight_control_update(const imu_sample_t *imu,
     const uint8_t roll_ch = aetr ? 0U : 1U;
     const uint8_t pitch_ch = aetr ? 1U : 2U;
     const uint8_t yaw_ch = 3U;
-    const float measured_dt = dt;
     dt = clampf(dt, 0.00005f, 0.0005f);
     memset(motors, 0, sizeof(uint16_t) * 4U);
     const float throttle = clampf(
@@ -484,12 +485,9 @@ void flight_control_update(const imu_sample_t *imu,
     const float rates[3] = {rate_roll, rate_pitch, rate_yaw};
     const float setpoints[3] =
         {setpoint_roll, setpoint_pitch, setpoint_yaw};
-    const float pid_output[3] = {roll, pitch, yaw};
-    uint32_t loop_us = (uint32_t)(measured_dt * 1000000.0f + 0.5f);
-    if (loop_us > 65535U) loop_us = 65535U;
-    flight_log_record(rates, setpoints, pid_output, p_term, i_term, d_term,
+    flight_log_record(rates, setpoints, p_term, i_term, d_term,
                       ff_term, motors, throttle,
-                      mixer_saturated, (uint16_t)loop_us);
+                      mixer_saturated, main_loop_us, gyro_loop_us);
 }
 
 bool flight_control_is_armed(void)

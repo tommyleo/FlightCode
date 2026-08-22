@@ -14,7 +14,7 @@
 #define PAGE_BYTES 256U
 #define QUEUE_RECORDS 16U
 #define HEADER_MAGIC 0x42424646U /* FFBB */
-#define HEADER_VERSION 2U
+#define HEADER_VERSION 3U
 #define HEADER_VALID 0xA5U
 #define CMD_JEDEC_ID 0x9FU
 #define CMD_READ 0x03U
@@ -193,7 +193,7 @@ static bool start_erase(uint32_t address)
 static bool header_valid(const flash_header_t *header)
 {
     return header->magic == HEADER_MAGIC &&
-           (header->version == 1U || header->version == HEADER_VERSION) &&
+           header->version == HEADER_VERSION &&
            header->valid == HEADER_VALID &&
            header->record_size == sizeof(flight_log_record_t) &&
            header->record_count <=
@@ -661,7 +661,8 @@ bool blackbox_sd_session_test(void)
     record.gyro[1] = -456;
     record.gyro[2] = 789;
     record.throttle = 20U;
-    record.loop_us = 125U;
+    record.main_loop_us = 63U;
+    record.gyro_loop_us = 125U;
     flight_log_metadata_t metadata = {0};
     blackbox_sd_start(&metadata);
     if (!recording) return false;

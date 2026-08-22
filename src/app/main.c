@@ -14,6 +14,11 @@
 
 #define IMU_FAILURE_LIMIT 8U
 
+static uint16_t timing_us(uint32_t period_us)
+{
+    return period_us > UINT16_MAX ? UINT16_MAX : (uint16_t)period_us;
+}
+
 static bool task_due(loop_task_t *task, uint32_t loop_hz)
 {
     task->phase += task->rate_hz;
@@ -36,6 +41,7 @@ static void main_loop_state_init(main_loop_state_t *state)
         0U, state->loop_hz < 16000U ? state->loop_hz : 16000U};
     state->imu_task = (loop_task_t){0U, imu_get_gyro_rate_hz()};
     state->previous_loop_us = board_micros();
+    state->previous_gyro_update_us = 0U;
     state->loop_window_start_us = state->previous_loop_us;
     state->measured_loop_hz = (float)state->loop_hz;
 }
@@ -116,9 +122,15 @@ static void main_loop_step(main_loop_state_t *state)
     if (imu_updated) {
         state->consecutive_imu_failures = 0U;
         const float control_dt = 1.0f / (float)state->imu_task.rate_hz;
+        const uint32_t gyro_period_us = state->previous_gyro_update_us == 0U
+            ? 1000000U / state->imu_task.rate_hz
+            : loop_start_us - state->previous_gyro_update_us;
+        state->previous_gyro_update_us = loop_start_us;
         if (!tuning_menu_active) {
             flight_control_update(
-                &state->imu, receiver, control_dt, state->motors);
+                &state->imu, receiver, control_dt,
+                timing_us(loop_period_us), timing_us(gyro_period_us),
+                state->motors);
         } else {
             state->motors[0] = state->motors[1] =
                 state->motors[2] = state->motors[3] = 0U;
@@ -156,9 +168,10 @@ static void main_loop_step(main_loop_state_t *state)
     update_osd_if_due(state);
     if (!state->imu_ready &&
         task_due(&state->imu_retry_task, state->loop_hz)) {
-        state->imu_ready = imu_init(state->loop_hz);
-        state->consecutive_imu_failures = 0U;
-        state->next_loop = DWT->CYCCNT;
+            state->imu_ready = imu_init(state->loop_hz);
+            state->consecutive_imu_failures = 0U;
+            state->previous_gyro_update_us = 0U;
+            state->next_loop = DWT->CYCCNT;
     }
     if (task_due(&state->telemetry_task, state->loop_hz)) {
         config_protocol_send_telemetry(

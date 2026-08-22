@@ -49,7 +49,7 @@ bool blackbox_sd_session_test(void) { return false; }
 #define SD_CATALOG_SECTOR (SD_DATA_OFFSET_SECTORS - 1U)
 #define SD_BLOCK_MAGIC 0x42423446U /* F4BB */
 #define SD_CATALOG_MAGIC 0x58494246U /* FBIX */
-#define SD_CATALOG_VERSION 1U
+#define SD_CATALOG_VERSION 2U
 #define SD_CATALOG_FLIGHTS 20U
 
 typedef struct __attribute__((packed)) {
@@ -375,7 +375,7 @@ static bool queue_metadata(const flight_log_metadata_t *metadata)
     current.flight_id = flight_id;
     current.sequence = sequence++;
     current.timestamp_us = board_micros();
-    current.version = 3U;
+    current.version = 5U;
     memcpy(current.records, metadata, sizeof(*metadata));
     current.checksum = checksum_block(&current);
     queue[queue_write] = current;
@@ -553,7 +553,7 @@ bool blackbox_sd_get_record(uint32_t requested_flight_id,
     read_cache_sector = entry->start_sector;
     if (read_cache.magic == SD_BLOCK_MAGIC &&
         read_cache.flight_id == requested_flight_id &&
-        read_cache.version == 3U && read_cache.record_count == 0U &&
+        read_cache.version == 5U && read_cache.record_count == 0U &&
         read_cache.checksum == checksum_block(&read_cache)) {
         metadata_blocks = 1U;
     }
@@ -569,6 +569,7 @@ bool blackbox_sd_get_record(uint32_t requested_flight_id,
     if (read_cache.magic != SD_BLOCK_MAGIC ||
         read_cache.flight_id != requested_flight_id ||
         read_cache.sequence != block_index ||
+        read_cache.version != 4U ||
         read_cache.record_count > SD_RECORDS_PER_BLOCK ||
         record_in_block >= read_cache.record_count ||
         read_cache.checksum != checksum_block(&read_cache)) return false;
@@ -590,7 +591,7 @@ bool blackbox_sd_get_metadata(uint32_t requested_flight_id,
     if (entry == NULL || !read_sector(entry->start_sector, &read_cache) ||
         read_cache.magic != SD_BLOCK_MAGIC ||
         read_cache.flight_id != requested_flight_id ||
-        read_cache.version != 3U || read_cache.record_count != 0U ||
+        read_cache.version != 5U || read_cache.record_count != 0U ||
         read_cache.checksum != checksum_block(&read_cache)) return false;
     memcpy(metadata, read_cache.records, sizeof(*metadata));
     read_cache_valid = true;
@@ -645,7 +646,7 @@ void blackbox_sd_append(const flight_log_record_t *record)
     if (current.record_count == 0U) {
         current.magic = SD_BLOCK_MAGIC; current.flight_id = flight_id;
         current.sequence = sequence++; current.timestamp_us = board_micros();
-        current.version = 2U;
+        current.version = 4U;
     }
     current.records[current.record_count++] = *record;
     if (current.record_count >= SD_RECORDS_PER_BLOCK) queue_current();
