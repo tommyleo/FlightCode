@@ -54,12 +54,26 @@ typedef struct {
     uint32_t osd_element_enabled_mask;
     uint32_t osd_element_positions[OSD_ELEMENT_COUNT];
     char osd_pilot_name[OSD_PILOT_NAME_LENGTH + 1U];
+    uint32_t vtx_protocol;
+    uint32_t vtx_uart;
+    uint32_t vtx_region;
+    uint32_t vtx_band;
+    uint32_t vtx_channel;
+    uint32_t vtx_power_mw;
+    uint32_t vtx_osd_enabled_mask;
+    uint32_t vtx_osd_positions[2];
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U
 #define RECEIVER_ORDER_AETR1234 1U
 #define RECEIVER_PROTOCOL_SBUS 0U
 #define RECEIVER_PROTOCOL_CRSF 1U
+#define VTX_PROTOCOL_OFF 0U
+#define VTX_PROTOCOL_SMARTAUDIO 1U
+#define VTX_PROTOCOL_TRAMP 2U
+#define VTX_PROTOCOL_HDZERO_MSP 3U
+#define VTX_REGION_EU 0U
+#define VTX_REGION_US 1U
 
 void flight_settings_init(void);
 const flight_settings_t *flight_settings_get(void);

@@ -7,6 +7,7 @@
 #include "board.h"
 #include "flight_settings.h"
 #include "max7456.h"
+#include "vtx_tramp.h"
 
 #define MENU_ENTRY_HOLD_US 800000U
 #define MENU_ACTION_REPEAT_US 250000U
@@ -14,7 +15,7 @@
 #define STICK_HIGH_US 1750U
 #define STICK_CENTER_LOW_US 1350U
 #define STICK_CENTER_HIGH_US 1650U
-#define MENU_ITEM_COUNT 18U
+#define MENU_ITEM_COUNT 21U
 #define PID_GAIN_STEP 0.0001f
 #define PID_GAIN_SCALE 10000.0f
 
@@ -37,6 +38,9 @@ typedef enum {
     ITEM_EXPO,
     ITEM_TPA,
     ITEM_TPA_BREAKPOINT,
+    ITEM_VTX_BAND,
+    ITEM_VTX_CHANNEL,
+    ITEM_VTX_POWER,
 } menu_item_t;
 
 static bool active;
@@ -44,7 +48,30 @@ static bool controls_ready;
 static uint8_t selected_item;
 static uint32_t entry_started_us;
 static uint32_t last_action_us;
-static flight_settings_t edited_settings;
+typedef struct {
+    pid_gains_t roll, pitch, yaw;
+    float roll_feedforward, pitch_feedforward, yaw_feedforward;
+    float roll_rate_dps, pitch_rate_dps, yaw_rate_dps;
+    float rate_expo, tpa_attenuation, tpa_breakpoint_percent;
+    uint32_t vtx_band, vtx_channel, vtx_power_mw;
+} menu_settings_t;
+static menu_settings_t edited_settings;
+
+static void load_menu_settings(const flight_settings_t *s)
+{
+    edited_settings = (menu_settings_t){
+        .roll=s->roll,.pitch=s->pitch,.yaw=s->yaw,
+        .roll_feedforward=s->roll_feedforward,
+        .pitch_feedforward=s->pitch_feedforward,
+        .yaw_feedforward=s->yaw_feedforward,
+        .roll_rate_dps=s->roll_rate_dps,.pitch_rate_dps=s->pitch_rate_dps,
+        .yaw_rate_dps=s->yaw_rate_dps,.rate_expo=s->rate_expo,
+        .tpa_attenuation=s->tpa_attenuation,
+        .tpa_breakpoint_percent=s->tpa_breakpoint_percent,
+        .vtx_band=s->vtx_band,.vtx_channel=s->vtx_channel,
+        .vtx_power_mw=s->vtx_power_mw,
+    };
+}
 
 static float clampf(float value, float minimum, float maximum)
 {
@@ -78,7 +105,7 @@ static void format_item(char label[20], char value[20])
         "PITCH P", "PITCH I", "PITCH D", "PITCH FF",
         "YAW P", "YAW I", "YAW D", "YAW FF",
         "ROLL RATE", "PITCH RATE", "YAW RATE",
-        "EXPO", "TPA", "TPA BREAK",
+        "EXPO", "TPA", "TPA BREAK", "VTX BAND", "VTX CHANNEL", "VTX POWER",
     };
     (void)snprintf(label, 20U, "%s", labels[selected_item]);
     switch ((menu_item_t)selected_item) {
@@ -100,6 +127,9 @@ static void format_item(char label[20], char value[20])
     case ITEM_EXPO: (void)snprintf(value, 20U, "%.2f", edited_settings.rate_expo); break;
     case ITEM_TPA: (void)snprintf(value, 20U, "%.0f %%", edited_settings.tpa_attenuation * 100.0f); break;
     case ITEM_TPA_BREAKPOINT: (void)snprintf(value, 20U, "%.0f %%", edited_settings.tpa_breakpoint_percent); break;
+    case ITEM_VTX_BAND: (void)snprintf(value, 20U, "%c", "ABEFRL"[edited_settings.vtx_band]); break;
+    case ITEM_VTX_CHANNEL: (void)snprintf(value, 20U, "CH %lu", (unsigned long)(edited_settings.vtx_channel + 1U)); break;
+    case ITEM_VTX_POWER: (void)snprintf(value, 20U, "%lu MW", (unsigned long)edited_settings.vtx_power_mw); break;
     default: value[0] = '\0'; break;
     }
 }
@@ -145,14 +175,37 @@ static void change_value(int8_t direction)
     case ITEM_EXPO: edited_settings.rate_expo = clampf(edited_settings.rate_expo + sign * 0.01f, 0.0f, 0.9f); break;
     case ITEM_TPA: edited_settings.tpa_attenuation = clampf(edited_settings.tpa_attenuation + sign * 0.01f, 0.0f, 1.0f); break;
     case ITEM_TPA_BREAKPOINT: edited_settings.tpa_breakpoint_percent = clampf(edited_settings.tpa_breakpoint_percent + sign, 0.0f, 100.0f); break;
+    case ITEM_VTX_BAND: edited_settings.vtx_band = direction > 0 ? (edited_settings.vtx_band + 1U) % 6U : (edited_settings.vtx_band + 5U) % 6U; break;
+    case ITEM_VTX_CHANNEL: edited_settings.vtx_channel = direction > 0 ? (edited_settings.vtx_channel + 1U) % 8U : (edited_settings.vtx_channel + 7U) % 8U; break;
+    case ITEM_VTX_POWER: {
+        static const uint16_t powers[] = {25U, 100U, 200U, 400U, 500U, 600U, 1000U};
+        uint8_t index = 0U;
+        while (index + 1U < sizeof(powers) / sizeof(powers[0]) && powers[index] < edited_settings.vtx_power_mw) ++index;
+        index = direction > 0 ? (uint8_t)((index + 1U) % (sizeof(powers) / sizeof(powers[0]))) :
+            (uint8_t)((index + sizeof(powers) / sizeof(powers[0]) - 1U) % (sizeof(powers) / sizeof(powers[0])));
+        edited_settings.vtx_power_mw = powers[index];
+        break;
+    }
     default: break;
     }
 }
 
 static void close_menu(bool save)
 {
-    if (save && flight_settings_set(&edited_settings)) {
-        (void)flight_settings_save();
+    if (save) {
+        flight_settings_t settings = *flight_settings_get();
+        const bool vtx_changed = settings.vtx_band != edited_settings.vtx_band ||
+            settings.vtx_channel != edited_settings.vtx_channel ||
+            settings.vtx_power_mw != edited_settings.vtx_power_mw;
+        settings.roll=edited_settings.roll;settings.pitch=edited_settings.pitch;settings.yaw=edited_settings.yaw;
+        settings.roll_feedforward=edited_settings.roll_feedforward;settings.pitch_feedforward=edited_settings.pitch_feedforward;settings.yaw_feedforward=edited_settings.yaw_feedforward;
+        settings.roll_rate_dps=edited_settings.roll_rate_dps;settings.pitch_rate_dps=edited_settings.pitch_rate_dps;settings.yaw_rate_dps=edited_settings.yaw_rate_dps;
+        settings.rate_expo=edited_settings.rate_expo;settings.tpa_attenuation=edited_settings.tpa_attenuation;settings.tpa_breakpoint_percent=edited_settings.tpa_breakpoint_percent;
+        settings.vtx_band=edited_settings.vtx_band;settings.vtx_channel=edited_settings.vtx_channel;settings.vtx_power_mw=edited_settings.vtx_power_mw;
+        if (flight_settings_set(&settings) && flight_settings_save() &&
+            vtx_changed) {
+            (void)vtx_tramp_init();
+        }
     }
     active = false;
     controls_ready = false;
@@ -203,7 +256,7 @@ void osd_tuning_menu_update(const sbus_data_t *receiver, bool armed)
         if (entry_started_us == 0U) entry_started_us = now;
         if ((uint32_t)(now - entry_started_us) < MENU_ENTRY_HOLD_US) return;
         if (!max7456_menu_begin()) return;
-        edited_settings = *settings;
+        load_menu_settings(settings);
         active = true;
         controls_ready = false;
         selected_item = 0U;

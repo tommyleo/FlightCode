@@ -327,6 +327,8 @@ extern UART_HandleTypeDef hsbus_uart;
 
 void board_init(void);
 bool board_receiver_uart_configure(bool crsf);
+bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
+                                 UART_HandleTypeDef *handle);
 void board_fatal_error(void);
 uint32_t board_micros(void);
 void board_status_led_set(bool enabled);

@@ -12,7 +12,9 @@
 #include "sbus.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 18U
+#define SETTINGS_VERSION 20U
+#define SETTINGS_LEGACY_VERSION_19 19U
+#define SETTINGS_LEGACY_VERSION_18 18U
 #define SETTINGS_LEGACY_VERSION_17 17U
 #define SETTINGS_LEGACY_VERSION_16 16U
 #define SETTINGS_LEGACY_VERSION_15 15U
@@ -179,6 +181,20 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v17_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, vtx_protocol)];
+    uint32_t checksum;
+} legacy_record_v18_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, vtx_band)];
+    uint32_t checksum;
+} legacy_record_v19_t;
+
 _Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
                    sizeof(legacy_settings_v13_t),
                "Flight settings v13 migration layout changed");
@@ -306,6 +322,18 @@ static bool receiver_valid(const flight_settings_t *settings)
            settings->beep_min_us < settings->beep_max_us;
 }
 
+static bool vtx_valid(const flight_settings_t *settings)
+{
+    return settings->vtx_protocol <= VTX_PROTOCOL_HDZERO_MSP &&
+           settings->vtx_uart >= 1U && settings->vtx_uart <= 6U &&
+           settings->vtx_region <= VTX_REGION_US &&
+           settings->vtx_band < 6U && settings->vtx_channel < 8U &&
+           settings->vtx_power_mw >= 1U && settings->vtx_power_mw <= 2000U &&
+           settings->vtx_osd_enabled_mask < 4U &&
+           settings->vtx_osd_positions[0] < 480U &&
+           settings->vtx_osd_positions[1] < 480U;
+}
+
 static void apply(void)
 {
     flight_control_set_gains(&current_settings.roll,
@@ -380,6 +408,14 @@ void flight_settings_reset_defaults(void)
         .osd_element_enabled_mask = 1U,
         .osd_element_positions = {31U, 61U, 51U, 340U, 369U},
         .osd_pilot_name = "PILOT",
+        .vtx_protocol = VTX_PROTOCOL_OFF,
+        .vtx_uart = 3U,
+        .vtx_region = VTX_REGION_EU,
+        .vtx_band = 4U,
+        .vtx_channel = 0U,
+        .vtx_power_mw = 25U,
+        .vtx_osd_enabled_mask = 0U,
+        .vtx_osd_positions = {55U, 85U},
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -411,6 +447,32 @@ void flight_settings_init(void)
         (const legacy_record_v16_t *)SETTINGS_ADDRESS;
     const legacy_record_v17_t *legacy_v17 =
         (const legacy_record_v17_t *)SETTINGS_ADDRESS;
+    const legacy_record_v18_t *legacy_v18 =
+        (const legacy_record_v18_t *)SETTINGS_ADDRESS;
+    const legacy_record_v19_t *legacy_v19 =
+        (const legacy_record_v19_t *)SETTINGS_ADDRESS;
+    if (legacy_v19->magic == SETTINGS_MAGIC &&
+        legacy_v19->version == SETTINGS_LEGACY_VERSION_19 &&
+        legacy_v19->checksum == checksum_bytes(
+            legacy_v19, offsetof(legacy_record_v19_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v19->settings,
+               sizeof(legacy_v19->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
+    if (legacy_v18->magic == SETTINGS_MAGIC &&
+        legacy_v18->version == SETTINGS_LEGACY_VERSION_18 &&
+        legacy_v18->checksum == checksum_bytes(
+            legacy_v18, offsetof(legacy_record_v18_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v18->settings,
+               sizeof(legacy_v18->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v17->magic == SETTINGS_MAGIC &&
         legacy_v17->version == SETTINGS_LEGACY_VERSION_17 &&
         legacy_v17->checksum == checksum_bytes(
@@ -562,6 +624,7 @@ void flight_settings_init(void)
         !feedforward_valid(&stored->settings) ||
         !filters_valid(&stored->settings) ||
         !receiver_valid(&stored->settings) ||
+        !vtx_valid(&stored->settings) ||
         !main_loop_valid(stored->settings.main_loop_hz) ||
         !vbat_multiplier_valid(stored->settings.vbat_multiplier) ||
         !osd_layout_valid(&stored->settings) ||
@@ -606,6 +669,7 @@ bool flight_settings_set(const flight_settings_t *settings)
         !feedforward_valid(settings) ||
         !filters_valid(settings) ||
         !receiver_valid(settings) ||
+        !vtx_valid(settings) ||
         !main_loop_valid(settings->main_loop_hz) ||
         !vbat_multiplier_valid(settings->vbat_multiplier) ||
         !osd_layout_valid(settings) ||

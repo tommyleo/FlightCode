@@ -11,6 +11,7 @@
 #include "osd_tuning_menu.h"
 #include "sbus.h"
 #include "blackbox_sd.h"
+#include "vtx_tramp.h"
 
 #define IMU_FAILURE_LIMIT 8U
 
@@ -104,6 +105,7 @@ static void main_loop_step(main_loop_state_t *state)
         board_status_led_update(receiver->valid,
                                 !flight_control_is_calibrated());
         osd_tuning_menu_update(receiver, flight_control_is_armed());
+        vtx_tramp_update(flight_control_is_armed());
     }
     const bool tuning_menu_active = osd_tuning_menu_is_active();
     if (service_due) {
@@ -193,7 +195,7 @@ int main(void)
     config_protocol_init();
     dshot_init();
     flight_settings_init();
-    dshot_startup_sequence();
+    (void)vtx_tramp_init();
     sbus_init();
     flight_control_init();
     max7456_init();
@@ -201,6 +203,10 @@ int main(void)
 
     main_loop_state_t loop = {0};
     main_loop_state_init(&loop);
+    dshot_startup_sequence();
+    loop.next_loop = DWT->CYCCNT;
+    loop.previous_loop_us = board_micros();
+    loop.loop_window_start_us = loop.previous_loop_us;
 
     while (1) {
         main_loop_step(&loop);

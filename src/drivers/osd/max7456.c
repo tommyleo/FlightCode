@@ -6,6 +6,7 @@
 
 #include "board.h"
 #include "font_flightcode.h"
+#include "flight_settings.h"
 
 #define REG_VM0 0x00U
 #define REG_DMM 0x04U
@@ -395,6 +396,23 @@ static void render_layout(const char *total_voltage, const char *cell_text,
     compose_element(screen, 2U, timer);
     compose_element(screen, 3U, "FLIGHTCODE");
     compose_element(screen, 4U, pilot_name);
+    const flight_settings_t *settings = flight_settings_get();
+    static const char bands[] = "ABEFRL";
+    char vtx_channel[OSD_TEXT_LENGTH + 1U];
+    char vtx_power[OSD_TEXT_LENGTH + 1U];
+    (void)snprintf(vtx_channel, sizeof(vtx_channel), "VTX %c%lu",
+                   bands[settings->vtx_band],
+                   (unsigned long)(settings->vtx_channel + 1U));
+    (void)snprintf(vtx_power, sizeof(vtx_power), "VTX %luMW",
+                   (unsigned long)settings->vtx_power_mw);
+    for (uint8_t item = 0U; item < 2U; ++item) {
+        if ((settings->vtx_osd_enabled_mask & (1U << item)) == 0U) continue;
+        const uint32_t position = settings->vtx_osd_positions[item];
+        const uint8_t column = (uint8_t)(position % SCREEN_COLUMNS);
+        const char *text = item == 0U ? vtx_channel : vtx_power;
+        for (uint8_t i = 0U; i < OSD_TEXT_LENGTH && text[i] != '\0' &&
+             column + i < SCREEN_COLUMNS; ++i) screen[position + i] = text[i];
+    }
 
     for (uint16_t position = 0U; position < sizeof(screen); ++position) {
         const bool changed = render_cache_valid

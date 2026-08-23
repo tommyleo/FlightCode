@@ -130,6 +130,7 @@ add_executable(FlightCode
     src/drivers/osd/max7456.c
     src/drivers/osd/osd_tuning_menu.c
     src/drivers/receiver/sbus.c
+    src/drivers/vtx/vtx_tramp.c
     src/drivers/usb/usb_cdc.c
     src/drivers/usb/usbd_conf.c
     src/drivers/usb/usbd_desc.c
@@ -157,6 +158,7 @@ target_include_directories(FlightCode PRIVATE
     src/drivers/motors
     src/drivers/osd
     src/drivers/receiver
+    src/drivers/vtx
     src/drivers/usb
     src/platform
     src/protocol

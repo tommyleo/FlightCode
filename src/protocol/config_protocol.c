@@ -11,6 +11,7 @@
 #include "max7456.h"
 #include "usb_cdc.h"
 #include "blackbox_sd.h"
+#include "vtx_tramp.h"
 
 #define LINE_LENGTH 192U
 #define CLIENT_TIMEOUT_US 3000000U
@@ -142,8 +143,17 @@ static void send_filters(void)
 static void send_receiver_config(void)
 {
     const flight_settings_t *s = flight_settings_get();
-    reply("@CFG RECEIVER_CONFIG %s %s %lu %lu %lu %lu %lu %lu %u\n",
+    const char *port =
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+        s->receiver_protocol == RECEIVER_PROTOCOL_CRSF ? "UART4" : "UART5";
+#elif defined(BOARD_HDZERO_HALO)
+        s->receiver_protocol == RECEIVER_PROTOCOL_CRSF ? "UART1" : "UART2";
+#else
+        "UART1";
+#endif
+    reply("@CFG RECEIVER_CONFIG %s %s %s %lu %lu %lu %lu %lu %lu %u\n",
           s->receiver_protocol == RECEIVER_PROTOCOL_CRSF ? "ELRS" : "SBUS",
+          port,
           s->receiver_channel_order == RECEIVER_ORDER_AETR1234
               ? "AETR1234" : "TAER1234",
           (unsigned long)(s->arm_channel + 1U),
@@ -177,6 +187,22 @@ static void send_osd_status(void)
 #endif
 }
 
+static void send_vtx_config(void)
+{
+    const flight_settings_t *s = flight_settings_get();
+    static const char bands[] = "ABEFRL";
+    const char *protocol = s->vtx_protocol == VTX_PROTOCOL_SMARTAUDIO
+        ? "SMARTAUDIO" : s->vtx_protocol == VTX_PROTOCOL_TRAMP ? "TRAMP" :
+          s->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP ? "HDZERO_MSP" : "OFF";
+    reply("@CFG VTX_CONFIG %s UART%lu %s %c %lu %lu %u\n", protocol,
+          (unsigned long)s->vtx_uart,
+          s->vtx_region == VTX_REGION_US ? "US" : "EU",
+          bands[s->vtx_band], (unsigned long)(s->vtx_channel + 1U),
+          (unsigned long)s->vtx_power_mw,
+          flight_settings_are_saved() ? 1U : 0U);
+    reply("@CFG VTX_STATUS %s\n", vtx_tramp_status_name());
+}
+
 static void send_osd_layout(void)
 {
 #if BOARD_HAS_OSD
@@ -186,13 +212,16 @@ static void send_osd_layout(void)
     for (size_t i = 0U; pilot[i] != '\0'; ++i) {
         if (pilot[i] == ' ') pilot[i] = '_';
     }
-    reply("@CFG OSD_LAYOUT %lu %lu %lu %lu %lu %lu %s %u\n",
-          (unsigned long)s->osd_element_enabled_mask,
+    reply("@CFG OSD_LAYOUT %lu %lu %lu %lu %lu %lu %lu %lu %s %u\n",
+          (unsigned long)(s->osd_element_enabled_mask |
+                          (s->vtx_osd_enabled_mask << OSD_ELEMENT_COUNT)),
           (unsigned long)s->osd_element_positions[0],
           (unsigned long)s->osd_element_positions[1],
           (unsigned long)s->osd_element_positions[2],
           (unsigned long)s->osd_element_positions[3],
           (unsigned long)s->osd_element_positions[4],
+          (unsigned long)s->vtx_osd_positions[0],
+          (unsigned long)s->vtx_osd_positions[1],
           pilot[0] != '\0' ? pilot : "-",
           flight_settings_are_saved() ? 1U : 0U);
 #endif
@@ -231,11 +260,21 @@ static void process(const char *command)
 #else
         reply("@CFG RECEIVER_PROTOCOLS SBUS\n");
 #endif
+#if defined(BOARD_CLRACINGF4)
+        reply("@CFG SERIAL_PORTS UART1 UART3 UART4 UART6\n");
+#elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+        reply("@CFG SERIAL_PORTS UART4 UART5 UART6\n");
+#elif defined(BOARD_HDZERO_HALO)
+        reply("@CFG SERIAL_PORTS UART1 UART2 UART4\n");
+#else
+        reply("@CFG SERIAL_PORTS UART1\n");
+#endif
 #if BOARD_HAS_BATTERY_VOLTAGE
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
+              "VTX_CONFIG "
 #if BOARD_HAS_OSD
               "OSD_LAYOUT "
 #endif
@@ -252,7 +291,7 @@ static void process(const char *command)
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
-              "TELEMETRY_EXT RECEIVER_CONFIG\n");
+              "TELEMETRY_EXT RECEIVER_CONFIG VTX_CONFIG\n");
 #endif
         send_pids();
         send_motor_protocol();
@@ -264,6 +303,7 @@ static void process(const char *command)
         send_tpa();
         send_filters();
         send_receiver_config();
+        send_vtx_config();
 #if BOARD_HAS_VBAT_CALIBRATION
         send_vbat_multiplier();
 #endif
@@ -339,6 +379,10 @@ static void process(const char *command)
     }
     if (strcmp(command, "GET_RECEIVER_CONFIG") == 0) {
         send_receiver_config();
+        return;
+    }
+    if (strcmp(command, "GET_VTX_CONFIG") == 0) {
+        send_vtx_config();
         return;
     }
     if (strcmp(command, "GET_FLIGHT_LOG_INFO") == 0) {
@@ -751,8 +795,29 @@ static void process(const char *command)
         }
         return;
     }
-    unsigned int osd_mask, osd_positions[OSD_ELEMENT_COUNT];
+    unsigned int osd_mask, osd_positions[OSD_ELEMENT_COUNT], vtx_osd_positions[2];
     char osd_pilot[OSD_PILOT_NAME_LENGTH + 1U];
+    if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %u %u %12s",
+               &osd_mask, &osd_positions[0], &osd_positions[1],
+               &osd_positions[2], &osd_positions[3], &osd_positions[4],
+               &vtx_osd_positions[0], &vtx_osd_positions[1], osd_pilot) == 9) {
+        settings.osd_element_enabled_mask = osd_mask &
+            ((1U << OSD_ELEMENT_COUNT) - 1U);
+        settings.vtx_osd_enabled_mask = (osd_mask >> OSD_ELEMENT_COUNT) & 3U;
+        for (uint8_t i = 0U; i < OSD_ELEMENT_COUNT; ++i)
+            settings.osd_element_positions[i] = osd_positions[i];
+        settings.vtx_osd_positions[0] = vtx_osd_positions[0];
+        settings.vtx_osd_positions[1] = vtx_osd_positions[1];
+        if (strcmp(osd_pilot, "-") == 0) osd_pilot[0] = '\0';
+        for (size_t i = 0U; osd_pilot[i] != '\0'; ++i)
+            if (osd_pilot[i] == '_') osd_pilot[i] = ' ';
+        (void)snprintf(settings.osd_pilot_name,
+                       sizeof(settings.osd_pilot_name), "%s", osd_pilot);
+        reply(flight_settings_set(&settings) ? "@CFG OK SET_OSD_LAYOUT\n" :
+              "@CFG ERROR INVALID_OSD_LAYOUT\n");
+        send_osd_layout();
+        return;
+    }
     if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %12s",
                &osd_mask, &osd_positions[0], &osd_positions[1],
                &osd_positions[2], &osd_positions[3], &osd_positions[4],
@@ -775,9 +840,62 @@ static void process(const char *command)
         }
         return;
     }
-    char receiver_protocol[8], receiver_order[16];
+    char receiver_protocol[8], receiver_port[8], receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
+    if (sscanf(command, "SET_RECEIVER_CONFIG %7s %7s %15s %u %u %u %u %u %u",
+               receiver_protocol, receiver_port, receiver_order, &arm_channel,
+               &arm_min, &arm_max, &beep_channel, &beep_min, &beep_max) == 9) {
+        const char *required_port =
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+            strcmp(receiver_protocol, "ELRS") == 0 ? "UART4" : "UART5";
+#elif defined(BOARD_HDZERO_HALO)
+            strcmp(receiver_protocol, "ELRS") == 0 ? "UART1" : "UART2";
+#else
+            "UART1";
+#endif
+        if (strcmp(receiver_port, required_port) != 0) {
+            reply("@CFG ERROR INVALID_RECEIVER_PORT\n");
+            return;
+        }
+        char compatible[160];
+        (void)snprintf(compatible, sizeof(compatible),
+                       "SET_RECEIVER_CONFIG %s %s %u %u %u %u %u %u",
+                       receiver_protocol, receiver_order, arm_channel, arm_min,
+                       arm_max, beep_channel, beep_min, beep_max);
+        process(compatible);
+        return;
+    }
+    char vtx_protocol[16], vtx_port[8], vtx_region[4], vtx_band;
+    unsigned int vtx_uart, vtx_channel, vtx_power;
+    if (sscanf(command, "SET_VTX_CONFIG %15s %7s %3s %c %u %u",
+               vtx_protocol, vtx_port, vtx_region, &vtx_band,
+               &vtx_channel, &vtx_power) == 6) {
+        if (strcmp(vtx_protocol, "OFF") == 0) settings.vtx_protocol = VTX_PROTOCOL_OFF;
+        else if (strcmp(vtx_protocol, "SMARTAUDIO") == 0) settings.vtx_protocol = VTX_PROTOCOL_SMARTAUDIO;
+        else if (strcmp(vtx_protocol, "TRAMP") == 0) settings.vtx_protocol = VTX_PROTOCOL_TRAMP;
+        else if (strcmp(vtx_protocol, "HDZERO_MSP") == 0) settings.vtx_protocol = VTX_PROTOCOL_HDZERO_MSP;
+        else { reply("@CFG ERROR INVALID_VTX_PROTOCOL\n"); return; }
+        if (sscanf(vtx_port, "UART%u", &vtx_uart) != 1 ||
+            (vtx_uart < 1U || vtx_uart > 6U)) {
+            reply("@CFG ERROR INVALID_VTX_PORT\n"); return;
+        }
+        settings.vtx_uart = vtx_uart;
+        if (strcmp(vtx_region, "EU") == 0) settings.vtx_region = VTX_REGION_EU;
+        else if (strcmp(vtx_region, "US") == 0) settings.vtx_region = VTX_REGION_US;
+        else { reply("@CFG ERROR INVALID_VTX_REGION\n"); return; }
+        const char *band_position = strchr("ABEFRL", vtx_band);
+        if (band_position == NULL || vtx_channel < 1U || vtx_channel > 8U ||
+            vtx_power < 1U || vtx_power > 2000U) {
+            reply("@CFG ERROR INVALID_VTX_CHANNEL\n"); return;
+        }
+        settings.vtx_band = (uint32_t)(band_position - "ABEFRL");
+        settings.vtx_channel = vtx_channel - 1U;
+        settings.vtx_power_mw = vtx_power;
+        reply(flight_settings_set(&settings) ? "@CFG OK SET_VTX_CONFIG\n" : "@CFG ERROR INVALID_VTX_CONFIG\n");
+        send_vtx_config();
+        return;
+    }
     if (sscanf(command, "SET_RECEIVER_CONFIG %7s %15s %u %u %u %u %u %u",
                receiver_protocol, receiver_order, &arm_channel, &arm_min, &arm_max,
                &beep_channel, &beep_min, &beep_max) == 8) {

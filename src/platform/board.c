@@ -24,6 +24,60 @@ static ADC_HandleTypeDef hadc1;
 
 static void jump_to_system_bootloader(void) __attribute__((noreturn));
 
+bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
+                                 UART_HandleTypeDef *handle)
+{
+    USART_TypeDef *instance = NULL;
+    GPIO_TypeDef *gpio_port = NULL;
+    uint16_t gpio_pin = 0U;
+    uint32_t gpio_af = 0U;
+
+#if defined(BOARD_MAMBAF411) || defined(BOARD_CLRACINGF4)
+    if (port == 1U) {
+        instance = USART1; gpio_port = GPIOA; gpio_pin = GPIO_PIN_9;
+        gpio_af = GPIO_AF7_USART1; __HAL_RCC_USART1_CLK_ENABLE();
+    }
+#endif
+#if defined(BOARD_CLRACINGF4)
+    if (port == 3U) {
+        instance = USART3; gpio_port = GPIOB; gpio_pin = GPIO_PIN_10;
+        gpio_af = GPIO_AF7_USART3; __HAL_RCC_USART3_CLK_ENABLE();
+    } else if (port == 4U) {
+        instance = UART4; gpio_port = GPIOA; gpio_pin = GPIO_PIN_0;
+        gpio_af = GPIO_AF8_UART4; __HAL_RCC_UART4_CLK_ENABLE();
+    } else if (port == 6U) {
+        instance = USART6; gpio_port = GPIOC; gpio_pin = GPIO_PIN_6;
+        gpio_af = GPIO_AF8_USART6; __HAL_RCC_USART6_CLK_ENABLE();
+    }
+#elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+    if (port == 4U) {
+        instance = UART4; gpio_port = GPIOA; gpio_pin = GPIO_PIN_0;
+        gpio_af = GPIO_AF8_UART4; __HAL_RCC_UART4_CLK_ENABLE();
+    } else if (port == 5U) {
+        instance = UART5; gpio_port = GPIOC; gpio_pin = GPIO_PIN_12;
+        gpio_af = GPIO_AF8_UART5; __HAL_RCC_UART5_CLK_ENABLE();
+    } else if (port == 6U) {
+        instance = USART6; gpio_port = GPIOC; gpio_pin = GPIO_PIN_6;
+        gpio_af = GPIO_AF8_USART6; __HAL_RCC_USART6_CLK_ENABLE();
+    }
+#endif
+    if (instance == NULL) return false;
+
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = gpio_pin; gpio.Mode = GPIO_MODE_AF_OD;
+    gpio.Pull = GPIO_PULLUP; gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpio.Alternate = gpio_af;
+    HAL_GPIO_Init(gpio_port, &gpio);
+
+    *handle = (UART_HandleTypeDef){0};
+    handle->Instance = instance; handle->Init.BaudRate = baud_rate;
+    handle->Init.WordLength = UART_WORDLENGTH_8B;
+    handle->Init.StopBits = UART_STOPBITS_1; handle->Init.Parity = UART_PARITY_NONE;
+    handle->Init.Mode = UART_MODE_TX_RX; handle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    handle->Init.OverSampling = UART_OVERSAMPLING_16;
+    return HAL_HalfDuplex_Init(handle) == HAL_OK;
+}
+
 static void isolate_receiver_from_bootloader(void)
 {
 #if BOARD_HAS_SBUS_INVERTER_CONTROL
