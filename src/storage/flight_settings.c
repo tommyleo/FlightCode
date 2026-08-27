@@ -367,9 +367,9 @@ static void apply(void)
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
 {
-    settings->roll = (pid_gains_t){0.1005f, 0.200f, 0.0009f};
-    settings->pitch = (pid_gains_t){0.1005f, 0.200f, 0.0007f};
-    settings->yaw = (pid_gains_t){0.155f, 0.250f, 0.0f};
+    settings->roll = (pid_gains_t){0.10100f, 0.19000f, 0.00120f};
+    settings->pitch = (pid_gains_t){0.09950f, 0.20000f, 0.00100f};
+    settings->yaw = (pid_gains_t){0.15000f, 0.25000f, 0.00000f};
     settings->roll_rate_dps = 420.0f;
     settings->pitch_rate_dps = 420.0f;
     settings->yaw_rate_dps = 350.0f;

@@ -32,9 +32,9 @@ typedef struct {
     bool initialized;
 } pt1_filter_t;
 
-static pid_gains_t roll_gains = {0.1005f, 0.200f, 0.0009f};
-static pid_gains_t pitch_gains = {0.1005f, 0.200f, 0.0007f};
-static pid_gains_t yaw_gains = {0.155f, 0.250f, 0.0f};
+static pid_gains_t roll_gains = {0.10100f, 0.19000f, 0.00120f};
+static pid_gains_t pitch_gains = {0.09950f, 0.20000f, 0.00100f};
+static pid_gains_t yaw_gains = {0.15000f, 0.25000f, 0.00000f};
 static pid_state_t roll_state, pitch_state, yaw_state;
 static float bias_x, bias_y, bias_z;
 static float sum_x, sum_y, sum_z;
