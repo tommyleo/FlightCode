@@ -16,6 +16,7 @@
 #define LINE_LENGTH 192U
 #define CLIENT_TIMEOUT_US 3000000U
 #define MOTOR_TEST_TIMEOUT_US 1000000U
+#define BLACKBOX_CHUNK_MAX 16U
 
 static char input_line[LINE_LENGTH];
 static size_t input_length;
@@ -531,7 +532,9 @@ static void process(const char *command)
             reply("@CFG ERROR BLACKBOX_RECORDING\n");
             return;
         }
-        if (blackbox_count > 4U) blackbox_count = 4U;
+        if (blackbox_count > BLACKBOX_CHUNK_MAX) {
+            blackbox_count = BLACKBOX_CHUNK_MAX;
+        }
         uint32_t sent = 0U;
         for (; sent < blackbox_count; ++sent) {
             flight_log_record_t item;

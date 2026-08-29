@@ -115,6 +115,7 @@ static uint8_t queue_read;
 static uint8_t queue_write;
 static uint8_t queue_count;
 static blackbox_block_t current;
+static uint8_t read_clocks[SD_BLOCK_SIZE];
 typedef enum { WRITE_IDLE, WRITE_DMA, WRITE_RESPONSE, WRITE_BUSY } write_state_t;
 static volatile bool dma_complete;
 static write_state_t write_state;
@@ -238,8 +239,10 @@ static bool read_sector(uint32_t sector, void *data)
         select_card(false); transfer(0xFFU); return false;
     }
     uint8_t *const bytes = (uint8_t *)data;
-    for (uint32_t i = 0U; i < SD_BLOCK_SIZE; ++i) {
-        bytes[i] = transfer(0xFFU);
+    memset(read_clocks, 0xFF, sizeof(read_clocks));
+    if (HAL_SPI_TransmitReceive(&SDCARD_SPI_HANDLE, read_clocks, bytes,
+                                SD_BLOCK_SIZE, 100U) != HAL_OK) {
+        select_card(false); transfer(0xFFU); return false;
     }
     transfer(0xFFU); transfer(0xFFU);
     select_card(false); transfer(0xFFU);

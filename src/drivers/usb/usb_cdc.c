@@ -9,7 +9,7 @@
 
 #define RX_USB_SIZE 64U
 #define RX_RING_SIZE 512U
-#define TX_RING_SIZE 1024U
+#define TX_RING_SIZE 4096U
 
 static USBD_HandleTypeDef usb_device;
 static uint8_t usb_rx[RX_USB_SIZE];
