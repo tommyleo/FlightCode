@@ -101,8 +101,13 @@ tools/                    Build helpers
 
 ## Configurator
 
-After flashing, restart the board normally, open FlightCode Configurator in
-Chrome or Edge, press **Connect**, and select the FlightCode USB serial device.
+Use the shared **[FlightCode Configurator](https://github.com/tommyleo/FlightCodeConfigurator)**
+to flash supported firmware, configure PID and rates, select filters and motor
+protocol, calibrate the board, run protected diagnostics, and download flight
+logs or persistent Blackbox recordings.
+
+After flashing, restart the board normally, launch the Configurator in Chrome
+or Edge, press **Connect**, and select the FlightCode USB serial device.
 Configuration changes and diagnostic motor output are rejected while armed.
 
 ## Safety
