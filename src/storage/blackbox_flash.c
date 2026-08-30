@@ -12,9 +12,9 @@
 #define BANK_HEADER_BYTES 256U
 #define ERASE_BLOCK_BYTES (64U * 1024U)
 #define PAGE_BYTES 256U
-#define QUEUE_RECORDS 16U
+#define QUEUE_RECORDS 32U
 #define HEADER_MAGIC 0x42424646U /* FFBB */
-#define HEADER_VERSION 3U
+#define HEADER_VERSION 4U
 #define HEADER_VALID 0xA5U
 #define CMD_JEDEC_ID 0x9FU
 #define CMD_READ 0x03U
@@ -62,11 +62,13 @@ static uint32_t record_count;
 static uint32_t written_bytes;
 static uint32_t dropped_records;
 static uint8_t stop_flag_pending;
-static flight_log_record_t queue[QUEUE_RECORDS];
+static blackbox_record_t queue[QUEUE_RECORDS];
 static uint8_t queue_read;
 static uint8_t queue_write;
 static uint8_t queue_count;
 static uint8_t record_program_offset;
+static uint16_t program_length;
+static uint8_t program_buffer[PAGE_BYTES];
 typedef enum { OP_NONE, OP_HEADER, OP_RECORD, OP_FINAL, OP_ERASE } flash_op_t;
 typedef enum {
     ERR_NONE = 0, ERR_RESET, ERR_JEDEC, ERR_HEADER_READ,
@@ -163,7 +165,8 @@ static bool read_bytes(uint32_t address, void *destination, uint32_t length)
     return ok;
 }
 
-static bool start_program(uint32_t address, const void *source, uint8_t length)
+static bool start_program(uint32_t address, const void *source,
+                          uint16_t length)
 {
     if (!write_enable()) return false;
     uint8_t command[4] = {CMD_PAGE_PROGRAM, (uint8_t)(address >> 16),
@@ -194,11 +197,11 @@ static bool header_valid(const flash_header_t *header)
 {
     return header->magic == HEADER_MAGIC &&
            header->version == HEADER_VERSION &&
-           header->valid == HEADER_VALID &&
-           header->record_size == sizeof(flight_log_record_t) &&
+           header->record_size == sizeof(blackbox_record_t) &&
+           header->valid == HEADER_VALID && header->record_size > 0U &&
            header->record_count <=
                (BANK_BYTES - BANK_HEADER_BYTES) /
-                   sizeof(flight_log_record_t);
+                   header->record_size;
 }
 
 static bool header_erased(const flash_header_t *header)
@@ -236,6 +239,7 @@ void blackbox_sd_init(void)
     retained_bank = 0xFFU;
     queue_read = queue_write = queue_count = 0U;
     record_program_offset = 0U;
+    program_length = 0U;
     written_bytes = dropped_records = 0U;
 
     /* Match the W25Q128 startup sequence used by Betaflight.  This also
@@ -305,7 +309,7 @@ void blackbox_sd_update(void)
             fail(ERR_STATUS_TIMEOUT,
                  operation == OP_ERASE ? erase_address :
                  bank_address(write_bank) + BANK_HEADER_BYTES +
-                    record_count * sizeof(flight_log_record_t) +
+                    record_count * sizeof(blackbox_record_t) +
                     record_program_offset,
                  status);
             return;
@@ -332,22 +336,24 @@ void blackbox_sd_update(void)
                 }
             }
         } else if (completed == OP_RECORD) {
-            const uint32_t address = bank_address(write_bank) +
-                BANK_HEADER_BYTES + record_count * sizeof(flight_log_record_t) +
-                record_program_offset;
-            const uint8_t remaining =
-                (uint8_t)(sizeof(flight_log_record_t) - record_program_offset);
-            const uint16_t page_remaining =
-                PAGE_BYTES - (address & (PAGE_BYTES - 1U));
-            if (remaining > page_remaining) {
-                record_program_offset += (uint8_t)page_remaining;
-            } else {
+            uint16_t consumed = program_length;
+            while (consumed > 0U && queue_count > 0U) {
+                const uint16_t remaining = (uint16_t)
+                    (sizeof(blackbox_record_t) - record_program_offset);
+                if (consumed < remaining) {
+                    record_program_offset =
+                        (uint8_t)(record_program_offset + consumed);
+                    consumed = 0U;
+                    break;
+                }
+                consumed = (uint16_t)(consumed - remaining);
                 record_program_offset = 0U;
                 queue_read = (uint8_t)((queue_read + 1U) % QUEUE_RECORDS);
                 --queue_count;
                 ++record_count;
-                written_bytes += sizeof(flight_log_record_t);
+                written_bytes += sizeof(blackbox_record_t);
             }
+            program_length = 0U;
         } else if (completed == OP_FINAL) {
             recording = false;
             const uint8_t old = retained_bank;
@@ -382,17 +388,32 @@ void blackbox_sd_update(void)
     }
     if (queue_count > 0U) {
         const uint32_t address = bank_address(write_bank) +
-            BANK_HEADER_BYTES + record_count * sizeof(flight_log_record_t) +
+            BANK_HEADER_BYTES + record_count * sizeof(blackbox_record_t) +
             record_program_offset;
-        const uint8_t remaining =
-            (uint8_t)(sizeof(flight_log_record_t) - record_program_offset);
         const uint16_t page_remaining =
             PAGE_BYTES - (address & (PAGE_BYTES - 1U));
-        const uint8_t length = remaining < page_remaining
-            ? remaining : (uint8_t)page_remaining;
-        if (!start_program(address,
-                (const uint8_t *)&queue[queue_read] + record_program_offset,
-                length)) fail(ERR_PROGRAM_WREN, address, status_register());
+        const uint16_t queued_bytes = (uint16_t)
+            (queue_count * sizeof(blackbox_record_t) - record_program_offset);
+        if (queued_bytes < page_remaining && !finalise_pending) return;
+        program_length = queued_bytes < page_remaining
+            ? queued_bytes : page_remaining;
+        uint16_t copied = 0U;
+        uint8_t queue_index = queue_read;
+        uint8_t source_offset = record_program_offset;
+        while (copied < program_length) {
+            uint16_t length = (uint16_t)
+                (sizeof(blackbox_record_t) - source_offset);
+            if (length > program_length - copied)
+                length = (uint16_t)(program_length - copied);
+            memcpy(program_buffer + copied,
+                   (const uint8_t *)&queue[queue_index] + source_offset,
+                   length);
+            copied = (uint16_t)(copied + length);
+            source_offset = 0U;
+            queue_index = (uint8_t)((queue_index + 1U) % QUEUE_RECORDS);
+        }
+        if (!start_program(address, program_buffer, program_length))
+            fail(ERR_PROGRAM_WREN, address, status_register());
         else operation = OP_RECORD;
         return;
     }
@@ -445,7 +466,7 @@ uint32_t blackbox_sd_total_bytes(void)
     flash_header_t header;
     return read_bytes(bank_address(retained_bank), &header, sizeof(header)) &&
            header_valid(&header)
-        ? header.record_count * sizeof(flight_log_record_t) : 0U;
+        ? header.record_count * header.record_size : 0U;
 }
 uint32_t blackbox_sd_flight_count(void) { return retained_bank <= 1U ? 1U : 0U; }
 
@@ -458,14 +479,16 @@ bool blackbox_sd_get_flight(uint32_t index, blackbox_sd_flight_info_t *info)
         !header_valid(&header)) return false;
     info->flight_id = header.flight_id;
     info->record_count = header.record_count;
-    info->block_count = (header.record_count * sizeof(flight_log_record_t) +
+    info->block_count = (header.record_count * header.record_size +
                          PAGE_BYTES - 1U) / PAGE_BYTES;
     info->stop_flag = header.stop_flag;
+    info->sample_rate_hz = (uint16_t)(header.metadata.log_rate_hz != 0U
+        ? header.metadata.log_rate_hz : FLIGHT_LOG_RATE_HZ);
     return true;
 }
 
 bool blackbox_sd_get_record(uint32_t flight_id, uint32_t index,
-                            flight_log_record_t *record)
+                            blackbox_record_t *record)
 {
     if (retained_bank > 1U || record == NULL || blackbox_sd_is_busy())
         return false;
@@ -473,8 +496,9 @@ bool blackbox_sd_get_record(uint32_t flight_id, uint32_t index,
     if (!read_bytes(bank_address(retained_bank), &header, sizeof(header)) ||
         !header_valid(&header) || header.flight_id != flight_id ||
         index >= header.record_count) return false;
-    return read_bytes(bank_address(retained_bank) + BANK_HEADER_BYTES +
-                      index * sizeof(*record), record, sizeof(*record));
+    const uint32_t address = bank_address(retained_bank) + BANK_HEADER_BYTES +
+        index * header.record_size;
+    return read_bytes(address, record, sizeof(*record));
 }
 
 bool blackbox_sd_get_metadata(uint32_t flight_id,
@@ -484,7 +508,7 @@ bool blackbox_sd_get_metadata(uint32_t flight_id,
         return false;
     flash_header_t header;
     if (!read_bytes(bank_address(retained_bank), &header, sizeof(header)) ||
-        !header_valid(&header) || header.version != HEADER_VERSION ||
+        !header_valid(&header) ||
         header.flight_id != flight_id ||
         header.metadata.version != FLIGHT_LOG_METADATA_VERSION) return false;
     *metadata = header.metadata;
@@ -509,12 +533,13 @@ static void begin_recording(void)
     header.magic = HEADER_MAGIC;
     header.version = HEADER_VERSION;
     header.flight_id = next_flight_id++;
-    header.record_size = sizeof(flight_log_record_t);
+    header.record_size = sizeof(blackbox_record_t);
     header.metadata = pending_metadata;
     record_count = 0U;
     written_bytes = dropped_records = 0U;
     queue_read = queue_write = queue_count = 0U;
     record_program_offset = 0U;
+    program_length = 0U;
     finalise_pending = false;
     if (!start_program(bank_address(write_bank), &header,
                        (uint8_t)(20U + sizeof(header.metadata)))) {
@@ -550,10 +575,10 @@ void blackbox_sd_start(const flight_log_metadata_t *metadata)
     begin_recording();
 }
 
-void blackbox_sd_append(const flight_log_record_t *record)
+void blackbox_sd_append(const blackbox_record_t *record)
 {
     const uint32_t maximum =
-        (BANK_BYTES - BANK_HEADER_BYTES) / sizeof(flight_log_record_t);
+        (BANK_BYTES - BANK_HEADER_BYTES) / sizeof(blackbox_record_t);
     ++diagnostics.append_calls;
     if (!recording || finalise_pending || record == NULL) return;
     if (record_count + queue_count >= maximum || queue_count >= QUEUE_RECORDS) {
@@ -655,14 +680,13 @@ bool blackbox_sd_session_test(void)
 {
     if (state != BLACKBOX_SD_READY || recording || blackbox_sd_is_busy() ||
         write_bank > 1U || write_bank == retained_bank) return false;
-    flight_log_record_t record;
+    blackbox_record_t record;
     memset(&record, 0, sizeof(record));
-    record.gyro[0] = 123;
-    record.gyro[1] = -456;
-    record.gyro[2] = 789;
+    record.gyro_filtered[0] = 123;
+    record.gyro_filtered[1] = -456;
+    record.gyro_filtered[2] = 789;
     record.throttle = 20U;
-    record.main_loop_us = 63U;
-    record.gyro_loop_us = 125U;
+    record.format_version = BLACKBOX_RECORD_VERSION;
     flight_log_metadata_t metadata = {0};
     blackbox_sd_start(&metadata);
     if (!recording) return false;

@@ -19,11 +19,18 @@
 #define AIRMODE_ACTIVATION_THROTTLE_PERCENT 10.0f
 #define ARM_THROTTLE_MAX_PERCENT 5.0f
 #define FEEDFORWARD_CENTER_SCALE 0.70f
+#define DYNAMIC_D_RATE_START_DPS 150.0f
+#define DYNAMIC_D_RATE_FULL_DPS 500.0f
+#define DYNAMIC_D_ACCEL_START_DPS2 1000.0f
+#define DYNAMIC_D_ACCEL_FULL_DPS2 6000.0f
+#define DYNAMIC_D_ATTACK_S 0.010f
+#define DYNAMIC_D_RELEASE_S 0.080f
 
 typedef struct {
     float integral;
     float previous_rate;
     float dterm;
+    float dynamic_d_activity;
     float relaxed_setpoint;
 } pid_state_t;
 
@@ -108,11 +115,12 @@ static float progressive_feedforward(float gain, float setpoint,
 
 static float pid(pid_state_t *state, const pid_gains_t *gains,
                   float setpoint, float rate, float feedforward,
-                  float max_rate_dps, float dt, float limit, float tpa_factor,
-                 float dterm_lpf_hz, bool integral_enabled,
+                 float max_rate_dps, float dt, float limit, float tpa_factor,
+                 float dterm_lpf_hz, float dynamic_d_boost_percent,
+                 bool integral_enabled,
                   bool relax_integral,
                   float *p_out, float *i_out,
-                  float *d_out, float *ff_out)
+                  float *d_unfiltered_out, float *d_out, float *ff_out)
 {
     const float error = setpoint - rate;
     float integral_factor = 1.0f;
@@ -145,9 +153,26 @@ static float pid(pid_state_t *state, const pid_gains_t *gains,
     const float d_alpha =
         dt / (1.0f / (2.0f * FLIGHT_PI_F * dterm_lpf_hz) + dt);
     state->dterm += d_alpha * (derivative - state->dterm);
+    const float rate_activity = clampf(
+        (fabsf(rate) - DYNAMIC_D_RATE_START_DPS) /
+            (DYNAMIC_D_RATE_FULL_DPS - DYNAMIC_D_RATE_START_DPS),
+        0.0f, 1.0f);
+    const float propwash_activity = clampf(
+        (fabsf(state->dterm) - DYNAMIC_D_ACCEL_START_DPS2) /
+            (DYNAMIC_D_ACCEL_FULL_DPS2 - DYNAMIC_D_ACCEL_START_DPS2),
+        0.0f, 1.0f);
+    const float target_activity = fmaxf(rate_activity, propwash_activity);
+    const float activity_time = target_activity > state->dynamic_d_activity
+        ? DYNAMIC_D_ATTACK_S : DYNAMIC_D_RELEASE_S;
+    state->dynamic_d_activity += dt / (activity_time + dt) *
+        (target_activity - state->dynamic_d_activity);
+    const float dynamic_d_multiplier = 1.0f +
+        dynamic_d_boost_percent * 0.01f * state->dynamic_d_activity;
     *p_out = gains->kp * tpa_factor * error;
     *i_out = state->integral;
-    *d_out = gains->kd * tpa_factor * state->dterm;
+    *d_unfiltered_out = gains->kd * tpa_factor * dynamic_d_multiplier *
+        derivative;
+    *d_out = gains->kd * tpa_factor * dynamic_d_multiplier * state->dterm;
     *ff_out = progressive_feedforward(feedforward, setpoint,
                                       max_rate_dps);
     return clampf(*p_out + *i_out + *d_out + *ff_out,
@@ -403,31 +428,33 @@ void flight_control_update(const imu_sample_t *imu,
         throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
         airmode_active = true;
     }
-    float p_term[3], i_term[3], d_term[3], ff_term[3];
+    float p_term[3], i_term[3], d_unfiltered[3], d_term[3], ff_term[3];
     const float roll = pid(&roll_state, &roll_gains,
                            setpoint_roll,
                            rate_roll, roll_feedforward, roll_rate_dps,
                            dt, 35.0f,
                            tpa_factor, settings->dterm_lpf_hz,
+                           settings->dynamic_d_boost_percent,
                             airmode_active, false,
                             &p_term[0], &i_term[0],
-                            &d_term[0], &ff_term[0]);
+                            &d_unfiltered[0], &d_term[0], &ff_term[0]);
     const float pitch = pid(&pitch_state, &pitch_gains,
                             setpoint_pitch,
                             rate_pitch, pitch_feedforward, pitch_rate_dps,
                             dt, 35.0f,
                             tpa_factor, settings->dterm_lpf_hz,
+                            settings->dynamic_d_boost_percent,
                              airmode_active, false,
                              &p_term[1], &i_term[1],
-                             &d_term[1], &ff_term[1]);
+                             &d_unfiltered[1], &d_term[1], &ff_term[1]);
     const float yaw = pid(&yaw_state, &yaw_gains,
                           setpoint_yaw,
                           rate_yaw, yaw_feedforward, yaw_rate_dps,
                           dt, 25.0f,
-                          tpa_factor, settings->dterm_lpf_hz,
+                          tpa_factor, settings->dterm_lpf_hz, 0.0f,
                           airmode_active, true,
                           &p_term[2], &i_term[2],
-                          &d_term[2], &ff_term[2]);
+                          &d_unfiltered[2], &d_term[2], &ff_term[2]);
     const float mixer_yaw = motor_direction_reversed ? -yaw : yaw;
     const float pid_authority = airmode_active ? 1.0f :
         clampf(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT, 0.0f, 1.0f);
@@ -483,11 +510,17 @@ void flight_control_update(const imu_sample_t *imu,
         motors[i] = dshot_from_percent(base + correction[i] * scale);
     }
     const float rates[3] = {rate_roll, rate_pitch, rate_yaw};
+    const float raw_rates[3] = {imu->gyro_x_dps - bias_x,
+                                imu->gyro_y_dps - bias_y,
+                                imu->gyro_z_dps - bias_z};
     const float setpoints[3] =
         {setpoint_roll, setpoint_pitch, setpoint_yaw};
-    flight_log_record(rates, setpoints, p_term, i_term, d_term,
+    const float pid_output[3] = {roll, pitch, yaw};
+    flight_log_record(raw_rates, rates, setpoints, p_term, i_term,
+                      d_unfiltered, d_term,
                       ff_term, motors, throttle,
-                      mixer_saturated, main_loop_us, gyro_loop_us);
+                      mixer_saturated, main_loop_us, gyro_loop_us,
+                      pid_output);
 }
 
 bool flight_control_is_armed(void)

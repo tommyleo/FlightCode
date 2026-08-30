@@ -7,7 +7,7 @@
 #define DSHOT_STARTUP_TIME_MS 500U
 #define DSHOT_STARTUP_FRAME_INTERVAL_MS 1U
 
-static motor_protocol_t active_protocol = MOTOR_PROTOCOL_DSHOT300;
+static motor_protocol_t active_protocol = MOTOR_PROTOCOL_DSHOT600;
 
 static uint32_t dshot_period_ticks(void)
 {

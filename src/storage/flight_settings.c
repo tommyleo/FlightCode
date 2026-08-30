@@ -12,7 +12,8 @@
 #include "sbus.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 20U
+#define SETTINGS_VERSION 21U
+#define SETTINGS_LEGACY_VERSION_20 20U
 #define SETTINGS_LEGACY_VERSION_19 19U
 #define SETTINGS_LEGACY_VERSION_18 18U
 #define SETTINGS_LEGACY_VERSION_17 17U
@@ -195,6 +196,14 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v19_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t,
+                              dynamic_d_boost_percent)];
+    uint32_t checksum;
+} legacy_record_v20_t;
+
 _Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
                    sizeof(legacy_settings_v13_t),
                "Flight settings v13 migration layout changed");
@@ -304,7 +313,10 @@ static bool filters_valid(const flight_settings_t *settings)
            settings->gyro_lpf_hz <= 250.0f &&
            settings->dterm_lpf_hz >= 20.0f &&
            settings->dterm_lpf_hz <= 200.0f &&
-           settings->dterm_lpf_hz <= settings->gyro_lpf_hz;
+           settings->dterm_lpf_hz <= settings->gyro_lpf_hz &&
+           isfinite(settings->dynamic_d_boost_percent) &&
+           settings->dynamic_d_boost_percent >= 0.0f &&
+           settings->dynamic_d_boost_percent <= 50.0f;
 }
 
 static bool receiver_valid(const flight_settings_t *settings)
@@ -381,12 +393,13 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
     settings->tpa_breakpoint_percent = 70.0f;
     settings->gyro_lpf_hz = 90.0f;
     settings->dterm_lpf_hz = 50.0f;
+    settings->dynamic_d_boost_percent = 12.5f;
 }
 
 void flight_settings_reset_defaults(void)
 {
     current_settings = (flight_settings_t){
-        .motor_protocol = MOTOR_PROTOCOL_DSHOT300,
+        .motor_protocol = MOTOR_PROTOCOL_DSHOT600,
         .board_roll_deg = 0.0f,
         .board_pitch_deg = 0.0f,
         .board_yaw_deg = 0.0f,
@@ -451,6 +464,19 @@ void flight_settings_init(void)
         (const legacy_record_v18_t *)SETTINGS_ADDRESS;
     const legacy_record_v19_t *legacy_v19 =
         (const legacy_record_v19_t *)SETTINGS_ADDRESS;
+    const legacy_record_v20_t *legacy_v20 =
+        (const legacy_record_v20_t *)SETTINGS_ADDRESS;
+    if (legacy_v20->magic == SETTINGS_MAGIC &&
+        legacy_v20->version == SETTINGS_LEGACY_VERSION_20 &&
+        legacy_v20->checksum == checksum_bytes(
+            legacy_v20, offsetof(legacy_record_v20_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v20->settings,
+               sizeof(legacy_v20->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v19->magic == SETTINGS_MAGIC &&
         legacy_v19->version == SETTINGS_LEGACY_VERSION_19 &&
         legacy_v19->checksum == checksum_bytes(
@@ -507,7 +533,7 @@ void flight_settings_init(void)
         if (current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT300 &&
             current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT600 &&
             current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT1200) {
-            current_settings.motor_protocol = MOTOR_PROTOCOL_DSHOT300;
+            current_settings.motor_protocol = MOTOR_PROTOCOL_DSHOT600;
         }
         settings_saved = false;
         apply();

@@ -62,6 +62,7 @@ typedef struct {
     uint32_t vtx_power_mw;
     uint32_t vtx_osd_enabled_mask;
     uint32_t vtx_osd_positions[2];
+    float dynamic_d_boost_percent;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U

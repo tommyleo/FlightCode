@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define FLIGHT_LOG_RATE_HZ 200U
+#define BLACKBOX_LOG_RATE_HZ 1000U
 #define FLIGHT_LOG_FLAG_MIXER_SATURATED 0x01U
 #define FLIGHT_LOG_FLAG_STOP_DISARM 0x02U
 #define FLIGHT_LOG_FLAG_STOP_RX_LOSS 0x04U
@@ -31,6 +32,28 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(flight_log_record_t) == 40U,
                "flight log record format must remain 40 bytes");
+
+/* Persistent SD/dataflash format. 48 bytes allows ten records plus the
+ * 32-byte SD header to fit exactly in one 512-byte sector. */
+#define BLACKBOX_RECORD_VERSION 2U
+typedef struct __attribute__((packed)) {
+    uint32_t timestamp_us;
+    int16_t gyro_raw[3];          /* 0.1 deg/s, bias removed, before LPF */
+    int16_t gyro_filtered[3];     /* 0.1 deg/s */
+    int16_t setpoint[3];          /* 0.1 deg/s */
+    int16_t d_unfiltered[3];      /* 0.01 percent, gain and TPA applied */
+    int16_t d_filtered[3];        /* 0.01 percent */
+    uint8_t motor[4];             /* 0..255 = 0..100 percent */
+    uint8_t throttle;             /* 0..200 = 0..100 percent */
+    uint8_t flags;
+    int8_t pid[3];                /* final axis PID, 0.5 percent */
+    uint16_t battery_centivolts;
+    uint16_t dropped_records;     /* cumulative persistent-backend drops */
+    uint8_t format_version;
+} blackbox_record_t;
+
+_Static_assert(sizeof(blackbox_record_t) == 48U,
+               "blackbox record must remain 48 bytes");
 
 #define FLIGHT_LOG_METADATA_VERSION 2U
 typedef struct __attribute__((packed)) {
@@ -66,10 +89,13 @@ bool flight_log_get(uint32_t index, flight_log_record_t *record);
 bool flight_log_get_metadata(flight_log_metadata_t *metadata);
 bool flight_log_persist_pending(void);
 void flight_log_persist_if_ready(void);
-void flight_log_record(const float gyro[3], const float setpoint[3],
+void flight_log_record(const float gyro_raw[3], const float gyro_filtered[3],
+                       const float setpoint[3],
                        const float p_term[3],
-                       const float i_term[3], const float d_term[3],
+                       const float i_term[3], const float d_unfiltered[3],
+                       const float d_filtered[3],
                        const float ff_term[3],
                        const uint16_t motors[4],
                        float throttle_percent, bool mixer_saturated,
-                       uint16_t main_loop_us, uint16_t gyro_loop_us);
+                       uint16_t main_loop_us, uint16_t gyro_loop_us,
+                       const float pid_output[3]);

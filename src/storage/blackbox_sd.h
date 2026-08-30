@@ -19,6 +19,7 @@ typedef struct {
     uint32_t record_count;
     uint32_t block_count;
     uint8_t stop_flag;
+    uint16_t sample_rate_hz;
 } blackbox_sd_flight_info_t;
 
 typedef struct {
@@ -69,12 +70,12 @@ uint32_t blackbox_sd_flight_count(void);
 bool blackbox_sd_get_flight(uint32_t index,
                             blackbox_sd_flight_info_t *info);
 bool blackbox_sd_get_record(uint32_t flight_id, uint32_t record_index,
-                            flight_log_record_t *record);
+                            blackbox_record_t *record);
 bool blackbox_sd_get_metadata(uint32_t flight_id,
                               flight_log_metadata_t *metadata);
 bool blackbox_sd_clear(void);
 void blackbox_sd_start(const flight_log_metadata_t *metadata);
-void blackbox_sd_append(const flight_log_record_t *record);
+void blackbox_sd_append(const blackbox_record_t *record);
 void blackbox_sd_stop(uint8_t stop_flag, bool retain);
 void blackbox_sd_get_diagnostics(blackbox_sd_diagnostics_t *diagnostics);
 void blackbox_sd_restore_diagnostics(

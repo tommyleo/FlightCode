@@ -16,7 +16,7 @@
 #define LINE_LENGTH 192U
 #define CLIENT_TIMEOUT_US 3000000U
 #define MOTOR_TEST_TIMEOUT_US 1000000U
-#define BLACKBOX_CHUNK_MAX 16U
+#define BLACKBOX_CHUNK_MAX 12U
 
 static char input_line[LINE_LENGTH];
 static size_t input_length;
@@ -136,8 +136,9 @@ static void send_tpa(void)
 static void send_filters(void)
 {
     const flight_settings_t *s = flight_settings_get();
-    reply("@CFG FILTERS %.1f %.1f %u\n",
+    reply("@CFG FILTERS %.1f %.1f %.1f %u\n",
           s->gyro_lpf_hz, s->dterm_lpf_hz,
+          s->dynamic_d_boost_percent,
           flight_settings_are_saved() ? 1U : 0U);
 }
 
@@ -435,11 +436,11 @@ static void process(const char *command)
         for (uint32_t i = 0U; i < count; ++i) {
             blackbox_sd_flight_info_t info;
             if (!blackbox_sd_get_flight(i, &info)) break;
-            reply("@CFG BLACKBOX_FLIGHT %lu %lu %lu %u\n",
+            reply("@CFG BLACKBOX_FLIGHT %lu %lu %lu %u %u\n",
                   (unsigned long)info.flight_id,
                   (unsigned long)info.record_count,
                   (unsigned long)info.block_count,
-                  info.stop_flag);
+                  info.stop_flag, info.sample_rate_hz);
         }
         reply("@CFG BLACKBOX_CATALOG_END\n");
         return;
@@ -478,14 +479,14 @@ static void process(const char *command)
               metadata.pids[0], metadata.pids[1], metadata.pids[2],
               metadata.pids[3], metadata.pids[4], metadata.pids[5],
               metadata.pids[6], metadata.pids[7], metadata.pids[8]);
-        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
               metadata.rates[0], metadata.rates[1], metadata.rates[2],
               metadata.rates[3], metadata.feedforward[0],
               metadata.feedforward[1], metadata.feedforward[2],
               metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
               metadata.filters[1], metadata.alignment[0],
               metadata.alignment[1], metadata.alignment[2],
-              metadata.motor_idle_percent);
+              metadata.motor_idle_percent, metadata.reserved / 2.0f);
         reply("@CFG FLIGHT_LOG_METADATA_END\n");
         return;
     }
@@ -511,14 +512,14 @@ static void process(const char *command)
               metadata.pids[2], metadata.pids[3], metadata.pids[4],
               metadata.pids[5], metadata.pids[6], metadata.pids[7],
               metadata.pids[8]);
-        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
               metadata_flight, metadata.rates[0], metadata.rates[1],
               metadata.rates[2], metadata.rates[3], metadata.feedforward[0],
               metadata.feedforward[1], metadata.feedforward[2],
               metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
               metadata.filters[1], metadata.alignment[0],
               metadata.alignment[1], metadata.alignment[2],
-              metadata.motor_idle_percent);
+              metadata.motor_idle_percent, metadata.reserved / 2.0f);
         reply("@CFG BLACKBOX_METADATA_END %u\n", metadata_flight);
         return;
     }
@@ -536,27 +537,47 @@ static void process(const char *command)
             blackbox_count = BLACKBOX_CHUNK_MAX;
         }
         uint32_t sent = 0U;
+        flight_log_metadata_t chunk_metadata;
+        const bool have_chunk_metadata = blackbox_sd_get_metadata(
+            (uint32_t)blackbox_flight, &chunk_metadata);
+        const uint8_t cells = have_chunk_metadata
+            ? chunk_metadata.initial_battery_cells : 0U;
         for (; sent < blackbox_count; ++sent) {
-            flight_log_record_t item;
+            blackbox_record_t item;
             const uint32_t index = (uint32_t)blackbox_offset + sent;
             if (!blackbox_sd_get_record((uint32_t)blackbox_flight,
                                         index, &item)) break;
+            const uint16_t cell_centivolts = cells > 0U
+                ? (uint16_t)(item.battery_centivolts / cells) : 0U;
+            int16_t legacy_d[3];
+            for (uint8_t axis = 0U; axis < 3U; ++axis) {
+                int32_t value = item.d_filtered[axis] / 50;
+                if (value > 127) value = 127;
+                if (value < -128) value = -128;
+                legacy_d[axis] = (int16_t)value;
+            }
             reply("@CFG BLACKBOX_LOG %u %lu "
                   "%d %d %d %d %d %d "
                   "%u %u %u %u %u %u %u %u %u %u %u "
-                  "%d %d %d %d %d %d %d %d %d %d %d %d\n",
+                  "%d %d %d %d %d %d %d %d %d %d %d %d "
+                  "%lu %d %d %d %d %d %d %d %d %d %u %d %d %d\n",
                   blackbox_flight, (unsigned long)index,
-                  item.gyro[0], item.gyro[1], item.gyro[2],
+                  item.gyro_filtered[0], item.gyro_filtered[1],
+                  item.gyro_filtered[2],
                   item.setpoint[0], item.setpoint[1], item.setpoint[2],
                   item.motor[0], item.motor[1], item.motor[2], item.motor[3],
-                  item.throttle, item.flags, item.main_loop_us,
-                  item.gyro_loop_us,
-                  item.battery_centivolts, item.cell_centivolts,
-                  item.battery_cells,
-                  item.p_term[0], item.p_term[1], item.p_term[2],
-                  item.i_term[0], item.i_term[1], item.i_term[2],
-                  item.d_term[0], item.d_term[1], item.d_term[2],
-                  item.ff_term[0], item.ff_term[1], item.ff_term[2]);
+                  item.throttle, item.flags, 0U, 0U,
+                  item.battery_centivolts, cell_centivolts, cells,
+                  0, 0, 0, 0, 0, 0,
+                  legacy_d[0], legacy_d[1], legacy_d[2],
+                  0, 0, 0,
+                  (unsigned long)item.timestamp_us,
+                  item.gyro_raw[0], item.gyro_raw[1], item.gyro_raw[2],
+                  item.d_unfiltered[0], item.d_unfiltered[1],
+                  item.d_unfiltered[2], item.d_filtered[0],
+                  item.d_filtered[1], item.d_filtered[2],
+                  item.dropped_records,
+                  item.pid[0], item.pid[1], item.pid[2]);
         }
         reply("@CFG BLACKBOX_CHUNK_END %u %lu\n", blackbox_flight,
               (unsigned long)((uint32_t)blackbox_offset + sent));
@@ -975,9 +996,10 @@ static void process(const char *command)
         }
         return;
     }
-    if (sscanf(command, "SET_FILTERS %f %f",
+    if (sscanf(command, "SET_FILTERS %f %f %f",
                &settings.gyro_lpf_hz,
-               &settings.dterm_lpf_hz) == 2) {
+               &settings.dterm_lpf_hz,
+               &settings.dynamic_d_boost_percent) == 3) {
         if (flight_settings_set(&settings)) {
             reply("@CFG OK SET_FILTERS\n");
             send_filters();

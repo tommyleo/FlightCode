@@ -9,7 +9,7 @@
 #define DSHOT_FRAME_WORDS 18U
 #define DSHOT_MOTOR_COUNT 4U
 
-static motor_protocol_t active_protocol = MOTOR_PROTOCOL_DSHOT300;
+static motor_protocol_t active_protocol = MOTOR_PROTOCOL_DSHOT600;
 static uint16_t dshot_dma_buffer[DSHOT_FRAME_WORDS][DSHOT_MOTOR_COUNT]
     __attribute__((aligned(32)));
 

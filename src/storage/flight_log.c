@@ -32,6 +32,8 @@ static uint32_t write_index;
 static uint32_t record_count;
 static uint16_t decimation_count;
 static uint16_t log_decimation = 1U;
+static uint16_t blackbox_decimation_count;
+static uint16_t blackbox_decimation = 1U;
 static bool recording;
 static bool inhibited;
 static bool using_flash;
@@ -87,6 +89,7 @@ void flight_log_init(void)
     write_index = 0U;
     record_count = 0U;
     decimation_count = 0U;
+    blackbox_decimation_count = 0U;
     recording = false;
     inhibited = false;
     using_flash = false;
@@ -152,11 +155,15 @@ void flight_log_start(void)
     write_index = 0U;
     record_count = 0U;
     decimation_count = 0U;
+    blackbox_decimation_count = 0U;
     flight_qualified = false;
     const flight_settings_t *const settings = flight_settings_get();
     log_decimation = (uint16_t)(
         imu_get_gyro_rate_hz() / FLIGHT_LOG_RATE_HZ);
     if (log_decimation == 0U) log_decimation = 1U;
+    blackbox_decimation = (uint16_t)(
+        imu_get_gyro_rate_hz() / BLACKBOX_LOG_RATE_HZ);
+    if (blackbox_decimation == 0U) blackbox_decimation = 1U;
     memset(&flight_metadata, 0, sizeof(flight_metadata));
     flight_metadata.version = FLIGHT_LOG_METADATA_VERSION;
     flight_metadata.main_loop_hz = settings->main_loop_hz;
@@ -188,6 +195,8 @@ void flight_log_start(void)
     flight_metadata.receiver_protocol = settings->receiver_protocol;
     flight_metadata.initial_battery_centivolts = battery_centivolts;
     flight_metadata.initial_battery_cells = battery_cells;
+    flight_metadata.reserved = (uint8_t)lroundf(
+        settings->dynamic_d_boost_percent * 2.0f);
     recording = true;
 }
 
@@ -334,31 +343,77 @@ void flight_log_persist_if_ready(void)
 #endif
 }
 
-void flight_log_record(const float gyro[3], const float setpoint[3],
+void flight_log_record(const float gyro_raw[3], const float gyro_filtered[3],
+                       const float setpoint[3],
                        const float p_term[3],
-                       const float i_term[3], const float d_term[3],
+                       const float i_term[3], const float d_unfiltered[3],
+                       const float d_filtered[3],
                        const float ff_term[3],
                        const uint16_t motors[4],
                        float throttle_percent, bool mixer_saturated,
-                       uint16_t main_loop_us, uint16_t gyro_loop_us)
+                       uint16_t main_loop_us, uint16_t gyro_loop_us,
+                       const float pid_output[3])
 {
     if (!recording || inhibited) return;
     if (!flight_qualified &&
         throttle_percent > LOG_MIN_FLIGHT_THROTTLE_PERCENT) {
         flight_qualified = true;
         /* Start persistent logging only once this is a real flight. */
-        blackbox_sd_start(&flight_metadata);
+        flight_log_metadata_t metadata = flight_metadata;
+        metadata.log_rate_hz = BLACKBOX_LOG_RATE_HZ;
+        blackbox_sd_start(&metadata);
     }
+
+    if (flight_qualified &&
+        ++blackbox_decimation_count >= blackbox_decimation) {
+        blackbox_decimation_count = 0U;
+        blackbox_record_t persistent;
+        memset(&persistent, 0, sizeof(persistent));
+        persistent.timestamp_us = board_micros();
+        for (uint8_t i = 0U; i < 3U; ++i) {
+            persistent.gyro_raw[i] = scaled_i16(gyro_raw[i], 10.0f);
+            persistent.gyro_filtered[i] =
+                scaled_i16(gyro_filtered[i], 10.0f);
+            persistent.setpoint[i] = scaled_i16(setpoint[i], 10.0f);
+            persistent.d_unfiltered[i] =
+                scaled_i16(d_unfiltered[i], 100.0f);
+            persistent.d_filtered[i] =
+                scaled_i16(d_filtered[i], 100.0f);
+            persistent.pid[i] = scaled_pid(pid_output[i]);
+        }
+        for (uint8_t i = 0U; i < 4U; ++i) {
+            float percent = motors[i] == 0U ? 0.0f :
+                (float)(motors[i] - DSHOT_MIN) * 100.0f /
+                (float)(DSHOT_MAX - DSHOT_MIN);
+            if (percent < 0.0f) percent = 0.0f;
+            if (percent > 100.0f) percent = 100.0f;
+            persistent.motor[i] = (uint8_t)lroundf(percent * 2.55f);
+        }
+        float persistent_throttle = throttle_percent;
+        if (persistent_throttle < 0.0f) persistent_throttle = 0.0f;
+        if (persistent_throttle > 100.0f) persistent_throttle = 100.0f;
+        persistent.throttle =
+            (uint8_t)lroundf(persistent_throttle * 2.0f);
+        persistent.flags = mixer_saturated
+            ? FLIGHT_LOG_FLAG_MIXER_SATURATED : 0U;
+        persistent.battery_centivolts = battery_centivolts;
+        const uint32_t dropped = blackbox_sd_dropped_records();
+        persistent.dropped_records = dropped > 65535U
+            ? 65535U : (uint16_t)dropped;
+        persistent.format_version = BLACKBOX_RECORD_VERSION;
+        blackbox_sd_append(&persistent);
+    }
+
     if (++decimation_count < log_decimation) return;
     decimation_count = 0U;
 
     flight_log_record_t *const item = &records[write_index];
     for (uint8_t i = 0U; i < 3U; ++i) {
-        item->gyro[i] = scaled_i16(gyro[i], 10.0f);
+        item->gyro[i] = scaled_i16(gyro_filtered[i], 10.0f);
         item->setpoint[i] = scaled_i16(setpoint[i], 10.0f);
         item->p_term[i] = scaled_pid(p_term[i]);
         item->i_term[i] = scaled_pid(i_term[i]);
-        item->d_term[i] = scaled_pid(d_term[i]);
+        item->d_term[i] = scaled_pid(d_filtered[i]);
         item->ff_term[i] = scaled_pid(ff_term[i]);
     }
     for (uint8_t i = 0U; i < 4U; ++i) {
@@ -380,8 +435,6 @@ void flight_log_record(const float gyro[3], const float setpoint[3],
     item->cell_centivolts = cell_centivolts;
     item->battery_cells = battery_cells;
     item->reserved = 0U;
-    if (flight_qualified) blackbox_sd_append(item);
-
     write_index = (write_index + 1U) % FLIGHT_LOG_CAPACITY;
     if (record_count < FLIGHT_LOG_CAPACITY) ++record_count;
 }
