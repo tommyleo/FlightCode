@@ -27,6 +27,11 @@ USB Configurator.
 Each board page contains its pin mapping, supported hardware, receiver and OSD
 details, build command and firmware output path.
 
+Want to use a different controller? Read the
+**[new board support request guide](docs/board-request.md)** before opening an
+issue. It lists the hardware documentation and bench testing needed to produce
+a safe, maintainable port.
+
 ## Core features
 
 - Quad X rate mode with configurable PID, rates, expo, feedforward and TPA;
