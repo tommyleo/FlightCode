@@ -9,6 +9,7 @@
 #include "flight_log.h"
 #include "flight_settings.h"
 #include "max7456.h"
+#include "msp_displayport.h"
 #include "usb_cdc.h"
 #include "blackbox_sd.h"
 #include "vtx_tramp.h"
@@ -165,6 +166,7 @@ static void send_receiver_config(void)
           flight_settings_are_saved() ? 1U : 0U);
 }
 
+#if BOARD_HAS_OSD
 static const char *osd_position_name(uint8_t position)
 {
     static const char *const names[9] = {
@@ -174,6 +176,7 @@ static const char *osd_position_name(uint8_t position)
     };
     return position < 9U ? names[position] : "CENTER";
 }
+#endif
 
 static void send_osd_status(void)
 {
@@ -185,6 +188,11 @@ static void send_osd_status(void)
           max7456_video_is_pal() ? "PAL" : "NTSC",
           max7456_font_is_ready() ? "FONT_OK" : "FONT_FAILED",
           max7456_probe_value(), max7456_probe_spi_mode(),
+          flight_settings_are_saved() ? 1U : 0U);
+#elif BOARD_HAS_DIGITAL_OSD
+    reply("@CFG OSD_STATUS %u %u DIGITAL HD MSP_DISPLAYPORT 00 0 %u\n",
+          msp_displayport_is_available() ? 1U : 0U,
+          msp_displayport_is_enabled() ? 1U : 0U,
           flight_settings_are_saved() ? 1U : 0U);
 #endif
 }
@@ -202,12 +210,14 @@ static void send_vtx_config(void)
           bands[s->vtx_band], (unsigned long)(s->vtx_channel + 1U),
           (unsigned long)s->vtx_power_mw,
           flight_settings_are_saved() ? 1U : 0U);
-    reply("@CFG VTX_STATUS %s\n", vtx_tramp_status_name());
+    reply("@CFG VTX_STATUS %s\n",
+          s->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP
+              ? msp_displayport_status_name() : vtx_tramp_status_name());
 }
 
 static void send_osd_layout(void)
 {
-#if BOARD_HAS_OSD
+#if BOARD_HAS_OSD || BOARD_HAS_DIGITAL_OSD
     const flight_settings_t *s = flight_settings_get();
     char pilot[OSD_PILOT_NAME_LENGTH + 1U];
     (void)snprintf(pilot, sizeof(pilot), "%s", s->osd_pilot_name);
@@ -267,7 +277,7 @@ static void process(const char *command)
 #elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
         reply("@CFG SERIAL_PORTS UART4 UART5 UART6\n");
 #elif defined(BOARD_HDZERO_HALO)
-        reply("@CFG SERIAL_PORTS UART1 UART2 UART4\n");
+        reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART5\n");
 #else
         reply("@CFG SERIAL_PORTS UART1\n");
 #endif
@@ -277,7 +287,7 @@ static void process(const char *command)
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
               "VTX_CONFIG "
-#if BOARD_HAS_OSD
+#if BOARD_HAS_OSD || BOARD_HAS_DIGITAL_OSD
               "OSD_LAYOUT "
 #endif
 #if BOARD_HAS_VBAT_CALIBRATION
@@ -309,7 +319,7 @@ static void process(const char *command)
 #if BOARD_HAS_VBAT_CALIBRATION
         send_vbat_multiplier();
 #endif
-#if BOARD_HAS_OSD
+#if BOARD_HAS_OSD || BOARD_HAS_DIGITAL_OSD
         send_osd_status();
         send_osd_layout();
 #endif

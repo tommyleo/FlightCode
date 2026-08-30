@@ -65,7 +65,28 @@ an in-goggle tuning menu and the original FlightCode Sans font. The layout can
 show total voltage, per-cell voltage, flight time, the FlightCode label and a
 custom pilot name. Battery and clock glyphs are included in the internal font.
 
-Digital OSD through MSP DisplayPort is not implemented yet.
+To open the in-goggle tuning menu, disarm the quad, keep the ARM switch off,
+center roll and hold the following stick combination for 0.8 seconds:
+
+- **Throttle:** middle;
+- **Yaw:** left;
+- **Pitch:** up.
+
+After the menu opens, return all sticks to center before navigating. Pitch
+selects an item, roll changes its value, yaw right saves and exits, and yaw left
+exits without saving.
+
+The `FLYWOOF405NANO` and `HDZERO_HALO` digital targets support MSP DisplayPort
+at 115200 baud. FlightCode sends a non-blocking HDZero-compatible 30 × 16
+canvas centered in the HD display, so the same Configurator layout editor and
+saved element positions work on analog and digital video. The overlay includes
+battery and per-cell voltage, flight timer, FlightCode label, pilot name, VTX
+band/channel, and VTX power.
+
+On a newly flashed digital target, MSP DisplayPort and the OSD overlay are
+enabled by default on the board's dedicated UART. Existing saved settings are
+preserved: select **HDZero V3 · MSP + DisplayPort**, choose the correct UART,
+save, reboot, and enable the overlay in the Camera OSD tab if necessary.
 
 ## Building on Windows
 

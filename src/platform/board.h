@@ -213,6 +213,10 @@
 #else
 /* The HD V3 has no MAX7456 and exposes no analog CAM/VTX video path. */
 #define BOARD_HAS_OSD 0
+#define BOARD_HAS_DIGITAL_OSD 1
+#define BOARD_DEFAULT_VTX_PROTOCOL VTX_PROTOCOL_HDZERO_MSP
+#define BOARD_DEFAULT_VTX_UART 6U
+#define BOARD_DEFAULT_OSD_ENABLED 1U
 #endif
 #define BOARD_HAS_SDCARD 0
 #define BOARD_HAS_DATAFLASH 1
@@ -286,6 +290,10 @@
 #define BATTERY_VOLTAGE_DIVIDER 11.00f
 #define BOARD_HAS_VBAT_CALIBRATION 1
 #define BOARD_HAS_OSD 0
+#define BOARD_HAS_DIGITAL_OSD 1
+#define BOARD_DEFAULT_VTX_PROTOCOL VTX_PROTOCOL_HDZERO_MSP
+#define BOARD_DEFAULT_VTX_UART 5U
+#define BOARD_DEFAULT_OSD_ENABLED 1U
 #define BOARD_HAS_SDCARD 0
 #define BOARD_HAS_DATAFLASH 1
 #define DATAFLASH_SPI_HANDLE hspi2
@@ -311,6 +319,18 @@
 #ifndef BOARD_HAS_VBAT_CALIBRATION
 #define BOARD_HAS_VBAT_CALIBRATION 0
 #endif
+#ifndef BOARD_HAS_DIGITAL_OSD
+#define BOARD_HAS_DIGITAL_OSD 0
+#endif
+#ifndef BOARD_DEFAULT_VTX_PROTOCOL
+#define BOARD_DEFAULT_VTX_PROTOCOL VTX_PROTOCOL_OFF
+#endif
+#ifndef BOARD_DEFAULT_VTX_UART
+#define BOARD_DEFAULT_VTX_UART 3U
+#endif
+#ifndef BOARD_DEFAULT_OSD_ENABLED
+#define BOARD_DEFAULT_OSD_ENABLED 0U
+#endif
 #ifndef BOARD_OSD_SHARES_DATAFLASH_SPI
 #define BOARD_OSD_SHARES_DATAFLASH_SPI 0
 #endif
@@ -329,6 +349,8 @@ void board_init(void);
 bool board_receiver_uart_configure(bool crsf);
 bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
                                  UART_HandleTypeDef *handle);
+bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
+                        UART_HandleTypeDef *handle);
 void board_fatal_error(void);
 uint32_t board_micros(void);
 void board_status_led_set(bool enabled);

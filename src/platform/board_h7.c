@@ -58,6 +58,43 @@ bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
     return HAL_HalfDuplex_Init(handle) == HAL_OK;
 }
 
+bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
+                        UART_HandleTypeDef *handle)
+{
+    USART_TypeDef *instance = NULL;
+    GPIO_TypeDef *gpio_port = NULL;
+    uint16_t gpio_pin = 0U;
+    uint32_t gpio_af = 0U;
+    if (port == 1U) {
+        instance = USART1; gpio_port = GPIOB; gpio_pin = GPIO_PIN_6;
+        gpio_af = GPIO_AF7_USART1; __HAL_RCC_USART1_CLK_ENABLE();
+    } else if (port == 2U) {
+        instance = USART2; gpio_port = GPIOA; gpio_pin = GPIO_PIN_2;
+        gpio_af = GPIO_AF7_USART2; __HAL_RCC_USART2_CLK_ENABLE();
+    } else if (port == 4U) {
+        instance = UART4; gpio_port = GPIOA; gpio_pin = GPIO_PIN_0;
+        gpio_af = GPIO_AF8_UART4; __HAL_RCC_UART4_CLK_ENABLE();
+    } else if (port == 5U) {
+        instance = UART5; gpio_port = GPIOC; gpio_pin = GPIO_PIN_12;
+        gpio_af = GPIO_AF8_UART5; __HAL_RCC_UART5_CLK_ENABLE();
+    }
+    if (instance == NULL) return false;
+
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = gpio_pin; gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL; gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpio.Alternate = gpio_af;
+    HAL_GPIO_Init(gpio_port, &gpio);
+
+    *handle = (UART_HandleTypeDef){0};
+    handle->Instance = instance; handle->Init.BaudRate = baud_rate;
+    handle->Init.WordLength = UART_WORDLENGTH_8B;
+    handle->Init.StopBits = UART_STOPBITS_1; handle->Init.Parity = UART_PARITY_NONE;
+    handle->Init.Mode = UART_MODE_TX; handle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    handle->Init.OverSampling = UART_OVERSAMPLING_16;
+    return HAL_UART_Init(handle) == HAL_OK;
+}
+
 void board_imu_select(uint8_t candidate)
 {
     active_imu_cs_port = candidate == 0U ? IMU_PRIMARY_CS_PORT : IMU_ALT_CS_PORT;

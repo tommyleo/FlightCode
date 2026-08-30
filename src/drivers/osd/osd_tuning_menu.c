@@ -248,7 +248,10 @@ void osd_tuning_menu_update(const sbus_data_t *receiver, bool armed)
 
     if (!active) {
         const bool entry_combo = !armed && !arm_switch &&
-            throttle >= STICK_HIGH_US && roll >= STICK_HIGH_US;
+            throttle >= STICK_CENTER_LOW_US &&
+            throttle <= STICK_CENTER_HIGH_US &&
+            roll >= STICK_CENTER_LOW_US && roll <= STICK_CENTER_HIGH_US &&
+            yaw <= STICK_LOW_US && pitch >= STICK_HIGH_US;
         if (!entry_combo) {
             entry_started_us = 0U;
             return;

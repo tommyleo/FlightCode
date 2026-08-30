@@ -128,6 +128,7 @@ add_executable(FlightCode
     src/drivers/imu/mpu6000.c
     ${DSHOT_SOURCE}
     src/drivers/osd/max7456.c
+    src/drivers/osd/msp_displayport.c
     src/drivers/osd/osd_tuning_menu.c
     src/drivers/receiver/sbus.c
     src/drivers/vtx/vtx_tramp.c

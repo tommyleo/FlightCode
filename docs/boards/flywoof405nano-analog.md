@@ -24,6 +24,13 @@ configuration.
 The OSD and W25Q128 share SPI3 in mode 0 and use independent chip-select pins.
 The internal FlightCode font and 30-column PAL/NTSC layout are supported.
 
+## OSD tuning menu
+
+With the quad disarmed and the ARM switch off, center roll and hold **throttle
+at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center
+after the menu opens. See the [Analog OSD guide](../../README.md#analog-osd) for
+the menu controls.
+
 ## Build
 
 ```powershell

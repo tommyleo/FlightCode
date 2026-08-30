@@ -23,6 +23,13 @@ hardware mapping.
 The status LED flashes rapidly during gyroscope calibration, once per second
 as a heartbeat, and twice per second when valid receiver data is present.
 
+## OSD tuning menu
+
+With the quad disarmed and the ARM switch off, center roll and hold **throttle
+at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center
+after the menu opens. See the [Analog OSD guide](../../README.md#analog-osd) for
+the menu controls.
+
 ## Build
 
 ```powershell

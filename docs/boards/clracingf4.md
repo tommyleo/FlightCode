@@ -25,6 +25,13 @@ volume. Do not use a card containing files that must be preserved. The onboard
 SBUS inverter is isolated before entering the ROM bootloader so an active
 receiver cannot prevent USB DFU detection.
 
+## OSD tuning menu
+
+With the quad disarmed and the ARM switch off, center roll and hold **throttle
+at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center
+after the menu opens. See the [Analog OSD guide](../../README.md#analog-osd) for
+the menu controls.
+
 ## Build
 
 ```powershell

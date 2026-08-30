@@ -8,6 +8,7 @@
 #include "flight_settings.h"
 #include "imu.h"
 #include "max7456.h"
+#include "msp_displayport.h"
 #include "osd_tuning_menu.h"
 #include "sbus.h"
 #include "blackbox_sd.h"
@@ -74,6 +75,8 @@ static void update_osd_if_due(main_loop_state_t *state)
         retry_osd_if_needed(state, battery_voltage);
         max7456_update(battery_voltage, flight_control_is_armed(),
                        board_micros());
+        msp_displayport_update(battery_voltage, flight_control_is_armed(),
+                               board_micros());
     }
 }
 
@@ -163,6 +166,7 @@ static void main_loop_step(main_loop_state_t *state)
     }
     flight_log_persist_if_ready();
     blackbox_sd_update();
+    msp_displayport_process();
     if (service_due) {
         board_battery_update();
     }
@@ -199,6 +203,7 @@ int main(void)
     sbus_init();
     flight_control_init();
     max7456_init();
+    (void)msp_displayport_init();
     osd_tuning_menu_init();
 
     main_loop_state_t loop = {0};
