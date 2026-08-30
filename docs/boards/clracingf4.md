@@ -29,7 +29,7 @@ receiver cannot prevent USB DFU detection.
 
 With the quad disarmed and the ARM switch off, center roll and hold **throttle
 at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center
-after the menu opens. See the [Analog OSD guide](../../README.md#analog-osd) for
+after the menu opens. See the [Analog / Digital OSD guide](../../README.md#analog--digital-osd) for
 the menu controls.
 
 ## Build
