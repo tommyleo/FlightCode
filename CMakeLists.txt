@@ -4,7 +4,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(FlightCode C ASM)
+project(FlightCode VERSION 1.0.0 LANGUAGES C ASM)
 
 include(FetchContent)
 
