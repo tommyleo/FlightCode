@@ -2,6 +2,10 @@
 
 *Born to race.*
 
+## FlightCode in action! 🚀
+
+**[Watch the flight video on YouTube](https://youtu.be/JjHND97abkM)**
+
 FlightCode is an experimental Quad X rate-mode firmware for STM32 flight
 controllers. It provides an 8 or 16 kHz main loop, configurable PID and rates,
 DSHOT motor output, receiver support, Blackbox logging, diagnostics and a shared
