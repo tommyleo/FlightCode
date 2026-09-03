@@ -25,6 +25,11 @@ bool blackbox_sd_get_flight(uint32_t index, blackbox_sd_flight_info_t *info)
 bool blackbox_sd_get_record(uint32_t flight_id, uint32_t record_index,
                             blackbox_record_t *record)
 { (void)flight_id; (void)record_index; (void)record; return false; }
+uint32_t blackbox_sd_get_records(uint32_t flight_id, uint32_t record_index,
+                                 blackbox_record_t *records,
+                                 uint32_t capacity, uint32_t *failed_sector)
+{ (void)flight_id; (void)record_index; (void)records; (void)capacity;
+  if (failed_sector != NULL) *failed_sector = 0U; return 0U; }
 bool blackbox_sd_get_metadata(uint32_t flight_id, flight_log_metadata_t *metadata)
 { (void)flight_id; (void)metadata; return false; }
 bool blackbox_sd_clear(void) { return false; }
@@ -43,7 +48,7 @@ bool blackbox_sd_session_test(void) { return false; }
 #elif BOARD_HAS_SDCARD
 
 #define SD_BLOCK_SIZE 512U
-#define SD_QUEUE_BLOCKS 8U
+#define SD_QUEUE_BLOCKS 32U
 #define SD_RECORDS_PER_BLOCK 10U
 #define SD_RECORD_BLOCK_VERSION 6U
 #define SD_METADATA_BLOCK_VERSION 7U
@@ -112,6 +117,9 @@ static bool writing_catalog;
 static blackbox_block_t read_cache;
 static uint32_t read_cache_sector;
 static bool read_cache_valid;
+static bool read_layout_valid;
+static uint32_t read_layout_flight_id;
+static uint8_t read_layout_metadata_blocks;
 static blackbox_block_t queue[SD_QUEUE_BLOCKS];
 static uint8_t queue_read;
 static uint8_t queue_write;
@@ -252,6 +260,20 @@ static bool read_sector(uint32_t sector, void *data)
 #endif
 }
 
+static bool read_sector_retry(uint32_t sector, void *data)
+{
+    for (uint8_t attempt = 0U; attempt < 3U; ++attempt) {
+        if (read_sector(sector, data)) return true;
+        /* A failed SPI read can leave the card in an unexpected command/data
+         * state.  Clock it with CS high and, after the first retry, perform a
+         * full card reinitialisation before trying the same sector again. */
+        select_card(false);
+        for (uint8_t clocks = 0U; clocks < 10U; ++clocks) transfer(0xFFU);
+        if (attempt == 1U && card_present()) (void)initialise_card();
+    }
+    return false;
+}
+
 static uint32_t checksum_bytes(const void *data, uint32_t size,
                                uint32_t skip_offset)
 {
@@ -361,10 +383,14 @@ static void queue_current(void)
 {
     if (current.record_count == 0U) return;
     const uint16_t records = current.record_count;
-    current.checksum = checksum_block(&current);
     if (queue_count >= SD_QUEUE_BLOCKS) {
         dropped_records += records;
     } else {
+        /* Reserve the sequence only after the block is guaranteed to enter
+         * the queue.  A dropped block must not create a sequence gap that
+         * makes every following persisted sector appear invalid. */
+        current.sequence = sequence++;
+        current.checksum = checksum_block(&current);
         queue[queue_write] = current;
         queue_write = (uint8_t)((queue_write + 1U) % SD_QUEUE_BLOCKS);
         ++queue_count;
@@ -403,6 +429,8 @@ void blackbox_sd_init(void)
     write_state = WRITE_IDLE; dma_complete = false;
     catalog_commit_pending = false; writing_catalog = false;
     read_cache_valid = false; read_cache_sector = 0U;
+    read_layout_valid = false; read_layout_flight_id = 0U;
+    read_layout_metadata_blocks = 0U;
     current_start_sector = SD_DATA_OFFSET_SECTORS;
     current_block_count = current_record_count = 0U;
     reset_catalog();
@@ -434,6 +462,7 @@ void blackbox_sd_probe(void)
     catalog_commit_pending = false;
     writing_catalog = false;
     read_cache_valid = false;
+    read_layout_valid = false;
     memset(&current, 0, sizeof(current));
     if (initialise_card()) {
         load_catalog();
@@ -581,7 +610,10 @@ bool blackbox_sd_get_record(uint32_t requested_flight_id,
     read_cache_sector = sector;
     if (read_cache.magic != SD_BLOCK_MAGIC ||
         read_cache.flight_id != requested_flight_id ||
-        read_cache.sequence != block_index ||
+        /* A full write queue can drop a block after its sequence number was
+         * reserved.  The catalog counts only sectors actually persisted, so
+         * later valid sectors may legitimately contain a higher sequence. */
+        read_cache.sequence < block_index ||
         read_cache.version != SD_RECORD_BLOCK_VERSION ||
         read_cache.record_count > records_per_block ||
         record_in_block >= read_cache.record_count ||
@@ -589,6 +621,72 @@ bool blackbox_sd_get_record(uint32_t requested_flight_id,
     memcpy(record, read_cache.payload + record_in_block * sizeof(*record),
            sizeof(*record));
     return true;
+}
+
+uint32_t blackbox_sd_get_records(uint32_t requested_flight_id,
+                                 uint32_t record_index,
+                                 blackbox_record_t *records,
+                                 uint32_t capacity,
+                                 uint32_t *failed_sector)
+{
+    if (failed_sector != NULL) *failed_sector = 0U;
+    if (records == NULL || capacity == 0U || state != BLACKBOX_SD_READY ||
+        write_state != WRITE_IDLE || queue_count != 0U ||
+        catalog_commit_pending) return 0U;
+    const blackbox_catalog_entry_t *entry = NULL;
+    for (uint32_t i = 0U; i < catalog.flight_count; ++i) {
+        if (catalog.flights[i].flight_id == requested_flight_id) {
+            entry = &catalog.flights[i]; break;
+        }
+    }
+    if (entry == NULL || record_index >= entry->record_count) return 0U;
+    if (!read_layout_valid || read_layout_flight_id != requested_flight_id) {
+        if (!read_sector_retry(entry->start_sector, &read_cache)) {
+            if (failed_sector != NULL) *failed_sector = entry->start_sector;
+            return 0U;
+        }
+        read_cache_valid = true;
+        read_cache_sector = entry->start_sector;
+        read_layout_metadata_blocks = read_cache.magic == SD_BLOCK_MAGIC &&
+            read_cache.flight_id == requested_flight_id &&
+            read_cache.version == SD_METADATA_BLOCK_VERSION &&
+            read_cache.record_count == 0U &&
+            read_cache.checksum == checksum_block(&read_cache) ? 1U : 0U;
+        read_layout_flight_id = requested_flight_id;
+        read_layout_valid = true;
+    }
+    const uint32_t block_index = read_layout_metadata_blocks +
+        record_index / SD_RECORDS_PER_BLOCK;
+    const uint32_t record_in_block = record_index % SD_RECORDS_PER_BLOCK;
+    const uint32_t sector = entry->start_sector + block_index;
+    if (block_index >= entry->block_count ||
+        (((!read_cache_valid || read_cache_sector != sector) &&
+          !read_sector_retry(sector, &read_cache)))) {
+        if (failed_sector != NULL) *failed_sector = sector;
+        return 0U;
+    }
+    read_cache_valid = true;
+    read_cache_sector = sector;
+    if (read_cache.magic != SD_BLOCK_MAGIC ||
+        read_cache.flight_id != requested_flight_id ||
+        /* Preserve compatibility with recordings containing queue-drop
+         * sequence gaps while retaining the checksum and format checks. */
+        read_cache.sequence < block_index ||
+        read_cache.version != SD_RECORD_BLOCK_VERSION ||
+        read_cache.record_count > SD_RECORDS_PER_BLOCK ||
+        record_in_block >= read_cache.record_count ||
+        read_cache.checksum != checksum_block(&read_cache)) {
+        if (failed_sector != NULL) *failed_sector = sector;
+        return 0U;
+    }
+    uint32_t count = read_cache.record_count - record_in_block;
+    const uint32_t remaining = entry->record_count - record_index;
+    if (count > capacity) count = capacity;
+    if (count > remaining) count = remaining;
+    memcpy(records,
+           read_cache.payload + record_in_block * sizeof(records[0]),
+           count * sizeof(records[0]));
+    return count;
 }
 
 bool blackbox_sd_get_metadata(uint32_t requested_flight_id,
@@ -625,6 +723,7 @@ bool blackbox_sd_clear(void)
     dropped_records = 0U;
     catalog_commit_pending = true;
     read_cache_valid = false;
+    read_layout_valid = false;
     return true;
 }
 
@@ -651,6 +750,7 @@ void blackbox_sd_start(const flight_log_metadata_t *metadata)
     current_record_count = 0U;
     memset(&current, 0, sizeof(current));
     read_cache_valid = false;
+    read_layout_valid = false;
     if (!queue_metadata(metadata)) return;
     state = BLACKBOX_SD_RECORDING;
 }
@@ -660,7 +760,7 @@ void blackbox_sd_append(const blackbox_record_t *record)
     if (state != BLACKBOX_SD_RECORDING || record == NULL) return;
     if (current.record_count == 0U) {
         current.magic = SD_BLOCK_MAGIC; current.flight_id = flight_id;
-        current.sequence = sequence++; current.timestamp_us = board_micros();
+        current.timestamp_us = board_micros();
         current.version = SD_RECORD_BLOCK_VERSION;
     }
     memcpy(current.payload + current.record_count * sizeof(*record),

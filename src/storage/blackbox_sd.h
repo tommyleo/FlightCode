@@ -71,6 +71,10 @@ bool blackbox_sd_get_flight(uint32_t index,
                             blackbox_sd_flight_info_t *info);
 bool blackbox_sd_get_record(uint32_t flight_id, uint32_t record_index,
                             blackbox_record_t *record);
+uint32_t blackbox_sd_get_records(uint32_t flight_id, uint32_t record_index,
+                                 blackbox_record_t *records,
+                                 uint32_t capacity,
+                                 uint32_t *failed_sector);
 bool blackbox_sd_get_metadata(uint32_t flight_id,
                               flight_log_metadata_t *metadata);
 bool blackbox_sd_clear(void);

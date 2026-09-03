@@ -501,6 +501,19 @@ bool blackbox_sd_get_record(uint32_t flight_id, uint32_t index,
     return read_bytes(address, record, sizeof(*record));
 }
 
+uint32_t blackbox_sd_get_records(uint32_t flight_id, uint32_t record_index,
+                                 blackbox_record_t *records,
+                                 uint32_t capacity,
+                                 uint32_t *failed_sector)
+{
+    if (failed_sector != NULL) *failed_sector = 0U;
+    uint32_t count = 0U;
+    while (count < capacity &&
+           blackbox_sd_get_record(flight_id, record_index + count,
+                                  &records[count])) ++count;
+    return count;
+}
+
 bool blackbox_sd_get_metadata(uint32_t flight_id,
                               flight_log_metadata_t *metadata)
 {

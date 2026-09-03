@@ -18,6 +18,7 @@
 #define CLIENT_TIMEOUT_US 3000000U
 #define MOTOR_TEST_TIMEOUT_US 1000000U
 #define BLACKBOX_CHUNK_MAX 12U
+#define BLACKBOX_BINARY_CHUNK_MAX 40U
 
 static char input_line[LINE_LENGTH];
 static size_t input_length;
@@ -31,6 +32,7 @@ static bool dfu_pending;
 static uint32_t dfu_deadline_us;
 static bool reboot_pending;
 static uint32_t reboot_deadline_us;
+static uint32_t last_blackbox_download_us;
 
 static bool arm_mode_active(const sbus_data_t *receiver)
 {
@@ -263,7 +265,8 @@ static void process(const char *command)
     if (strcmp(command, "HELLO") == 0) {
         client_active = true;
         last_activity_us = board_micros();
-        reply("@CFG HELLO FlightCode 3 %s\n", BOARD_NAME);
+        reply("@CFG HELLO FlightCode 3 %s %s\n", BOARD_NAME,
+              FLIGHTCODE_VERSION);
         reply("@CFG IMU %s 1\n", imu_get_name());
         reply("@CFG GYRO_RATE %lu\n",
               (unsigned long)imu_get_gyro_rate_hz());
@@ -294,9 +297,9 @@ static void process(const char *command)
               "VBAT_CALIBRATION "
 #endif
 #if BOARD_HAS_DATAFLASH
-              "BLACKBOX_SD BLACKBOX_FLASH BLACKBOX_CATALOG "
+              "BLACKBOX_SD BLACKBOX_FLASH BLACKBOX_CATALOG BLACKBOX_BINARY "
 #elif BOARD_HAS_SDCARD
-              "BLACKBOX_SD BLACKBOX_CATALOG "
+              "BLACKBOX_SD BLACKBOX_CATALOG BLACKBOX_BINARY "
 #endif
               "\n");
 #else
@@ -534,6 +537,48 @@ static void process(const char *command)
         return;
     }
     unsigned int blackbox_flight, blackbox_offset, blackbox_count;
+    if (sscanf(command, "GET_BLACKBOX_BINARY %u %u %u",
+               &blackbox_flight, &blackbox_offset,
+               &blackbox_count) == 3) {
+        if (flight_control_is_armed() ||
+            blackbox_sd_state() == BLACKBOX_SD_RECORDING ||
+            blackbox_sd_is_busy()) {
+            reply("@CFG ERROR BLACKBOX_RECORDING\n");
+            return;
+        }
+        if (blackbox_count > BLACKBOX_BINARY_CHUNK_MAX) {
+            blackbox_count = BLACKBOX_BINARY_CHUNK_MAX;
+        }
+        last_blackbox_download_us = board_micros();
+        static blackbox_record_t records[10U];
+        uint32_t sent = 0U;
+        while (sent < blackbox_count) {
+            const uint32_t requested = blackbox_count - sent < 10U
+                ? blackbox_count - sent : 10U;
+            uint32_t failed_sector = 0U;
+            const uint32_t group_count = blackbox_sd_get_records(
+                (uint32_t)blackbox_flight,
+                (uint32_t)blackbox_offset + sent, records, requested,
+                &failed_sector);
+            if (group_count == 0U) {
+                reply("@CFG ERROR BLACKBOX_READ %u %lu %lu\n",
+                      blackbox_flight,
+                      (unsigned long)((uint32_t)blackbox_offset + sent),
+                      (unsigned long)failed_sector);
+                return;
+            }
+            reply("@CFG BLACKBOX_BINARY %u %lu %lu %u\n", blackbox_flight,
+                  (unsigned long)((uint32_t)blackbox_offset + sent),
+                  (unsigned long)group_count, (unsigned)sizeof(records[0]));
+            (void)usb_cdc_write((const uint8_t *)records,
+                                group_count * sizeof(records[0]));
+            sent += group_count;
+            if (group_count < 10U) break;
+        }
+        reply("@CFG BLACKBOX_CHUNK_END %u %lu\n", blackbox_flight,
+              (unsigned long)((uint32_t)blackbox_offset + sent));
+        return;
+    }
     if (sscanf(command, "GET_BLACKBOX_CHUNK %u %u %u",
                &blackbox_flight, &blackbox_offset,
                &blackbox_count) == 3) {
@@ -1233,7 +1278,8 @@ void config_protocol_send_telemetry(const sbus_data_t *rx,
                                     float loop_hz,
                                     uint32_t max_loop_period_us)
 {
-    if (!client_active) {
+    if (!client_active ||
+        (uint32_t)(board_micros() - last_blackbox_download_us) < 500000U) {
         return;
     }
     imu_sample_t corrected;

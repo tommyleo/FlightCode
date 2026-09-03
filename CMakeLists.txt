@@ -4,7 +4,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(FlightCode VERSION 1.0.0 LANGUAGES C ASM)
+project(FlightCode VERSION 1.1.0 LANGUAGES C ASM)
 
 include(FetchContent)
 
@@ -174,6 +174,7 @@ target_include_directories(FlightCode PRIVATE
 target_compile_definitions(FlightCode PRIVATE
     ${MCU_DEFINE}
     BOARD_${BOARD}
+    FLIGHTCODE_VERSION=\"${PROJECT_VERSION}\"
     USE_HAL_DRIVER
     HSE_VALUE=8000000U
     $<$<BOOL:${STM32_FAMILY_H7}>:PLATFORM_STM32H7>

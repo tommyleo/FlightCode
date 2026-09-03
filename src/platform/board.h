@@ -123,7 +123,10 @@
 #define BOARD_HAS_VBAT_CALIBRATION 1
 #define BOARD_HAS_OSD 1
 #define BOARD_HAS_SDCARD 1
-#define BOARD_FLIGHT_LOG_CAPACITY 2688U
+/* Persistent Blackbox is the primary recorder on this target.  Keeping a
+ * slightly shorter 200 Hz RAM log leaves enough SRAM for an SD write queue
+ * that can absorb the card's measured ~180 ms maintenance stalls. */
+#define BOARD_FLIGHT_LOG_CAPACITY 2048U
 #define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
 #define BOARD_BUZZER_REQUIRES_TONE 1
 #define BOARD_BUZZER_OUTPUT_OPEN_DRAIN 0
