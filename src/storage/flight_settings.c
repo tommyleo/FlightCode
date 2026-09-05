@@ -12,7 +12,8 @@
 #include "sbus.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 21U
+#define SETTINGS_VERSION 22U
+#define SETTINGS_LEGACY_VERSION_21 21U
 #define SETTINGS_LEGACY_VERSION_20 20U
 #define SETTINGS_LEGACY_VERSION_19 19U
 #define SETTINGS_LEGACY_VERSION_18 18U
@@ -204,6 +205,13 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v20_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, throttle_rise_ms)];
+    uint32_t checksum;
+} legacy_record_v21_t;
+
 _Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
                    sizeof(legacy_settings_v13_t),
                "Flight settings v13 migration layout changed");
@@ -394,6 +402,7 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
     settings->gyro_lpf_hz = 90.0f;
     settings->dterm_lpf_hz = 50.0f;
     settings->dynamic_d_boost_percent = 12.5f;
+    settings->throttle_rise_ms = 0.0f;
 }
 
 void flight_settings_reset_defaults(void)
@@ -466,6 +475,19 @@ void flight_settings_init(void)
         (const legacy_record_v19_t *)SETTINGS_ADDRESS;
     const legacy_record_v20_t *legacy_v20 =
         (const legacy_record_v20_t *)SETTINGS_ADDRESS;
+    const legacy_record_v21_t *legacy_v21 =
+        (const legacy_record_v21_t *)SETTINGS_ADDRESS;
+    if (legacy_v21->magic == SETTINGS_MAGIC &&
+        legacy_v21->version == SETTINGS_LEGACY_VERSION_21 &&
+        legacy_v21->checksum == checksum_bytes(
+            legacy_v21, offsetof(legacy_record_v21_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v21->settings,
+               sizeof(legacy_v21->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v20->magic == SETTINGS_MAGIC &&
         legacy_v20->version == SETTINGS_LEGACY_VERSION_20 &&
         legacy_v20->checksum == checksum_bytes(
@@ -667,6 +689,9 @@ void flight_settings_init(void)
         !angle_valid(stored->settings.board_pitch_deg) ||
         !angle_valid(stored->settings.board_yaw_deg) ||
         stored->settings.motor_direction_reversed > 1U ||
+        !isfinite(stored->settings.throttle_rise_ms) ||
+        stored->settings.throttle_rise_ms < 0.0f ||
+        stored->settings.throttle_rise_ms > 1000.0f ||
         !isfinite(stored->settings.motor_idle_percent) ||
         stored->settings.motor_idle_percent < 1.0f ||
         stored->settings.motor_idle_percent > 10.0f ||
@@ -711,6 +736,9 @@ bool flight_settings_set(const flight_settings_t *settings)
         !angle_valid(settings->board_pitch_deg) ||
         !angle_valid(settings->board_yaw_deg) ||
         settings->motor_direction_reversed > 1U ||
+        !isfinite(settings->throttle_rise_ms) ||
+        settings->throttle_rise_ms < 0.0f ||
+        settings->throttle_rise_ms > 1000.0f ||
         !isfinite(settings->motor_idle_percent) ||
         settings->motor_idle_percent < 1.0f ||
         settings->motor_idle_percent > 10.0f ||

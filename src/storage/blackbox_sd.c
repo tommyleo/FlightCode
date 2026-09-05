@@ -706,10 +706,10 @@ bool blackbox_sd_get_metadata(uint32_t requested_flight_id,
         read_cache.version != SD_METADATA_BLOCK_VERSION ||
         read_cache.record_count != 0U ||
         read_cache.checksum != checksum_block(&read_cache)) return false;
-    memcpy(metadata, read_cache.payload, sizeof(*metadata));
+    const bool decoded = flight_log_metadata_decode(metadata, read_cache.payload);
     read_cache_valid = true;
     read_cache_sector = entry->start_sector;
-    return metadata->version == FLIGHT_LOG_METADATA_VERSION;
+    return decoded;
 }
 
 bool blackbox_sd_clear(void)

@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
+#include <string.h>
 
 #define FLIGHT_LOG_RATE_HZ 200U
 #define BLACKBOX_LOG_RATE_HZ 1000U
@@ -55,7 +57,7 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(blackbox_record_t) == 48U,
                "blackbox record must remain 48 bytes");
 
-#define FLIGHT_LOG_METADATA_VERSION 2U
+#define FLIGHT_LOG_METADATA_VERSION 3U
 typedef struct __attribute__((packed)) {
     uint32_t version;
     uint32_t main_loop_hz;
@@ -74,7 +76,28 @@ typedef struct __attribute__((packed)) {
     uint16_t initial_battery_centivolts;
     uint8_t initial_battery_cells;
     uint8_t reserved;
+    float throttle_rise_ms; /* full-scale rise time in ms; v3+ */
 } flight_log_metadata_t;
+
+/* Version 2 ended before throttle_rise_ms. Never interpret trailing padding
+ * or the first legacy sample as a saved ramp. Keep the original version. */
+_Static_assert(offsetof(flight_log_metadata_t, throttle_rise_ms) == 128U,
+               "legacy metadata prefix must remain 128 bytes");
+_Static_assert(sizeof(flight_log_metadata_t) == 132U,
+               "metadata v3 must remain 132 bytes");
+static inline bool flight_log_metadata_decode(flight_log_metadata_t *out,
+                                               const void *stored)
+{
+    uint32_t version;
+    memcpy(&version, stored, sizeof(version));
+    if (version != 2U && version != FLIGHT_LOG_METADATA_VERSION) return false;
+    memset(out, 0, sizeof(*out));
+    memcpy(out, stored, version == 2U
+        ? offsetof(flight_log_metadata_t, throttle_rise_ms) : sizeof(*out));
+    if (version == 2U) out->throttle_rise_ms = -1.0f;
+    return true;
+}
+
 
 void flight_log_init(void);
 void flight_log_set_inhibited(bool inhibited);

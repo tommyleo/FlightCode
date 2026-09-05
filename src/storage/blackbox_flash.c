@@ -522,10 +522,8 @@ bool blackbox_sd_get_metadata(uint32_t flight_id,
     flash_header_t header;
     if (!read_bytes(bank_address(retained_bank), &header, sizeof(header)) ||
         !header_valid(&header) ||
-        header.flight_id != flight_id ||
-        header.metadata.version != FLIGHT_LOG_METADATA_VERSION) return false;
-    *metadata = header.metadata;
-    return true;
+        header.flight_id != flight_id) return false;
+    return flight_log_metadata_decode(metadata, &header.metadata);
 }
 
 bool blackbox_sd_clear(void)

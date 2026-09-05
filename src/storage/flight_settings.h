@@ -63,6 +63,7 @@ typedef struct {
     uint32_t vtx_osd_enabled_mask;
     uint32_t vtx_osd_positions[2];
     float dynamic_d_boost_percent;
+    float throttle_rise_ms; /* 0 disables; full-scale 0..100% rise time */
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U

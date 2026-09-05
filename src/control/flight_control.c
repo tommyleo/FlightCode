@@ -1,4 +1,5 @@
 #include "flight_control.h"
+#include "throttle_ramp.h"
 
 #include <math.h>
 #include <string.h>
@@ -68,6 +69,7 @@ static float yaw_feedforward = 0.015f;
 static float tpa_attenuation = 0.20f;
 static float tpa_breakpoint_percent = 70.0f;
 static bool mixer_saturated;
+static float collective_throttle;
 static bool airmode_active;
 static pt1_filter_t gyro_filter[3];
 
@@ -186,6 +188,7 @@ static void reset_controller(void)
     memset(&yaw_state, 0, sizeof(yaw_state));
     memset(gyro_filter, 0, sizeof(gyro_filter));
     mixer_saturated = false;
+    collective_throttle = 0.0f;
     airmode_active = false;
 }
 
@@ -396,6 +399,9 @@ void flight_control_update(const imu_sample_t *imu,
         return;
     }
 
+    const float collective = throttle_ramp_update(
+        &collective_throttle, throttle, settings->throttle_rise_ms, dt);
+
     const float rate_roll = pt1(&gyro_filter[0], imu->gyro_x_dps - bias_x,
                                 settings->gyro_lpf_hz, dt);
     const float rate_pitch = pt1(&gyro_filter[1], imu->gyro_y_dps - bias_y,
@@ -411,10 +417,10 @@ void flight_control_update(const imu_sample_t *imu,
         rate_setpoint(rx->channel_us[yaw_ch], yaw_rate_dps);
     float tpa_factor = 1.0f;
     if (tpa_attenuation > 0.0f &&
-        throttle > tpa_breakpoint_percent &&
+        collective > tpa_breakpoint_percent &&
         tpa_breakpoint_percent < 100.0f) {
         tpa_factor = 1.0f - tpa_attenuation *
-            (throttle - tpa_breakpoint_percent) /
+            (collective - tpa_breakpoint_percent) /
             (100.0f - tpa_breakpoint_percent);
     }
     /*
@@ -425,7 +431,7 @@ void flight_control_update(const imu_sample_t *imu,
      * correction always starts from a known zero integral.
      */
     if (!airmode_active &&
-        throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
+        collective >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
         airmode_active = true;
     }
     float p_term[3], i_term[3], d_unfiltered[3], d_term[3], ff_term[3];
@@ -457,7 +463,7 @@ void flight_control_update(const imu_sample_t *imu,
                           &d_unfiltered[2], &d_term[2], &ff_term[2]);
     const float mixer_yaw = motor_direction_reversed ? -yaw : yaw;
     const float pid_authority = airmode_active ? 1.0f :
-        clampf(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT, 0.0f, 1.0f);
+        clampf(collective / AIRMODE_ACTIVATION_THROTTLE_PERCENT, 0.0f, 1.0f);
 
     /* Quad X: M1 rear-right, M2 front-right, M3 rear-left, M4 front-left. */
     float correction[4] = {
@@ -474,7 +480,7 @@ void flight_control_update(const imu_sample_t *imu,
     }
     const float available = 100.0f - motor_idle_percent;
     const float requested_base =
-        motor_idle_percent + throttle * available / 100.0f;
+        motor_idle_percent + collective * available / 100.0f;
     float scale = 1.0f;
     float base = requested_base;
     if (airmode_active) {

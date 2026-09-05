@@ -136,6 +136,13 @@ static void send_tpa(void)
           flight_settings_are_saved() ? 1U : 0U);
 }
 
+static void send_throttle_ramp(void)
+{
+    reply("@CFG THROTTLE_RAMP %.1f %u\n",
+          flight_settings_get()->throttle_rise_ms,
+          flight_settings_are_saved() ? 1U : 0U);
+}
+
 static void send_filters(void)
 {
     const flight_settings_t *s = flight_settings_get();
@@ -287,7 +294,7 @@ static void process(const char *command)
 #if BOARD_HAS_BATTERY_VOLTAGE
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
+              "FEEDFORWARD TPA FILTERS THROTTLE_RAMP GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
               "VTX_CONFIG "
 #if BOARD_HAS_OSD || BOARD_HAS_DIGITAL_OSD
@@ -305,7 +312,7 @@ static void process(const char *command)
 #else
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
+              "FEEDFORWARD TPA FILTERS THROTTLE_RAMP GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG VTX_CONFIG\n");
 #endif
         send_pids();
@@ -317,6 +324,7 @@ static void process(const char *command)
         send_feedforward();
         send_tpa();
         send_filters();
+        send_throttle_ramp();
         send_receiver_config();
         send_vtx_config();
 #if BOARD_HAS_VBAT_CALIBRATION
@@ -386,9 +394,30 @@ static void process(const char *command)
         send_tpa();
         return;
     }
+    if (strcmp(command, "GET_THROTTLE_RAMP") == 0) {
+        send_throttle_ramp();
+        return;
+    }
+    float rise_ms;
+    if (sscanf(command, "SET_THROTTLE_RAMP %f", &rise_ms) == 1) {
+        if (flight_control_is_armed()) {
+            reply("@CFG ERROR ARMED\n");
+        } else {
+            flight_settings_t updated = *flight_settings_get();
+            updated.throttle_rise_ms = rise_ms;
+            if (flight_settings_set(&updated)) {
+                reply("@CFG OK SET_THROTTLE_RAMP\n");
+                send_throttle_ramp();
+            } else {
+                reply("@CFG ERROR INVALID_THROTTLE_RAMP\n");
+            }
+        }
+        return;
+    }
     if (strcmp(command, "GET_FILTERS") == 0) {
         last_activity_us = board_micros();
         send_filters();
+        send_throttle_ramp();
         send_main_loop();
         return;
     }
@@ -492,14 +521,15 @@ static void process(const char *command)
               metadata.pids[0], metadata.pids[1], metadata.pids[2],
               metadata.pids[3], metadata.pids[4], metadata.pids[5],
               metadata.pids[6], metadata.pids[7], metadata.pids[8]);
-        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
+        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f %.6f\n",
               metadata.rates[0], metadata.rates[1], metadata.rates[2],
               metadata.rates[3], metadata.feedforward[0],
               metadata.feedforward[1], metadata.feedforward[2],
               metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
               metadata.filters[1], metadata.alignment[0],
               metadata.alignment[1], metadata.alignment[2],
-              metadata.motor_idle_percent, metadata.reserved / 2.0f);
+              metadata.motor_idle_percent, metadata.reserved / 2.0f,
+               metadata.throttle_rise_ms);
         reply("@CFG FLIGHT_LOG_METADATA_END\n");
         return;
     }
@@ -525,14 +555,15 @@ static void process(const char *command)
               metadata.pids[2], metadata.pids[3], metadata.pids[4],
               metadata.pids[5], metadata.pids[6], metadata.pids[7],
               metadata.pids[8]);
-        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
+        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f %.6f\n",
               metadata_flight, metadata.rates[0], metadata.rates[1],
               metadata.rates[2], metadata.rates[3], metadata.feedforward[0],
               metadata.feedforward[1], metadata.feedforward[2],
               metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
               metadata.filters[1], metadata.alignment[0],
               metadata.alignment[1], metadata.alignment[2],
-              metadata.motor_idle_percent, metadata.reserved / 2.0f);
+              metadata.motor_idle_percent, metadata.reserved / 2.0f,
+               metadata.throttle_rise_ms);
         reply("@CFG BLACKBOX_METADATA_END %u\n", metadata_flight);
         return;
     }
@@ -1058,6 +1089,7 @@ static void process(const char *command)
         if (flight_settings_set(&settings)) {
             reply("@CFG OK SET_FILTERS\n");
             send_filters();
+        send_throttle_ramp();
         } else {
             reply("@CFG ERROR INVALID_FILTERS\n");
         }
@@ -1150,6 +1182,7 @@ static void process(const char *command)
         send_feedforward();
         send_tpa();
         send_filters();
+        send_throttle_ramp();
         send_main_loop();
         return;
     }
@@ -1163,6 +1196,7 @@ static void process(const char *command)
         send_feedforward();
         send_tpa();
         send_filters();
+        send_throttle_ramp();
         return;
     }
     unsigned int main_loop_hz;
