@@ -400,7 +400,7 @@ void flight_control_update(const imu_sample_t *imu,
     }
 
     const float collective = throttle_ramp_update(
-        &collective_throttle, throttle, settings->throttle_rise_ms, dt);
+        &collective_throttle, throttle, FLIGHT_THROTTLE_RISE_MS, dt);
 
     const float rate_roll = pt1(&gyro_filter[0], imu->gyro_x_dps - bias_x,
                                 settings->gyro_lpf_hz, dt);

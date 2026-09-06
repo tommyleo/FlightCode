@@ -196,7 +196,7 @@ void flight_log_start(void)
     flight_metadata.alignment[0] = settings->board_roll_deg;
     flight_metadata.alignment[1] = settings->board_pitch_deg;
     flight_metadata.alignment[2] = settings->board_yaw_deg;
-    flight_metadata.throttle_rise_ms = settings->throttle_rise_ms;
+    flight_metadata.throttle_rise_ms = FLIGHT_THROTTLE_RISE_MS;
     flight_metadata.motor_idle_percent = settings->motor_idle_percent;
     flight_metadata.motor_protocol = settings->motor_protocol;
     flight_metadata.motor_direction_reversed = settings->motor_direction_reversed;
