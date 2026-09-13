@@ -18,9 +18,14 @@ static ADC_HandleTypeDef hadc1;
 #define STATUS_LED_FLASH_US 80000U
 #define STATUS_LED_SECOND_FLASH_US 160000U
 #define STATUS_LED_CALIBRATION_TOGGLE_US 100000U
-#define BUZZER_PATTERN_PERIOD_US 500000U
-#define BUZZER_BEEP_US 70000U
-#define BUZZER_SECOND_BEEP_US 120000U
+#define BUZZER_PATTERN_PERIOD_US 400000U
+#define BUZZER_BEEP_US 100000U
+#define BUZZER_SECOND_BEEP_US 150000U
+#if BOARD_BUZZER_REQUIRES_TONE
+#define BUZZER_TONE_HZ 5000U
+static bool buzzer_timer_ready;
+static volatile bool buzzer_tone_enabled;
+#endif
 
 static void jump_to_system_bootloader(void) __attribute__((noreturn));
 
@@ -290,6 +295,43 @@ static void gpio_init(void)
     board_buzzer_set(false);
 }
 
+#if BOARD_BUZZER_REQUIRES_TONE
+static void buzzer_timer_init(void)
+{
+    /*
+     * PB4 is also TIM3_CH1, but TIM3 drives two DSHOT motor outputs on this
+     * target. Use an otherwise free timer interrupt to clock the GPIO instead
+     * of sharing the DSHOT time base. The interrupt only runs while a beep is
+     * sounding, so it has no steady-state flight-loop cost.
+     */
+    __HAL_RCC_TIM5_CLK_ENABLE();
+    uint32_t timer_clock_hz = HAL_RCC_GetPCLK1Freq();
+    if ((RCC->CFGR & RCC_CFGR_PPRE1) != RCC_CFGR_PPRE1_DIV1) {
+        timer_clock_hz *= 2U;
+    }
+    const uint32_t counter_hz = 1000000U;
+    TIM5->CR1 = 0U;
+    TIM5->PSC = timer_clock_hz / counter_hz - 1U;
+    TIM5->ARR = counter_hz / (BUZZER_TONE_HZ * 2U) - 1U;
+    TIM5->CNT = 0U;
+    TIM5->EGR = TIM_EGR_UG;
+    TIM5->SR = 0U;
+    TIM5->DIER = TIM_DIER_UIE;
+    HAL_NVIC_SetPriority(TIM5_IRQn, 7U, 0U);
+    HAL_NVIC_EnableIRQ(TIM5_IRQn);
+    buzzer_timer_ready = true;
+}
+
+void TIM5_IRQHandler(void)
+{
+    if ((TIM5->SR & TIM_SR_UIF) == 0U) return;
+    TIM5->SR = (uint16_t)~TIM_SR_UIF;
+    if (buzzer_tone_enabled) {
+        HAL_GPIO_TogglePin(BUZZER_PORT, BUZZER_PIN);
+    }
+}
+#endif
+
 static void spi1_init(void)
 {
     __HAL_RCC_SPI1_CLK_ENABLE();
@@ -554,6 +596,9 @@ void board_init(void)
     HAL_Init();
     clock_init();
     gpio_init();
+#if BOARD_BUZZER_REQUIRES_TONE
+    buzzer_timer_init();
+#endif
     spi1_init();
     osd_spi_init();
     dataflash_spi_init();
@@ -675,6 +720,21 @@ uint32_t board_micros(void)
 
 void board_buzzer_set(bool enabled)
 {
+#if BOARD_BUZZER_REQUIRES_TONE
+    if (enabled && buzzer_timer_ready) {
+        if (!buzzer_tone_enabled) {
+            buzzer_tone_enabled = true;
+            TIM5->CNT = 0U;
+            TIM5->SR = 0U;
+            HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN,
+                              BUZZER_ACTIVE_LEVEL);
+            TIM5->CR1 |= TIM_CR1_CEN;
+        }
+        return;
+    }
+    buzzer_tone_enabled = false;
+    if (buzzer_timer_ready) TIM5->CR1 &= ~TIM_CR1_CEN;
+#endif
     HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN,
                       enabled ? BUZZER_ACTIVE_LEVEL
                               : (BUZZER_ACTIVE_LEVEL == GPIO_PIN_SET
@@ -732,22 +792,7 @@ void board_buzzer_update(bool requested)
     const bool sounding = phase < BUZZER_BEEP_US ||
         (phase >= BUZZER_SECOND_BEEP_US &&
          phase < BUZZER_SECOND_BEEP_US + BUZZER_BEEP_US);
-#if BOARD_BUZZER_REQUIRES_TONE
-    if (sounding) {
-        /*
-         * PB4 drives a passive beeper on CLRacingF4.  This function runs at
-         * the 8 kHz control-loop rate, so toggling once per call produces the
-         * highest possible square wave here: 4 kHz, close to its most audible
-         * range.
-         */
-        HAL_GPIO_TogglePin(BUZZER_PORT, BUZZER_PIN);
-    } else {
-        board_buzzer_set(false);
-    }
-#else
-    /* An active buzzer only needs the sounding envelope. */
     board_buzzer_set(sounding);
-#endif
 }
 
 void board_check_dfu_request(void)

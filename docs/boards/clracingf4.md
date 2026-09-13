@@ -16,7 +16,7 @@ hardware mapping.
 | Battery voltage | ADC PC2, 11:1 base divider with calibration |
 | Analog OSD | MAX7456/AT7456E on SPI3, CS PA15 |
 | Status LED | PB5 |
-| Buzzer | Passive 4 kHz output on PB4 |
+| Buzzer | Passive 5 kHz timer-driven output on PB4 |
 | Persistent Blackbox | microSD on SPI2, CS PB12, detect PB7 |
 | Firmware update | USB STM32 DFU |
 
