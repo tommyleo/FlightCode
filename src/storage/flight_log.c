@@ -385,6 +385,9 @@ void flight_log_record(const float gyro_raw[3], const float gyro_filtered[3],
             persistent.d_filtered[i] =
                 scaled_i16(d_filtered[i], 100.0f);
             persistent.pid[i] = scaled_pid(pid_output[i]);
+            persistent.p_term[i] = scaled_pid(p_term[i]);
+            persistent.i_term[i] = scaled_pid(i_term[i]);
+            persistent.ff_term[i] = scaled_pid(ff_term[i]);
         }
         for (uint8_t i = 0U; i < 4U; ++i) {
             float percent = motors[i] == 0U ? 0.0f :

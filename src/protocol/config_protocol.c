@@ -552,11 +552,11 @@ static void process(const char *command)
             blackbox_count = BLACKBOX_BINARY_CHUNK_MAX;
         }
         last_blackbox_download_us = board_micros();
-        static blackbox_record_t records[10U];
+        static blackbox_record_t records[8U];
         uint32_t sent = 0U;
         while (sent < blackbox_count) {
-            const uint32_t requested = blackbox_count - sent < 10U
-                ? blackbox_count - sent : 10U;
+            const uint32_t requested = blackbox_count - sent < 8U
+                ? blackbox_count - sent : 8U;
             uint32_t failed_sector = 0U;
             const uint32_t group_count = blackbox_sd_get_records(
                 (uint32_t)blackbox_flight,
@@ -575,7 +575,7 @@ static void process(const char *command)
             (void)usb_cdc_write((const uint8_t *)records,
                                 group_count * sizeof(records[0]));
             sent += group_count;
-            if (group_count < 10U) break;
+            if (group_count < 8U) break;
         }
         reply("@CFG BLACKBOX_CHUNK_END %u %lu\n", blackbox_flight,
               (unsigned long)((uint32_t)blackbox_offset + sent));
@@ -625,9 +625,10 @@ static void process(const char *command)
                   item.motor[0], item.motor[1], item.motor[2], item.motor[3],
                   item.throttle, item.flags, 0U, 0U,
                   item.battery_centivolts, cell_centivolts, cells,
-                  0, 0, 0, 0, 0, 0,
+                  item.p_term[0], item.p_term[1], item.p_term[2],
+                  item.i_term[0], item.i_term[1], item.i_term[2],
                   legacy_d[0], legacy_d[1], legacy_d[2],
-                  0, 0, 0,
+                  item.ff_term[0], item.ff_term[1], item.ff_term[2],
                   (unsigned long)item.timestamp_us,
                   item.gyro_raw[0], item.gyro_raw[1], item.gyro_raw[2],
                   item.d_unfiltered[0], item.d_unfiltered[1],

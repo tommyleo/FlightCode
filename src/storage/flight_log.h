@@ -35,9 +35,10 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(flight_log_record_t) == 40U,
                "flight log record format must remain 40 bytes");
 
-/* Persistent SD/dataflash format. 48 bytes allows ten records plus the
- * 32-byte SD header to fit exactly in one 512-byte sector. */
-#define BLACKBOX_RECORD_VERSION 2U
+/* Persistent SD/dataflash sample format. Eight 60-byte records plus the
+ * 32-byte block header fill one 512-byte SD sector exactly. Static tuning
+ * values belong to flight_log_metadata_t and are written once per flight. */
+#define BLACKBOX_RECORD_VERSION 4U
 typedef struct __attribute__((packed)) {
     uint32_t timestamp_us;
     int16_t gyro_raw[3];          /* 0.1 deg/s, bias removed, before LPF */
@@ -49,13 +50,17 @@ typedef struct __attribute__((packed)) {
     uint8_t throttle;             /* 0..200 = 0..100 percent */
     uint8_t flags;
     int8_t pid[3];                /* final axis PID, 0.5 percent */
+    int8_t p_term[3];             /* 0.5 percent */
+    int8_t i_term[3];             /* 0.5 percent */
+    int8_t ff_term[3];            /* 0.5 percent */
     uint16_t battery_centivolts;
     uint16_t dropped_records;     /* cumulative persistent-backend drops */
     uint8_t format_version;
+    uint8_t reserved[3];
 } blackbox_record_t;
 
-_Static_assert(sizeof(blackbox_record_t) == 48U,
-               "blackbox record must remain 48 bytes");
+_Static_assert(sizeof(blackbox_record_t) == 60U,
+               "blackbox record must remain 60 bytes");
 
 #define FLIGHT_LOG_METADATA_VERSION 3U
 typedef struct __attribute__((packed)) {
