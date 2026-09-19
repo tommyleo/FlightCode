@@ -227,7 +227,7 @@ static void send_osd_layout(void)
     for (size_t i = 0U; pilot[i] != '\0'; ++i) {
         if (pilot[i] == ' ') pilot[i] = '_';
     }
-    reply("@CFG OSD_LAYOUT %lu %lu %lu %lu %lu %lu %lu %s %u\n",
+    reply("@CFG OSD_LAYOUT %lu %lu %lu %lu %lu %lu %lu %lu %s %u\n",
           (unsigned long)(s->osd_element_enabled_mask |
                           (s->vtx_osd_enabled << OSD_ELEMENT_COUNT)),
           (unsigned long)s->osd_element_positions[0],
@@ -235,6 +235,7 @@ static void send_osd_layout(void)
           (unsigned long)s->osd_element_positions[2],
           (unsigned long)s->osd_element_positions[3],
           (unsigned long)s->osd_element_positions[4],
+          (unsigned long)s->vtx_osd_position,
           (unsigned long)s->vtx_osd_position,
           pilot[0] != '\0' ? pilot : "-",
           flight_settings_are_saved() ? 1U : 0U);
@@ -875,12 +876,14 @@ static void process(const char *command)
         }
         return;
     }
-    unsigned int osd_mask, osd_positions[OSD_ELEMENT_COUNT], vtx_osd_position;
+    unsigned int osd_mask, osd_positions[OSD_ELEMENT_COUNT];
+    unsigned int vtx_osd_position, unused_vtx_osd_position;
     char osd_pilot[OSD_PILOT_NAME_LENGTH + 1U];
-    if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %u %12s",
+    if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %u %u %12s",
                &osd_mask, &osd_positions[0], &osd_positions[1],
                &osd_positions[2], &osd_positions[3], &osd_positions[4],
-               &vtx_osd_position, osd_pilot) == 8) {
+               &vtx_osd_position, &unused_vtx_osd_position,
+               osd_pilot) == 9) {
         settings.osd_element_enabled_mask = osd_mask &
             ((1U << OSD_ELEMENT_COUNT) - 1U);
         settings.vtx_osd_enabled = (osd_mask >> OSD_ELEMENT_COUNT) & 1U;

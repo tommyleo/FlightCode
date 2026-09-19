@@ -13,6 +13,7 @@
 
 #define SETTINGS_MAGIC 0x46344643U
 #define SETTINGS_VERSION 23U
+#define SETTINGS_LEGACY_VERSION_22 22U
 #define SETTINGS_LEGACY_VERSION_21 21U
 #define SETTINGS_LEGACY_VERSION_20 20U
 #define SETTINGS_LEGACY_VERSION_19 19U
@@ -206,11 +207,53 @@ typedef struct {
 } legacy_record_v20_t;
 
 typedef struct {
+    pid_gains_t roll, pitch, yaw;
+    motor_protocol_t motor_protocol;
+    float board_roll_deg, board_pitch_deg, board_yaw_deg;
+    uint32_t motor_direction_reversed;
+    float motor_idle_percent;
+    float roll_rate_dps, pitch_rate_dps, yaw_rate_dps, rate_expo;
+    float roll_feedforward, pitch_feedforward, yaw_feedforward;
+    float tpa_attenuation, tpa_breakpoint_percent;
+    uint32_t receiver_channel_order;
+    uint32_t arm_channel, arm_min_us, arm_max_us;
+    uint32_t beep_channel, beep_min_us, beep_max_us;
+    uint32_t osd_enabled, osd_position, blackbox_enabled;
+    float gyro_lpf_hz, dterm_lpf_hz;
+    uint32_t receiver_protocol, main_loop_hz;
+    float vbat_multiplier;
+    uint32_t osd_element_enabled_mask;
+    uint32_t osd_element_positions[OSD_ELEMENT_COUNT];
+    char osd_pilot_name[OSD_PILOT_NAME_LENGTH + 1U];
+    uint32_t vtx_protocol, vtx_uart, vtx_region;
+    uint32_t vtx_band, vtx_channel, vtx_power_mw;
+    uint32_t vtx_osd_enabled_mask;
+    uint32_t vtx_osd_positions[2];
+    float dynamic_d_boost_percent;
+} legacy_settings_v21_t;
+
+typedef struct {
+    legacy_settings_v21_t base;
+    float throttle_rise_ms;
+} legacy_settings_v22_t;
+
+typedef struct {
     uint32_t magic;
     uint32_t version;
-    uint8_t settings[sizeof(flight_settings_t)];
+    legacy_settings_v21_t settings;
     uint32_t checksum;
 } legacy_record_v21_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    legacy_settings_v22_t settings;
+    uint32_t checksum;
+} legacy_record_v22_t;
+
+_Static_assert(offsetof(legacy_settings_v21_t, vtx_osd_enabled_mask) ==
+                   offsetof(flight_settings_t, vtx_osd_enabled),
+               "Flight settings v22 prefix layout changed");
 
 _Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
                    sizeof(legacy_settings_v13_t),
@@ -475,13 +518,42 @@ void flight_settings_init(void)
         (const legacy_record_v20_t *)SETTINGS_ADDRESS;
     const legacy_record_v21_t *legacy_v21 =
         (const legacy_record_v21_t *)SETTINGS_ADDRESS;
+    const legacy_record_v22_t *legacy_v22 =
+        (const legacy_record_v22_t *)SETTINGS_ADDRESS;
+    if (legacy_v22->magic == SETTINGS_MAGIC &&
+        legacy_v22->version == SETTINGS_LEGACY_VERSION_22 &&
+        legacy_v22->checksum == checksum_bytes(
+            legacy_v22, offsetof(legacy_record_v22_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, &legacy_v22->settings.base,
+               offsetof(flight_settings_t, vtx_osd_enabled));
+        current_settings.vtx_osd_enabled =
+            legacy_v22->settings.base.vtx_osd_enabled_mask != 0U ? 1U : 0U;
+        current_settings.vtx_osd_position =
+            (legacy_v22->settings.base.vtx_osd_enabled_mask & 1U) != 0U
+                ? legacy_v22->settings.base.vtx_osd_positions[0]
+                : legacy_v22->settings.base.vtx_osd_positions[1];
+        current_settings.dynamic_d_boost_percent =
+            legacy_v22->settings.base.dynamic_d_boost_percent;
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v21->magic == SETTINGS_MAGIC &&
         legacy_v21->version == SETTINGS_LEGACY_VERSION_21 &&
         legacy_v21->checksum == checksum_bytes(
             legacy_v21, offsetof(legacy_record_v21_t, checksum))) {
         flight_settings_reset_defaults();
-        memcpy(&current_settings, legacy_v21->settings,
-               sizeof(legacy_v21->settings));
+        memcpy(&current_settings, &legacy_v21->settings,
+               offsetof(flight_settings_t, vtx_osd_enabled));
+        current_settings.vtx_osd_enabled =
+            legacy_v21->settings.vtx_osd_enabled_mask != 0U ? 1U : 0U;
+        current_settings.vtx_osd_position =
+            (legacy_v21->settings.vtx_osd_enabled_mask & 1U) != 0U
+                ? legacy_v21->settings.vtx_osd_positions[0]
+                : legacy_v21->settings.vtx_osd_positions[1];
+        current_settings.dynamic_d_boost_percent =
+            legacy_v21->settings.dynamic_d_boost_percent;
         settings_saved = false;
         apply();
         return;
