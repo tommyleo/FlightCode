@@ -1,4 +1,5 @@
 #include "max7456.h"
+#include "osd_framebuffer.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -55,8 +56,9 @@ static bool previous_armed;
 static bool timer_started;
 static uint32_t flight_started_us;
 static uint32_t flight_duration_us;
-static char previous_screen[SCREEN_COLUMNS * SCREEN_ROWS];
-static bool render_cache_valid;
+static osd_framebuffer_t framebuffer;
+_Static_assert(SCREEN_COLUMNS * SCREEN_ROWS == OSD_FRAME_CELLS,
+               "OSD framebuffer size must match the display");
 
 static uint8_t transfer(uint8_t address, uint8_t value)
 {
@@ -247,7 +249,7 @@ static void write_character(uint16_t position, uint8_t character)
 
 static void reset_render_cache(void)
 {
-    render_cache_valid = false;
+    osd_framebuffer_reset(&framebuffer);
 }
 
 static uint32_t legacy_position(uint8_t position)
@@ -398,32 +400,29 @@ static void render_layout(const char *total_voltage, const char *cell_text,
     compose_element(screen, 4U, pilot_name);
     const flight_settings_t *settings = flight_settings_get();
     static const char bands[] = "ABEFRL";
-    char vtx_channel[OSD_TEXT_LENGTH + 1U];
-    char vtx_power[OSD_TEXT_LENGTH + 1U];
-    (void)snprintf(vtx_channel, sizeof(vtx_channel), "VTX %c%lu",
+    char vtx[OSD_TEXT_LENGTH + 1U];
+    (void)snprintf(vtx, sizeof(vtx), "%c:%lu:%lu",
                    bands[settings->vtx_band],
-                   (unsigned long)(settings->vtx_channel + 1U));
-    (void)snprintf(vtx_power, sizeof(vtx_power), "VTX %luMW",
+                   (unsigned long)(settings->vtx_channel + 1U),
                    (unsigned long)settings->vtx_power_mw);
-    for (uint8_t item = 0U; item < 2U; ++item) {
-        if ((settings->vtx_osd_enabled_mask & (1U << item)) == 0U) continue;
-        const uint32_t position = settings->vtx_osd_positions[item];
+    if (settings->vtx_osd_enabled != 0U) {
+        const uint32_t position = settings->vtx_osd_position;
         const uint8_t column = (uint8_t)(position % SCREEN_COLUMNS);
-        const char *text = item == 0U ? vtx_channel : vtx_power;
-        for (uint8_t i = 0U; i < OSD_TEXT_LENGTH && text[i] != '\0' &&
-             column + i < SCREEN_COLUMNS; ++i) screen[position + i] = text[i];
+        for (uint8_t i = 0U; i < OSD_TEXT_LENGTH && vtx[i] != '\0' &&
+             column + i < SCREEN_COLUMNS; ++i) screen[position + i] = vtx[i];
     }
 
-    for (uint16_t position = 0U; position < sizeof(screen); ++position) {
-        const bool changed = render_cache_valid
-            ? screen[position] != previous_screen[position]
-            : screen[position] != ' ';
-        if (changed) {
-            write_character(position, font_character(screen[position]));
-        }
+    osd_framebuffer_publish(&framebuffer, screen);
+}
+
+void max7456_process(void)
+{
+    if (!available || !enabled || menu_active) return;
+    uint16_t position;
+    char character;
+    if (osd_framebuffer_next(&framebuffer, &position, &character)) {
+        write_character(position, font_character(character));
     }
-    memcpy(previous_screen, screen, sizeof(previous_screen));
-    render_cache_valid = true;
 }
 
 void max7456_update(float voltage, bool armed, uint32_t now_us)

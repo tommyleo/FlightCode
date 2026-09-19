@@ -16,6 +16,7 @@ bool max7456_set_layout(uint32_t enabled_mask,
                         const uint32_t positions[5],
                         const char *pilot_name);
 void max7456_update(float voltage, bool armed, uint32_t now_us);
+void max7456_process(void);
 bool max7456_menu_begin(void);
 void max7456_menu_end(void);
 void max7456_clear_screen(void);

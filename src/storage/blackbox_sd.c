@@ -50,13 +50,13 @@ bool blackbox_sd_session_test(void) { return false; }
 #define SD_BLOCK_SIZE 512U
 #define SD_QUEUE_BLOCKS 32U
 #define SD_RECORDS_PER_BLOCK 8U
-#define SD_RECORD_BLOCK_VERSION 8U
-#define SD_METADATA_BLOCK_VERSION 7U
+#define SD_RECORD_BLOCK_VERSION 9U
+#define SD_METADATA_BLOCK_VERSION 10U
 #define SD_DATA_OFFSET_SECTORS 2048U
 #define SD_CATALOG_SECTOR (SD_DATA_OFFSET_SECTORS - 1U)
 #define SD_BLOCK_MAGIC 0x42423446U /* F4BB */
 #define SD_CATALOG_MAGIC 0x58494246U /* FBIX */
-#define SD_CATALOG_VERSION 3U
+#define SD_CATALOG_VERSION 4U
 #define SD_CATALOG_FLIGHTS 20U
 
 typedef struct __attribute__((packed)) {

@@ -714,7 +714,7 @@ uint32_t board_micros(void)
     const uint32_t counts_per_ms = SysTick->LOAD + 1U;
     const uint32_t elapsed_counts = counts_per_ms - systick_value;
     const uint32_t fractional_us =
-        (uint32_t)(((uint64_t)elapsed_counts * 1000U) / counts_per_ms);
+        (uint32_t)((elapsed_counts * 1000U) / counts_per_ms);
     return tick_before * 1000U + fractional_us;
 }
 

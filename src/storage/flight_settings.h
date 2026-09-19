@@ -8,7 +8,6 @@
 
 #define OSD_ELEMENT_COUNT 5U
 #define OSD_PILOT_NAME_LENGTH 12U
-#define FLIGHT_THROTTLE_RISE_MS 5.0f
 
 typedef enum {
     OSD_ELEMENT_TOTAL_VOLTAGE = 0,
@@ -61,11 +60,9 @@ typedef struct {
     uint32_t vtx_band;
     uint32_t vtx_channel;
     uint32_t vtx_power_mw;
-    uint32_t vtx_osd_enabled_mask;
-    uint32_t vtx_osd_positions[2];
+    uint32_t vtx_osd_enabled;
+    uint32_t vtx_osd_position;
     float dynamic_d_boost_percent;
-    /* Retained only to preserve the persisted-settings layout. */
-    float throttle_rise_ms;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U

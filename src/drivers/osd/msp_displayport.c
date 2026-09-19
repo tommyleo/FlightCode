@@ -116,8 +116,7 @@ static void enqueue_layout(float voltage)
     char total_voltage[16] = "";
     char cell_voltage[16] = "";
     char timer[16];
-    char vtx_channel[16];
-    char vtx_power[16];
+    char vtx[16];
     if (voltage >= 1.0f && voltage < 100.0f) {
         uint8_t cells = (uint8_t)ceilf(voltage / 4.25f);
         if (cells == 0U) cells = 1U;
@@ -131,10 +130,9 @@ static void enqueue_layout(float voltage)
                    (unsigned long)(seconds / 60U),
                    (unsigned long)(seconds % 60U));
     static const char bands[] = "ABEFRL";
-    (void)snprintf(vtx_channel, sizeof(vtx_channel), "VTX %c%lu",
+    (void)snprintf(vtx, sizeof(vtx), "%c:%lu:%lu",
                    bands[settings->vtx_band],
-                   (unsigned long)(settings->vtx_channel + 1U));
-    (void)snprintf(vtx_power, sizeof(vtx_power), "VTX %luMW",
+                   (unsigned long)(settings->vtx_channel + 1U),
                    (unsigned long)settings->vtx_power_mw);
 
     const char *elements[OSD_ELEMENT_COUNT] = {
@@ -146,10 +144,8 @@ static void enqueue_layout(float voltage)
         if ((settings->osd_element_enabled_mask & (1U << i)) != 0U)
             enqueue_string(settings->osd_element_positions[i], elements[i]);
     }
-    if ((settings->vtx_osd_enabled_mask & 1U) != 0U)
-        enqueue_string(settings->vtx_osd_positions[0], vtx_channel);
-    if ((settings->vtx_osd_enabled_mask & 2U) != 0U)
-        enqueue_string(settings->vtx_osd_positions[1], vtx_power);
+    if (settings->vtx_osd_enabled != 0U)
+        enqueue_string(settings->vtx_osd_position, vtx);
     enqueue_simple(MSP_DP_DRAW_SCREEN);
 }
 #endif
@@ -256,4 +252,3 @@ const char *msp_displayport_status_name(void)
     return "MSP_DISPLAYPORT_UNSUPPORTED";
 #endif
 }
-

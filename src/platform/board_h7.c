@@ -350,7 +350,7 @@ uint32_t board_micros(void)
     } while (tick_before != tick_after);
     const uint32_t counts_per_ms = SysTick->LOAD + 1U;
     return tick_before * 1000U +
-        (uint32_t)(((uint64_t)(counts_per_ms - systick_value) * 1000U) /
+        (uint32_t)(((counts_per_ms - systick_value) * 1000U) /
                    counts_per_ms);
 }
 

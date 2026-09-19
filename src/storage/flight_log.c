@@ -12,7 +12,7 @@
 #define DSHOT_MIN 48U
 #define DSHOT_MAX 2047U
 #define LOG_FLASH_MAGIC 0x46344C47U
-#define LOG_FLASH_VERSION 7U
+#define LOG_FLASH_VERSION 8U
 #define LOG_PERSIST_DELAY_US 200000U
 #define LOG_MIN_FLIGHT_THROTTLE_PERCENT 1.0f
 
@@ -55,17 +55,10 @@ static uint32_t hash_bytes(uint32_t hash, const void *data, size_t length)
     return hash;
 }
 
-static size_t stored_header_size(void)
-{
-    const uint32_t *header = (const uint32_t *)FLIGHT_LOG_ADDRESS;
-    return sizeof(flight_log_flash_header_t) -
-        (header[1] == 6U ? sizeof(float) : 0U);
-}
-
 static const flight_log_record_t *flash_records(void)
 {
     return (const flight_log_record_t *)
-        (FLIGHT_LOG_ADDRESS + stored_header_size());
+        (FLIGHT_LOG_ADDRESS + sizeof(flight_log_flash_header_t));
 }
 
 static const flight_log_record_t *ram_record(uint32_t index)
@@ -111,7 +104,7 @@ void flight_log_init(void)
     const flight_log_flash_header_t *const header =
         (const flight_log_flash_header_t *)FLIGHT_LOG_ADDRESS;
     if (header->magic == LOG_FLASH_MAGIC &&
-        (header->version == LOG_FLASH_VERSION || header->version == 6U) &&
+        header->version == LOG_FLASH_VERSION &&
         header->count > 0U &&
         header->count <= FLIGHT_LOG_CAPACITY &&
         header->rate_hz == FLIGHT_LOG_RATE_HZ &&
@@ -196,7 +189,6 @@ void flight_log_start(void)
     flight_metadata.alignment[0] = settings->board_roll_deg;
     flight_metadata.alignment[1] = settings->board_pitch_deg;
     flight_metadata.alignment[2] = settings->board_yaw_deg;
-    flight_metadata.throttle_rise_ms = FLIGHT_THROTTLE_RISE_MS;
     flight_metadata.motor_idle_percent = settings->motor_idle_percent;
     flight_metadata.motor_protocol = settings->motor_protocol;
     flight_metadata.motor_direction_reversed = settings->motor_direction_reversed;
@@ -261,8 +253,7 @@ bool flight_log_get_metadata(flight_log_metadata_t *metadata)
     if (metadata == NULL) return false;
     const flight_log_flash_header_t *header =
         (const flight_log_flash_header_t *)FLIGHT_LOG_ADDRESS;
-    if (using_flash && header->version != LOG_FLASH_VERSION &&
-        header->version != 6U) return false;
+    if (using_flash && header->version != LOG_FLASH_VERSION) return false;
     return flight_log_metadata_decode(metadata,
         using_flash ? &header->metadata : &flight_metadata);
 }
@@ -442,7 +433,6 @@ void flight_log_record(const float gyro_raw[3], const float gyro_filtered[3],
     item->battery_centivolts = battery_centivolts;
     item->cell_centivolts = cell_centivolts;
     item->battery_cells = battery_cells;
-    item->reserved = 0U;
     write_index = (write_index + 1U) % FLIGHT_LOG_CAPACITY;
     if (record_count < FLIGHT_LOG_CAPACITY) ++record_count;
 }

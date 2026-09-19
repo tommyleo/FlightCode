@@ -12,7 +12,7 @@
 #include "sbus.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 22U
+#define SETTINGS_VERSION 23U
 #define SETTINGS_LEGACY_VERSION_21 21U
 #define SETTINGS_LEGACY_VERSION_20 20U
 #define SETTINGS_LEGACY_VERSION_19 19U
@@ -208,7 +208,7 @@ typedef struct {
 typedef struct {
     uint32_t magic;
     uint32_t version;
-    uint8_t settings[offsetof(flight_settings_t, throttle_rise_ms)];
+    uint8_t settings[sizeof(flight_settings_t)];
     uint32_t checksum;
 } legacy_record_v21_t;
 
@@ -349,9 +349,8 @@ static bool vtx_valid(const flight_settings_t *settings)
            settings->vtx_region <= VTX_REGION_US &&
            settings->vtx_band < 6U && settings->vtx_channel < 8U &&
            settings->vtx_power_mw >= 1U && settings->vtx_power_mw <= 2000U &&
-           settings->vtx_osd_enabled_mask < 4U &&
-           settings->vtx_osd_positions[0] < 480U &&
-           settings->vtx_osd_positions[1] < 480U;
+           settings->vtx_osd_enabled <= 1U &&
+           settings->vtx_osd_position < 480U;
 }
 
 static void apply(void)
@@ -402,7 +401,6 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
     settings->gyro_lpf_hz = 90.0f;
     settings->dterm_lpf_hz = 50.0f;
     settings->dynamic_d_boost_percent = 25.0f;
-    settings->throttle_rise_ms = FLIGHT_THROTTLE_RISE_MS;
 }
 
 void flight_settings_reset_defaults(void)
@@ -436,8 +434,8 @@ void flight_settings_reset_defaults(void)
         .vtx_band = 4U,
         .vtx_channel = 0U,
         .vtx_power_mw = 25U,
-        .vtx_osd_enabled_mask = 0U,
-        .vtx_osd_positions = {55U, 85U},
+        .vtx_osd_enabled = 0U,
+        .vtx_osd_position = 55U,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -689,9 +687,6 @@ void flight_settings_init(void)
         !angle_valid(stored->settings.board_pitch_deg) ||
         !angle_valid(stored->settings.board_yaw_deg) ||
         stored->settings.motor_direction_reversed > 1U ||
-        !isfinite(stored->settings.throttle_rise_ms) ||
-        stored->settings.throttle_rise_ms < 0.0f ||
-        stored->settings.throttle_rise_ms > 1000.0f ||
         !isfinite(stored->settings.motor_idle_percent) ||
         stored->settings.motor_idle_percent < 1.0f ||
         stored->settings.motor_idle_percent > 10.0f ||
@@ -736,9 +731,6 @@ bool flight_settings_set(const flight_settings_t *settings)
         !angle_valid(settings->board_pitch_deg) ||
         !angle_valid(settings->board_yaw_deg) ||
         settings->motor_direction_reversed > 1U ||
-        !isfinite(settings->throttle_rise_ms) ||
-        settings->throttle_rise_ms < 0.0f ||
-        settings->throttle_rise_ms > 1000.0f ||
         !isfinite(settings->motor_idle_percent) ||
         settings->motor_idle_percent < 1.0f ||
         settings->motor_idle_percent > 10.0f ||

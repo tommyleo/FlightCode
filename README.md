@@ -2,7 +2,7 @@
 
 *Born to race.*
 
-Current release: **1.1.0**.
+Current release: **1.2.0**.
 
 ## FlightCode in action! 🚀
 
@@ -68,8 +68,8 @@ frequencies, alongside the separated P/I/D/FF terms.
 
 FlightCode uses a shared OSD layout for analog and digital video systems. The
 Configurator provides the same drag-and-drop editor for battery voltage,
-per-cell voltage, flight timer, FlightCode label, pilot name, VTX band/channel,
-and VTX power. The firmware selects the correct rendering backend for each
+per-cell voltage, flight timer, FlightCode label, pilot name, and the compact
+VTX band/channel/power value (for example `F:3:200`). The firmware selects the correct rendering backend for each
 supported board.
 
 ### Analog OSD
@@ -154,3 +154,11 @@ Configuration changes and diagnostic motor output are rejected while armed.
 Always perform the first test without propellers. Verify motor order, motor
 direction, gyroscope orientation, receiver failsafe and the arming command
 before installing propellers.
+
+## Direct throttle and storage formats
+
+Throttle is applied directly to the controller and mixer on each update.
+Log metadata uses version 4; exports contain a single throttle channel.
+Settings saved by the preceding firmware version are not migrated; configure
+and save the aircraft settings again after updating. Existing onboard logs
+from the preceding format are not loaded.

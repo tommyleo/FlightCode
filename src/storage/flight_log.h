@@ -14,6 +14,7 @@
 #define FLIGHT_LOG_FLAG_STOP_RX_FAILSAFE 0x10U
 #define FLIGHT_LOG_FLAG_STOP_RX_TIMEOUT 0x20U
 
+
 typedef struct __attribute__((packed)) {
     int16_t gyro[3];       /* 0.1 deg/s */
     int16_t setpoint[3];   /* 0.1 deg/s */
@@ -29,7 +30,7 @@ typedef struct __attribute__((packed)) {
     int8_t i_term[3];      /* 0.5 percent */
     int8_t d_term[3];      /* 0.5 percent */
     int8_t ff_term[3];     /* 0.5 percent */
-    uint8_t reserved;
+    uint8_t reserved; /* retain a 40-byte stride for aligned record storage */
 } flight_log_record_t;
 
 _Static_assert(sizeof(flight_log_record_t) == 40U,
@@ -38,7 +39,7 @@ _Static_assert(sizeof(flight_log_record_t) == 40U,
 /* Persistent SD/dataflash sample format. Eight 60-byte records plus the
  * 32-byte block header fill one 512-byte SD sector exactly. Static tuning
  * values belong to flight_log_metadata_t and are written once per flight. */
-#define BLACKBOX_RECORD_VERSION 4U
+#define BLACKBOX_RECORD_VERSION 5U
 typedef struct __attribute__((packed)) {
     uint32_t timestamp_us;
     int16_t gyro_raw[3];          /* 0.1 deg/s, bias removed, before LPF */
@@ -62,7 +63,7 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(blackbox_record_t) == 60U,
                "blackbox record must remain 60 bytes");
 
-#define FLIGHT_LOG_METADATA_VERSION 3U
+#define FLIGHT_LOG_METADATA_VERSION 4U
 typedef struct __attribute__((packed)) {
     uint32_t version;
     uint32_t main_loop_hz;
@@ -81,25 +82,17 @@ typedef struct __attribute__((packed)) {
     uint16_t initial_battery_centivolts;
     uint8_t initial_battery_cells;
     uint8_t reserved;
-    float throttle_rise_ms; /* full-scale rise time in ms; v3+ */
 } flight_log_metadata_t;
 
-/* Version 2 ended before throttle_rise_ms. Never interpret trailing padding
- * or the first legacy sample as a saved ramp. Keep the original version. */
-_Static_assert(offsetof(flight_log_metadata_t, throttle_rise_ms) == 128U,
-               "legacy metadata prefix must remain 128 bytes");
-_Static_assert(sizeof(flight_log_metadata_t) == 132U,
-               "metadata v3 must remain 132 bytes");
+_Static_assert(sizeof(flight_log_metadata_t) == 128U,
+               "metadata v4 must remain 128 bytes");
 static inline bool flight_log_metadata_decode(flight_log_metadata_t *out,
                                                const void *stored)
 {
     uint32_t version;
     memcpy(&version, stored, sizeof(version));
-    if (version != 2U && version != FLIGHT_LOG_METADATA_VERSION) return false;
-    memset(out, 0, sizeof(*out));
-    memcpy(out, stored, version == 2U
-        ? offsetof(flight_log_metadata_t, throttle_rise_ms) : sizeof(*out));
-    if (version == 2U) out->throttle_rise_ms = -1.0f;
+    if (version != FLIGHT_LOG_METADATA_VERSION) return false;
+    memcpy(out, stored, sizeof(*out));
     return true;
 }
 

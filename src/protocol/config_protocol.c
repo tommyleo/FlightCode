@@ -1,4 +1,5 @@
 #include "config_protocol.h"
+#include "telemetry_text.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -226,16 +227,15 @@ static void send_osd_layout(void)
     for (size_t i = 0U; pilot[i] != '\0'; ++i) {
         if (pilot[i] == ' ') pilot[i] = '_';
     }
-    reply("@CFG OSD_LAYOUT %lu %lu %lu %lu %lu %lu %lu %lu %s %u\n",
+    reply("@CFG OSD_LAYOUT %lu %lu %lu %lu %lu %lu %lu %s %u\n",
           (unsigned long)(s->osd_element_enabled_mask |
-                          (s->vtx_osd_enabled_mask << OSD_ELEMENT_COUNT)),
+                          (s->vtx_osd_enabled << OSD_ELEMENT_COUNT)),
           (unsigned long)s->osd_element_positions[0],
           (unsigned long)s->osd_element_positions[1],
           (unsigned long)s->osd_element_positions[2],
           (unsigned long)s->osd_element_positions[3],
           (unsigned long)s->osd_element_positions[4],
-          (unsigned long)s->vtx_osd_positions[0],
-          (unsigned long)s->vtx_osd_positions[1],
+          (unsigned long)s->vtx_osd_position,
           pilot[0] != '\0' ? pilot : "-",
           flight_settings_are_saved() ? 1U : 0U);
 #endif
@@ -492,15 +492,14 @@ static void process(const char *command)
               metadata.pids[0], metadata.pids[1], metadata.pids[2],
               metadata.pids[3], metadata.pids[4], metadata.pids[5],
               metadata.pids[6], metadata.pids[7], metadata.pids[8]);
-        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f %.6f\n",
+        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
               metadata.rates[0], metadata.rates[1], metadata.rates[2],
               metadata.rates[3], metadata.feedforward[0],
               metadata.feedforward[1], metadata.feedforward[2],
               metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
               metadata.filters[1], metadata.alignment[0],
               metadata.alignment[1], metadata.alignment[2],
-              metadata.motor_idle_percent, metadata.reserved / 2.0f,
-               metadata.throttle_rise_ms);
+              metadata.motor_idle_percent, metadata.reserved / 2.0f);
         reply("@CFG FLIGHT_LOG_METADATA_END\n");
         return;
     }
@@ -526,15 +525,14 @@ static void process(const char *command)
               metadata.pids[2], metadata.pids[3], metadata.pids[4],
               metadata.pids[5], metadata.pids[6], metadata.pids[7],
               metadata.pids[8]);
-        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f %.6f\n",
+        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
               metadata_flight, metadata.rates[0], metadata.rates[1],
               metadata.rates[2], metadata.rates[3], metadata.feedforward[0],
               metadata.feedforward[1], metadata.feedforward[2],
               metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
               metadata.filters[1], metadata.alignment[0],
               metadata.alignment[1], metadata.alignment[2],
-              metadata.motor_idle_percent, metadata.reserved / 2.0f,
-               metadata.throttle_rise_ms);
+              metadata.motor_idle_percent, metadata.reserved / 2.0f);
         reply("@CFG BLACKBOX_METADATA_END %u\n", metadata_flight);
         return;
     }
@@ -877,41 +875,21 @@ static void process(const char *command)
         }
         return;
     }
-    unsigned int osd_mask, osd_positions[OSD_ELEMENT_COUNT], vtx_osd_positions[2];
+    unsigned int osd_mask, osd_positions[OSD_ELEMENT_COUNT], vtx_osd_position;
     char osd_pilot[OSD_PILOT_NAME_LENGTH + 1U];
-    if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %u %u %12s",
+    if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %u %12s",
                &osd_mask, &osd_positions[0], &osd_positions[1],
                &osd_positions[2], &osd_positions[3], &osd_positions[4],
-               &vtx_osd_positions[0], &vtx_osd_positions[1], osd_pilot) == 9) {
+               &vtx_osd_position, osd_pilot) == 8) {
         settings.osd_element_enabled_mask = osd_mask &
             ((1U << OSD_ELEMENT_COUNT) - 1U);
-        settings.vtx_osd_enabled_mask = (osd_mask >> OSD_ELEMENT_COUNT) & 3U;
+        settings.vtx_osd_enabled = (osd_mask >> OSD_ELEMENT_COUNT) & 1U;
         for (uint8_t i = 0U; i < OSD_ELEMENT_COUNT; ++i)
             settings.osd_element_positions[i] = osd_positions[i];
-        settings.vtx_osd_positions[0] = vtx_osd_positions[0];
-        settings.vtx_osd_positions[1] = vtx_osd_positions[1];
+        settings.vtx_osd_position = vtx_osd_position;
         if (strcmp(osd_pilot, "-") == 0) osd_pilot[0] = '\0';
         for (size_t i = 0U; osd_pilot[i] != '\0'; ++i)
             if (osd_pilot[i] == '_') osd_pilot[i] = ' ';
-        (void)snprintf(settings.osd_pilot_name,
-                       sizeof(settings.osd_pilot_name), "%s", osd_pilot);
-        reply(flight_settings_set(&settings) ? "@CFG OK SET_OSD_LAYOUT\n" :
-              "@CFG ERROR INVALID_OSD_LAYOUT\n");
-        send_osd_layout();
-        return;
-    }
-    if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %12s",
-               &osd_mask, &osd_positions[0], &osd_positions[1],
-               &osd_positions[2], &osd_positions[3], &osd_positions[4],
-               osd_pilot) == 7) {
-        settings.osd_element_enabled_mask = osd_mask;
-        for (uint8_t i = 0U; i < OSD_ELEMENT_COUNT; ++i) {
-            settings.osd_element_positions[i] = osd_positions[i];
-        }
-        if (strcmp(osd_pilot, "-") == 0) osd_pilot[0] = '\0';
-        for (size_t i = 0U; osd_pilot[i] != '\0'; ++i) {
-            if (osd_pilot[i] == '_') osd_pilot[i] = ' ';
-        }
         (void)snprintf(settings.osd_pilot_name,
                        sizeof(settings.osd_pilot_name), "%s", osd_pilot);
         if (!flight_settings_set(&settings)) {
@@ -1289,47 +1267,35 @@ void config_protocol_send_telemetry(const sbus_data_t *rx,
     flight_control_get_corrected_imu(imu, &corrected);
 
     char output[384];
-    int used = snprintf(output, sizeof(output),
-                        "@CFG TELEMETRY %lu %u %u %.1f %.3f %.3f %.3f %.3f %.3f %.3f",
-                        (unsigned long)board_micros(), rx->valid ? 1U : 0U,
-                        flight_control_is_armed() ? 1U : 0U,
-                        loop_hz,
-                        corrected.gyro_x_dps,
-                        corrected.gyro_y_dps,
-                        corrected.gyro_z_dps,
-                        corrected.accel_x_g,
-                        corrected.accel_y_g,
-                        corrected.accel_z_g);
-    for (uint8_t i = 0U; i < SBUS_CHANNEL_COUNT && used > 0; ++i) {
-        used += snprintf(output + used, sizeof(output) - (size_t)used,
-                         " %u", rx->valid ? rx->channel_us[i] : 0U);
+    telemetry_text_t text = {output, sizeof(output), 0U, true};
+    telemetry_literal(&text, "@CFG TELEMETRY");
+    telemetry_uint(&text, board_micros());
+    telemetry_uint(&text, rx->valid ? 1U : 0U);
+    telemetry_uint(&text, flight_control_is_armed() ? 1U : 0U);
+    telemetry_fixed(&text, loop_hz, 1U);
+    telemetry_fixed(&text, corrected.gyro_x_dps, 3U);
+    telemetry_fixed(&text, corrected.gyro_y_dps, 3U);
+    telemetry_fixed(&text, corrected.gyro_z_dps, 3U);
+    telemetry_fixed(&text, corrected.accel_x_g, 3U);
+    telemetry_fixed(&text, corrected.accel_y_g, 3U);
+    telemetry_fixed(&text, corrected.accel_z_g, 3U);
+    for (uint8_t i = 0U; i < SBUS_CHANNEL_COUNT; ++i) {
+        telemetry_uint(&text, rx->valid ? rx->channel_us[i] : 0U);
     }
-    for (uint8_t i = 0U; i < 4U && used > 0; ++i) {
+    for (uint8_t i = 0U; i < 4U; ++i) {
         const float percent = motors[i] == 0U ? 0.0f :
             ((float)(motors[i] - 48U) * 100.0f / 1999.0f);
-        used += snprintf(output + used, sizeof(output) - (size_t)used,
-                         " %.2f", percent);
+        telemetry_fixed(&text, percent, 2U);
     }
-    if (used > 0) {
-        used += snprintf(output + used, sizeof(output) - (size_t)used,
-                         " %u", flight_control_is_calibrated() ? 1U : 0U);
-    }
-    if (used > 0) {
-        used += snprintf(output + used, sizeof(output) - (size_t)used,
-                         " %lu", (unsigned long)max_loop_period_us);
-    }
-    if (used > 0) {
-        /* Raw XYZ values support stationary calibration diagnostics. */
-        used += snprintf(output + used, sizeof(output) - (size_t)used,
-                          " %.3f %.3f %.3f %u",
-                          imu->gyro_x_dps,
-                          imu->gyro_y_dps,
-                          imu->gyro_z_dps,
-                          flight_control_get_calibration_samples());
-    }
-    if (used > 0 && (size_t)used < sizeof(output) - 1U) {
-        output[used++] = '\n';
-        usb_cdc_write((const uint8_t *)output, (size_t)used);
+    telemetry_uint(&text, flight_control_is_calibrated() ? 1U : 0U);
+    telemetry_uint(&text, max_loop_period_us);
+    telemetry_fixed(&text, imu->gyro_x_dps, 3U);
+    telemetry_fixed(&text, imu->gyro_y_dps, 3U);
+    telemetry_fixed(&text, imu->gyro_z_dps, 3U);
+    telemetry_uint(&text, flight_control_get_calibration_samples());
+    telemetry_char(&text, '\n');
+    if (text.valid) {
+        usb_cdc_write((const uint8_t *)output, text.length);
     }
 #if BOARD_HAS_BATTERY_VOLTAGE
     static uint32_t last_battery_us;
@@ -1337,7 +1303,13 @@ void config_protocol_send_telemetry(const sbus_data_t *rx,
     if ((uint32_t)(now - last_battery_us) >= 200000U) {
         last_battery_us = now;
         const float voltage = board_battery_voltage();
-        reply("@CFG BATTERY_VOLTAGE %.2f\n", voltage >= 1.0f ? voltage : 0.0f);
+        char battery_line[48];
+        telemetry_text_t battery_text = {battery_line, sizeof(battery_line), 0U, true};
+        telemetry_literal(&battery_text, "@CFG BATTERY_VOLTAGE");
+        telemetry_fixed(&battery_text, voltage >= 1.0f ? voltage : 0.0f, 2U);
+        telemetry_char(&battery_text, '\n');
+        if (battery_text.valid)
+            usb_cdc_write((const uint8_t *)battery_line, battery_text.length);
     }
 #endif
     static uint32_t last_osd_status_us;

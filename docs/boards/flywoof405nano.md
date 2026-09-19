@@ -27,7 +27,7 @@ DisplayPort and the OSD overlay are enabled by default on a fresh configuration.
 The FC transmits standard MSP v1 DisplayPort frames at 115200 baud. HDZero's
 centered 30 × 16 compatibility canvas is used, preserving the layout edited in
 FlightCode Configurator. Battery voltage, per-cell voltage, flight timer,
-FlightCode label, pilot name, VTX channel, and VTX power are supported. Output
+FlightCode label, pilot name, and compact VTX band/channel/power are supported. Output
 is queued and transmitted without blocking the flight-control loop.
 
 Connect UART6 TX to the digital VTX RX input and share ground. Existing saved

@@ -1,4 +1,5 @@
 #include "main.h"
+#include "loop_deadline.h"
 
 #include "board.h"
 #include "config_protocol.h"
@@ -177,6 +178,7 @@ static void main_loop_step(main_loop_state_t *state)
     }
 
     update_osd_if_due(state);
+    max7456_process();
     if (!state->imu_ready &&
         task_due(&state->imu_retry_task, state->loop_hz)) {
             state->imu_ready = imu_init(state->loop_hz);
@@ -191,6 +193,10 @@ static void main_loop_step(main_loop_state_t *state)
         state->max_loop_period_us = 0U;
     }
 
+    const uint32_t completed_cycles = DWT->CYCCNT;
+    state->next_loop = loop_deadline_recover(
+        state->next_loop, completed_cycles, state->loop_cycles,
+        &state->missed_loop_slots);
     while ((int32_t)(DWT->CYCCNT - state->next_loop) < 0) {
         __NOP();
     }
