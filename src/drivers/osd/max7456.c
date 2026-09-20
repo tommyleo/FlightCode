@@ -292,7 +292,6 @@ bool max7456_init(void)
         else if ((video_status & STAT_PAL) != 0U) video_pal = true;
     }
     const uint8_t video_mode = video_pal ? VM0_PAL : 0U;
-    layout_positions[0] = legacy_position(selected_position);
     write_register(REG_DMM, DMM_CLEAR);
     HAL_Delay(1U);
     write_register(REG_VM0, video_mode | (enabled ? VM0_ENABLE : 0U));

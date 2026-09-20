@@ -210,12 +210,14 @@ int main(void)
     config_protocol_init();
     dshot_init();
     flight_settings_init();
-    (void)vtx_tramp_init();
     sbus_init();
     flight_control_init();
     max7456_init();
     (void)msp_displayport_init();
     osd_tuning_menu_init();
+    /* Start analog VTX control only after all board peripherals are ready.
+     * The Tramp driver then applies the persisted settings once at startup. */
+    (void)vtx_tramp_init();
 
     main_loop_state_t loop = {0};
     main_loop_state_init(&loop);
