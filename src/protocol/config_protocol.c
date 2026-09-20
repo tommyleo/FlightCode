@@ -906,9 +906,12 @@ static void process(const char *command)
     char receiver_protocol[8], receiver_port[8], receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
-    if (sscanf(command, "SET_RECEIVER_CONFIG %7s %7s %15s %u %u %u %u %u %u",
-               receiver_protocol, receiver_port, receiver_order, &arm_channel,
-               &arm_min, &arm_max, &beep_channel, &beep_min, &beep_max) == 9) {
+    const int receiver_with_port = sscanf(
+        command, "SET_RECEIVER_CONFIG %7s %7s %15s %u %u %u %u %u %u",
+        receiver_protocol, receiver_port, receiver_order, &arm_channel,
+        &arm_min, &arm_max, &beep_channel, &beep_min, &beep_max);
+    if (receiver_with_port == 9 &&
+        strncmp(receiver_port, "UART", 4U) == 0) {
         const char *required_port = strcmp(receiver_protocol, "ELRS") == 0
                                         ? CRSF_UART_NAME : SBUS_UART_NAME;
         if (strcmp(receiver_port, required_port) != 0) {
@@ -952,71 +955,6 @@ static void process(const char *command)
         settings.vtx_power_mw = vtx_power;
         reply(flight_settings_set(&settings) ? "@CFG OK SET_VTX_CONFIG\n" : "@CFG ERROR INVALID_VTX_CONFIG\n");
         send_vtx_config();
-        return;
-    }
-    if (sscanf(command, "SET_RECEIVER_CONFIG %7s %15s %u %u %u %u %u %u",
-               receiver_protocol, receiver_order, &arm_channel, &arm_min, &arm_max,
-               &beep_channel, &beep_min, &beep_max) == 8) {
-        if (strcmp(receiver_protocol, "SBUS") == 0) {
-            settings.receiver_protocol = RECEIVER_PROTOCOL_SBUS;
-        } else if (strcmp(receiver_protocol, "ELRS") == 0) {
-            settings.receiver_protocol = RECEIVER_PROTOCOL_CRSF;
-        } else {
-            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
-            return;
-        }
-        if (strcmp(receiver_order, "TAER1234") == 0) {
-            settings.receiver_channel_order = RECEIVER_ORDER_TAER1234;
-        } else if (strcmp(receiver_order, "AETR1234") == 0) {
-            settings.receiver_channel_order = RECEIVER_ORDER_AETR1234;
-        } else {
-            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
-            return;
-        }
-        if (arm_channel < 5U || arm_channel > 16U ||
-            beep_channel < 5U || beep_channel > 16U) {
-            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
-            return;
-        }
-        settings.arm_channel = arm_channel - 1U;
-        settings.arm_min_us = arm_min;
-        settings.arm_max_us = arm_max;
-        settings.beep_channel = beep_channel - 1U;
-        settings.beep_min_us = beep_min;
-        settings.beep_max_us = beep_max;
-        reply(flight_settings_set(&settings)
-                  ? "@CFG OK SET_RECEIVER_CONFIG\n"
-                  : "@CFG ERROR INVALID_RECEIVER_CONFIG\n");
-        send_receiver_config();
-        return;
-    }
-    if (sscanf(command, "SET_RECEIVER_CONFIG %15s %u %u %u %u %u %u",
-               receiver_order, &arm_channel, &arm_min, &arm_max,
-               &beep_channel, &beep_min, &beep_max) == 7) {
-        settings.receiver_protocol = RECEIVER_PROTOCOL_SBUS;
-        if (strcmp(receiver_order, "TAER1234") == 0)
-            settings.receiver_channel_order = RECEIVER_ORDER_TAER1234;
-        else if (strcmp(receiver_order, "AETR1234") == 0)
-            settings.receiver_channel_order = RECEIVER_ORDER_AETR1234;
-        else {
-            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
-            return;
-        }
-        if (arm_channel < 5U || arm_channel > 16U ||
-            beep_channel < 5U || beep_channel > 16U) {
-            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
-            return;
-        }
-        settings.arm_channel = arm_channel - 1U;
-        settings.arm_min_us = arm_min;
-        settings.arm_max_us = arm_max;
-        settings.beep_channel = beep_channel - 1U;
-        settings.beep_min_us = beep_min;
-        settings.beep_max_us = beep_max;
-        reply(flight_settings_set(&settings)
-                  ? "@CFG OK SET_RECEIVER_CONFIG\n"
-                  : "@CFG ERROR INVALID_RECEIVER_CONFIG\n");
-        send_receiver_config();
         return;
     }
     if (sscanf(command, "SET_TPA %f %f",
