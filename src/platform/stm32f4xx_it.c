@@ -25,7 +25,7 @@ void SBUS_UART_IRQ_HANDLER(void)
     HAL_UART_IRQHandler(&hsbus_uart);
 }
 
-#if BOARD_HAS_CRSF
+#if BOARD_HAS_CRSF && !defined(BOARD_RECEIVER_UART_SHARED)
 void CRSF_UART_IRQ_HANDLER(void)
 {
     HAL_UART_IRQHandler(&hsbus_uart);

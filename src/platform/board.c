@@ -510,6 +510,12 @@ bool board_receiver_uart_configure(bool crsf)
     }
 #if BOARD_HAS_CRSF
     if (crsf) {
+#if BOARD_HAS_SBUS_INVERTER_CONTROL
+        HAL_GPIO_WritePin(
+            SBUS_INVERTER_PORT, SBUS_INVERTER_PIN,
+            SBUS_INVERTER_ENABLE_LEVEL == GPIO_PIN_SET ? GPIO_PIN_RESET
+                                                       : GPIO_PIN_SET);
+#endif
         CRSF_UART_CLOCK_ENABLE();
         GPIO_InitTypeDef gpio = {0};
         gpio.Pin = CRSF_RX_PIN;
@@ -531,6 +537,10 @@ bool board_receiver_uart_configure(bool crsf)
         HAL_NVIC_EnableIRQ(CRSF_UART_IRQn);
         return true;
     }
+#endif
+#if BOARD_HAS_SBUS_INVERTER_CONTROL
+    HAL_GPIO_WritePin(SBUS_INVERTER_PORT, SBUS_INVERTER_PIN,
+                      SBUS_INVERTER_ENABLE_LEVEL);
 #endif
     SBUS_UART_CLOCK_ENABLE();
     GPIO_InitTypeDef gpio = {0};

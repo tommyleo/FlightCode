@@ -16,10 +16,10 @@ USB Configurator.
 ## Supported flight controllers
 
 - **[DIAT Mamba F411](docs/boards/mambaf411.md)**<br>
-  `MAMBAF411` · STM32F411 · MPU6000 · SBUS · analog OSD
+  `MAMBAF411` · STM32F411 · MPU6000 · SBUS/CRSF · analog OSD
 
 - **[CL Racing F4](docs/boards/clracingf4.md)**<br>
-  `CLRACINGF4` · STM32F405 · MPU6000 · SBUS · analog OSD · microSD Blackbox
+  `CLRACINGF4` · STM32F405 · MPU6000 · SBUS/CRSF · analog OSD · microSD Blackbox
 
 - **[Flywoo GOKU GN405 Nano HD V3](docs/boards/flywoof405nano.md)**<br>
   `FLYWOOF405NANO` · STM32F405 · ICM-42688-P · SBUS/CRSF · flash Blackbox

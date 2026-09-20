@@ -50,13 +50,13 @@ bool blackbox_sd_session_test(void) { return false; }
 #define SD_BLOCK_SIZE 512U
 #define SD_QUEUE_BLOCKS 32U
 #define SD_RECORDS_PER_BLOCK 8U
-#define SD_RECORD_BLOCK_VERSION 9U
+#define SD_RECORD_BLOCK_VERSION 10U
 #define SD_METADATA_BLOCK_VERSION 10U
 #define SD_DATA_OFFSET_SECTORS 2048U
 #define SD_CATALOG_SECTOR (SD_DATA_OFFSET_SECTORS - 1U)
 #define SD_BLOCK_MAGIC 0x42423446U /* F4BB */
 #define SD_CATALOG_MAGIC 0x58494246U /* FBIX */
-#define SD_CATALOG_VERSION 4U
+#define SD_CATALOG_VERSION 5U
 #define SD_CATALOG_FLIGHTS 20U
 
 typedef struct __attribute__((packed)) {
@@ -344,7 +344,7 @@ static void append_catalog_entry(uint8_t stop_flag)
     entry->stop_flag = stop_flag;
     const uint16_t rate = BLACKBOX_LOG_RATE_HZ;
     memcpy(entry->reserved, &rate, sizeof(rate));
-    entry->reserved[2] = BLACKBOX_RECORD_VERSION;
+    entry->reserved[2] = FLIGHT_LOG_FORMAT_VERSION_PACKED;
     catalog.next_flight_id = flight_id + 1U;
     ++catalog.generation;
     catalog_commit_pending = true;

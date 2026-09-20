@@ -14,7 +14,7 @@
 #define PAGE_BYTES 256U
 #define QUEUE_RECORDS 32U
 #define HEADER_MAGIC 0x42424646U /* FFBB */
-#define HEADER_VERSION 6U
+#define HEADER_VERSION 7U
 #define HEADER_VALID 0xA5U
 #define CMD_JEDEC_ID 0x9FU
 #define CMD_READ 0x03U
@@ -697,7 +697,7 @@ bool blackbox_sd_session_test(void)
     record.gyro_filtered[1] = -456;
     record.gyro_filtered[2] = 789;
     record.throttle = 20U;
-    record.format_version = BLACKBOX_RECORD_VERSION;
+    record.format_version = FLIGHT_LOG_FORMAT_VERSION_PACKED;
     flight_log_metadata_t metadata = {0};
     blackbox_sd_start(&metadata);
     if (!recording) return false;

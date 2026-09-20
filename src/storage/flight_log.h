@@ -7,6 +7,11 @@
 
 #define FLIGHT_LOG_RATE_HZ 200U
 #define BLACKBOX_LOG_RATE_HZ 1000U
+#define FLIGHT_LOG_FORMAT_VERSION_MAJOR 1U
+#define FLIGHT_LOG_FORMAT_VERSION_MINOR 0U
+#define FLIGHT_LOG_FORMAT_VERSION_PACKED \
+    ((FLIGHT_LOG_FORMAT_VERSION_MAJOR << 4U) | \
+     FLIGHT_LOG_FORMAT_VERSION_MINOR)
 #define FLIGHT_LOG_FLAG_MIXER_SATURATED 0x01U
 #define FLIGHT_LOG_FLAG_STOP_DISARM 0x02U
 #define FLIGHT_LOG_FLAG_STOP_RX_LOSS 0x04U
@@ -36,10 +41,10 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(flight_log_record_t) == 40U,
                "flight log record format must remain 40 bytes");
 
-/* Persistent SD/dataflash sample format. Eight 60-byte records plus the
- * 32-byte block header fill one 512-byte SD sector exactly. Static tuning
- * values belong to flight_log_metadata_t and are written once per flight. */
-#define BLACKBOX_RECORD_VERSION 5U
+/* Persistent SD/dataflash sample format 1.0. Eight 60-byte records plus the
+ * 32-byte block header fill one 512-byte SD sector exactly. Loop periods use
+ * two packed 12-bit values (0..4095 us). Static tuning values belong to
+ * flight_log_metadata_t and are written once per flight. */
 typedef struct __attribute__((packed)) {
     uint32_t timestamp_us;
     int16_t gyro_raw[3];          /* 0.1 deg/s, bias removed, before LPF */
@@ -56,12 +61,37 @@ typedef struct __attribute__((packed)) {
     int8_t ff_term[3];            /* 0.5 percent */
     uint16_t battery_centivolts;
     uint16_t dropped_records;     /* cumulative persistent-backend drops */
-    uint8_t format_version;
-    uint8_t reserved[3];
+    uint8_t loop_timing[3];       /* main then gyro, packed 12-bit us */
+    uint8_t format_version;       /* high nibble major, low nibble minor */
 } blackbox_record_t;
 
 _Static_assert(sizeof(blackbox_record_t) == 60U,
                "blackbox record must remain 60 bytes");
+
+static inline void blackbox_record_set_loop_timing(
+    blackbox_record_t *record, uint16_t main_loop_us, uint16_t gyro_loop_us)
+{
+    const uint32_t main_value = main_loop_us > 4095U ? 4095U : main_loop_us;
+    const uint32_t gyro_value = gyro_loop_us > 4095U ? 4095U : gyro_loop_us;
+    const uint32_t packed = main_value | (gyro_value << 12U);
+    record->loop_timing[0] = (uint8_t)packed;
+    record->loop_timing[1] = (uint8_t)(packed >> 8U);
+    record->loop_timing[2] = (uint8_t)(packed >> 16U);
+}
+
+static inline uint16_t blackbox_record_main_loop_us(
+    const blackbox_record_t *record)
+{
+    return (uint16_t)(record->loop_timing[0] |
+        ((uint16_t)(record->loop_timing[1] & 0x0FU) << 8U));
+}
+
+static inline uint16_t blackbox_record_gyro_loop_us(
+    const blackbox_record_t *record)
+{
+    return (uint16_t)((record->loop_timing[1] >> 4U) |
+        ((uint16_t)record->loop_timing[2] << 4U));
+}
 
 #define FLIGHT_LOG_METADATA_VERSION 4U
 typedef struct __attribute__((packed)) {

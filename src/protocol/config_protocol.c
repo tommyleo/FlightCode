@@ -149,14 +149,8 @@ static void send_filters(void)
 static void send_receiver_config(void)
 {
     const flight_settings_t *s = flight_settings_get();
-    const char *port =
-#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
-        s->receiver_protocol == RECEIVER_PROTOCOL_CRSF ? "UART4" : "UART5";
-#elif defined(BOARD_HDZERO_HALO)
-        s->receiver_protocol == RECEIVER_PROTOCOL_CRSF ? "UART1" : "UART2";
-#else
-        "UART1";
-#endif
+    const char *port = s->receiver_protocol == RECEIVER_PROTOCOL_CRSF
+                           ? CRSF_UART_NAME : SBUS_UART_NAME;
     reply("@CFG RECEIVER_CONFIG %s %s %s %lu %lu %lu %lu %lu %lu %u\n",
           s->receiver_protocol == RECEIVER_PROTOCOL_CRSF ? "ELRS" : "SBUS",
           port,
@@ -479,7 +473,7 @@ static void process(const char *command)
             reply("@CFG FLIGHT_LOG_METADATA_UNAVAILABLE\n");
             return;
         }
-        reply("@CFG FLIGHT_LOG_METADATA_CORE %lu %lu %lu %lu %lu %lu %lu %u %.2f\n",
+        reply("@CFG FLIGHT_LOG_METADATA_CORE %lu %lu %lu %lu %lu %lu %lu %u %.2f %u %u\n",
               (unsigned long)metadata.version,
               (unsigned long)metadata.main_loop_hz,
               (unsigned long)metadata.gyro_rate_hz,
@@ -488,7 +482,9 @@ static void process(const char *command)
               (unsigned long)metadata.motor_direction_reversed,
               (unsigned long)metadata.receiver_protocol,
               metadata.initial_battery_cells,
-              metadata.initial_battery_centivolts / 100.0f);
+              metadata.initial_battery_centivolts / 100.0f,
+              FLIGHT_LOG_FORMAT_VERSION_MAJOR,
+              FLIGHT_LOG_FORMAT_VERSION_MINOR);
         reply("@CFG FLIGHT_LOG_METADATA_PIDS %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n",
               metadata.pids[0], metadata.pids[1], metadata.pids[2],
               metadata.pids[3], metadata.pids[4], metadata.pids[5],
@@ -511,7 +507,7 @@ static void process(const char *command)
             reply("@CFG BLACKBOX_METADATA_UNAVAILABLE %u\n", metadata_flight);
             return;
         }
-        reply("@CFG BLACKBOX_METADATA_CORE %u %lu %lu %lu %lu %lu %lu %lu %u %.2f\n",
+        reply("@CFG BLACKBOX_METADATA_CORE %u %lu %lu %lu %lu %lu %lu %lu %u %.2f %u %u\n",
               metadata_flight, (unsigned long)metadata.version,
               (unsigned long)metadata.main_loop_hz,
               (unsigned long)metadata.gyro_rate_hz,
@@ -520,7 +516,9 @@ static void process(const char *command)
               (unsigned long)metadata.motor_direction_reversed,
               (unsigned long)metadata.receiver_protocol,
               metadata.initial_battery_cells,
-              metadata.initial_battery_centivolts / 100.0f);
+              metadata.initial_battery_centivolts / 100.0f,
+              FLIGHT_LOG_FORMAT_VERSION_MAJOR,
+              FLIGHT_LOG_FORMAT_VERSION_MINOR);
         reply("@CFG BLACKBOX_METADATA_PIDS %u %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n",
               metadata_flight, metadata.pids[0], metadata.pids[1],
               metadata.pids[2], metadata.pids[3], metadata.pids[4],
@@ -622,7 +620,9 @@ static void process(const char *command)
                   item.gyro_filtered[2],
                   item.setpoint[0], item.setpoint[1], item.setpoint[2],
                   item.motor[0], item.motor[1], item.motor[2], item.motor[3],
-                  item.throttle, item.flags, 0U, 0U,
+                  item.throttle, item.flags,
+                  blackbox_record_main_loop_us(&item),
+                  blackbox_record_gyro_loop_us(&item),
                   item.battery_centivolts, cell_centivolts, cells,
                   item.p_term[0], item.p_term[1], item.p_term[2],
                   item.i_term[0], item.i_term[1], item.i_term[2],
@@ -909,16 +909,11 @@ static void process(const char *command)
     if (sscanf(command, "SET_RECEIVER_CONFIG %7s %7s %15s %u %u %u %u %u %u",
                receiver_protocol, receiver_port, receiver_order, &arm_channel,
                &arm_min, &arm_max, &beep_channel, &beep_min, &beep_max) == 9) {
-        const char *required_port =
-#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
-            strcmp(receiver_protocol, "ELRS") == 0 ? "UART4" : "UART5";
-#elif defined(BOARD_HDZERO_HALO)
-            strcmp(receiver_protocol, "ELRS") == 0 ? "UART1" : "UART2";
-#else
-            "UART1";
-#endif
+        const char *required_port = strcmp(receiver_protocol, "ELRS") == 0
+                                        ? CRSF_UART_NAME : SBUS_UART_NAME;
         if (strcmp(receiver_port, required_port) != 0) {
-            reply("@CFG ERROR INVALID_RECEIVER_PORT\n");
+            reply("@CFG ERROR INVALID_RECEIVER_PORT RECEIVED_%s EXPECTED_%s\n",
+                  receiver_port, required_port);
             return;
         }
         char compatible[160];

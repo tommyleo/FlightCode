@@ -12,7 +12,7 @@
 #define DSHOT_MIN 48U
 #define DSHOT_MAX 2047U
 #define LOG_FLASH_MAGIC 0x46344C47U
-#define LOG_FLASH_VERSION 8U
+#define LOG_FLASH_VERSION 9U
 #define LOG_PERSIST_DELAY_US 200000U
 #define LOG_MIN_FLIGHT_THROTTLE_PERCENT 1.0f
 
@@ -399,7 +399,9 @@ void flight_log_record(const float gyro_raw[3], const float gyro_filtered[3],
         const uint32_t dropped = blackbox_sd_dropped_records();
         persistent.dropped_records = dropped > 65535U
             ? 65535U : (uint16_t)dropped;
-        persistent.format_version = BLACKBOX_RECORD_VERSION;
+        blackbox_record_set_loop_timing(&persistent, main_loop_us,
+                                        gyro_loop_us);
+        persistent.format_version = FLIGHT_LOG_FORMAT_VERSION_PACKED;
         blackbox_sd_append(&persistent);
     }
 

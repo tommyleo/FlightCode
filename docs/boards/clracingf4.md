@@ -11,7 +11,7 @@ hardware mapping.
 | --- | --- |
 | MCU | STM32F405 at 168 MHz |
 | IMU | MPU6000 on SPI1, CS PA4 |
-| Receiver | SBUS on USART1 RX PA10, controllable inverter PC0 |
+| Receiver | SBUS on USART1 RX PA10 with controllable inverter PC0; ELRS/CRSF on UART4 RX PA1 |
 | Motors | M1 PB0, M2 PB1, M3 PA3, M4 PA2 |
 | Battery voltage | ADC PC2, 11:1 base divider with calibration |
 | Analog OSD | MAX7456/AT7456E on SPI3, CS PA15 |
