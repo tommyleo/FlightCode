@@ -39,6 +39,14 @@ bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
     } else if (port == 4U) {
         instance = UART4; gpio_port = GPIOA; gpio_pin = GPIO_PIN_0;
         gpio_af = GPIO_AF8_UART4; __HAL_RCC_UART4_CLK_ENABLE();
+#if defined(BOARD_SEQUREH7V2)
+    } else if (port == 6U) {
+        instance = USART6; gpio_port = GPIOC; gpio_pin = GPIO_PIN_6;
+        gpio_af = GPIO_AF7_USART6; __HAL_RCC_USART6_CLK_ENABLE();
+    } else if (port == 7U) {
+        instance = UART7; gpio_port = GPIOE; gpio_pin = GPIO_PIN_8;
+        gpio_af = GPIO_AF7_UART7; __HAL_RCC_UART7_CLK_ENABLE();
+#endif
     } else {
         return false;
     }
@@ -81,6 +89,14 @@ bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
     } else if (port == 5U) {
         instance = UART5; gpio_port = GPIOC; gpio_pin = GPIO_PIN_12;
         gpio_af = GPIO_AF8_UART5; __HAL_RCC_UART5_CLK_ENABLE();
+#if defined(BOARD_SEQUREH7V2)
+    } else if (port == 6U) {
+        instance = USART6; gpio_port = GPIOC; gpio_pin = GPIO_PIN_6;
+        gpio_af = GPIO_AF7_USART6; __HAL_RCC_USART6_CLK_ENABLE();
+    } else if (port == 7U) {
+        instance = UART7; gpio_port = GPIOE; gpio_pin = GPIO_PIN_8;
+        gpio_af = GPIO_AF7_UART7; __HAL_RCC_UART7_CLK_ENABLE();
+#endif
     }
     if (instance == NULL) return false;
 
@@ -266,8 +282,86 @@ static void spi_init(void)
 #endif
 }
 
-bool board_receiver_uart_configure(bool crsf)
+#if defined(BOARD_SEQUREH7V2)
+static bool sequre_receiver_uart(uint8_t port, USART_TypeDef **instance,
+                                 GPIO_TypeDef **gpio_port, uint16_t *pin,
+                                 uint32_t *af, IRQn_Type *irq)
 {
+    switch (port) {
+    case 1U:
+        *instance = USART1; *gpio_port = GPIOA; *pin = GPIO_PIN_10;
+        *af = GPIO_AF7_USART1; *irq = USART1_IRQn;
+        __HAL_RCC_USART1_CLK_ENABLE(); return true;
+    case 2U:
+        *instance = USART2; *gpio_port = GPIOA; *pin = GPIO_PIN_3;
+        *af = GPIO_AF7_USART2; *irq = USART2_IRQn;
+        __HAL_RCC_USART2_CLK_ENABLE(); return true;
+    case 4U:
+        *instance = UART4; *gpio_port = GPIOA; *pin = GPIO_PIN_1;
+        *af = GPIO_AF8_UART4; *irq = UART4_IRQn;
+        __HAL_RCC_UART4_CLK_ENABLE(); return true;
+    case 6U:
+        *instance = USART6; *gpio_port = GPIOC; *pin = GPIO_PIN_7;
+        *af = GPIO_AF7_USART6; *irq = USART6_IRQn;
+        __HAL_RCC_USART6_CLK_ENABLE(); return true;
+    case 7U:
+        *instance = UART7; *gpio_port = GPIOE; *pin = GPIO_PIN_7;
+        *af = GPIO_AF7_UART7; *irq = UART7_IRQn;
+        __HAL_RCC_UART7_CLK_ENABLE(); return true;
+    case 8U:
+        *instance = UART8; *gpio_port = GPIOE; *pin = GPIO_PIN_0;
+        *af = GPIO_AF8_UART8; *irq = UART8_IRQn;
+        __HAL_RCC_UART8_CLK_ENABLE(); return true;
+    default:
+        return false;
+    }
+}
+#endif
+
+bool board_receiver_uart_configure(bool crsf, uint8_t port)
+{
+#if defined(BOARD_SEQUREH7V2)
+    USART_TypeDef *instance = NULL;
+    GPIO_TypeDef *gpio_port = NULL;
+    uint16_t pin = 0U;
+    uint32_t af = 0U;
+    IRQn_Type irq = USART1_IRQn;
+    if (!sequre_receiver_uart(port, &instance, &gpio_port, &pin, &af, &irq))
+        return false;
+    if (hsbus_uart.Instance != NULL) {
+        const IRQn_Type old_irq = hsbus_uart.Instance == USART1 ? USART1_IRQn :
+            hsbus_uart.Instance == USART2 ? USART2_IRQn :
+            hsbus_uart.Instance == UART4 ? UART4_IRQn :
+            hsbus_uart.Instance == USART6 ? USART6_IRQn :
+            hsbus_uart.Instance == UART7 ? UART7_IRQn : UART8_IRQn;
+        HAL_NVIC_DisableIRQ(old_irq);
+        (void)HAL_UART_DeInit(&hsbus_uart);
+    }
+    hsbus_uart = (UART_HandleTypeDef){0};
+    GPIO_InitTypeDef gpio = {
+        .Pin = pin, .Mode = GPIO_MODE_AF_PP, .Pull = GPIO_NOPULL,
+        .Speed = GPIO_SPEED_FREQ_VERY_HIGH, .Alternate = af,
+    };
+    HAL_GPIO_Init(gpio_port, &gpio);
+    hsbus_uart.Instance = instance;
+    hsbus_uart.Init.BaudRate = crsf ? 420000U : 100000U;
+    hsbus_uart.Init.WordLength = crsf ? UART_WORDLENGTH_8B : UART_WORDLENGTH_9B;
+    hsbus_uart.Init.StopBits = crsf ? UART_STOPBITS_1 : UART_STOPBITS_2;
+    hsbus_uart.Init.Parity = crsf ? UART_PARITY_NONE : UART_PARITY_EVEN;
+    hsbus_uart.Init.Mode = UART_MODE_RX;
+    hsbus_uart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    hsbus_uart.Init.OverSampling = UART_OVERSAMPLING_16;
+    hsbus_uart.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+    if (!crsf) {
+        hsbus_uart.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_RXINVERT_INIT;
+        hsbus_uart.AdvancedInit.RxPinLevelInvert = UART_ADVFEATURE_RXINV_ENABLE;
+    }
+    if (HAL_UART_Init(&hsbus_uart) != HAL_OK) return false;
+    HAL_NVIC_SetPriority(irq, 5U, 0U);
+    HAL_NVIC_EnableIRQ(irq);
+    return true;
+#else
+    (void)port;
     if (hsbus_uart.Instance != NULL) {
         HAL_NVIC_DisableIRQ(hsbus_uart.Instance == CRSF_UART_INSTANCE
                             ? CRSF_UART_IRQn : SBUS_UART_IRQn);
@@ -319,6 +413,7 @@ bool board_receiver_uart_configure(bool crsf)
     HAL_NVIC_SetPriority(SBUS_UART_IRQn, 5U, 0U);
     HAL_NVIC_EnableIRQ(SBUS_UART_IRQn);
     return true;
+#endif
 }
 
 static void battery_adc_init(void)
@@ -368,7 +463,7 @@ void board_init(void)
     clock_init();
     gpio_init();
     spi_init();
-    if (!board_receiver_uart_configure(true)) board_fatal_error();
+    if (!board_receiver_uart_configure(true, 1U)) board_fatal_error();
     battery_adc_init();
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT = 0U;

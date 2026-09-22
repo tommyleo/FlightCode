@@ -13,9 +13,8 @@ Pin assignments follow the [Betaflight SQRE target](https://github.com/betafligh
 | ICM-42688-P | SPI2, CS PB12; gyro yaw alignment 90 degrees |
 | AT7456E analog OSD | SPI1, CS PA4 |
 | W25Q128 flash | SPI3, CS PA15 |
-| Receiver CRSF | USART1 RX PA10 |
-| Receiver SBUS | R1 / USART1 RX PA10, internal RX inversion enabled |
-| IRC Tramp VTX control | T2 / USART2 TX PA2 |
+| Receiver SBUS or ELRS/CRSF | Selectable RX UART; default UART1 / PA10 |
+| IRC Tramp VTX control | Selectable TX UART; default UART2 / PA2 |
 | Battery voltage ADC | ADC1 PC3, default 11:1 divider |
 | Current ADC | ADC1 PC2, Betaflight default scale 1052, offset 0 |
 
@@ -28,9 +27,15 @@ current pad cannot provide a meaningful reading. FlightCode reports
 board default and must be checked against a known load before relying on amps
 or consumed capacity.
 
-SBUS and CRSF share the R1 receiver pad; select the matching protocol in the
-Configurator. T2 carries IRC Tramp commands (channel and power), not the analog
-OSD video signal. UART6 is normally used for GPS and UART7 for HD VTX MSP.
+The board exposes six UARTs: UART1 (PA9/PA10), UART2 (PA2/PA3), UART4
+(PA0/PA1), UART6 (PC6/PC7), UART7 (PE8/PE7), and UART8 RX only (PE0).
+Choose the receiver and VTX ports in the Configurator without assigning both
+functions to the same UART. SBUS enables the STM32H743 RX inversion on the
+selected port; ELRS/CRSF leaves it disabled. UART8 cannot control a VTX
+because no TX pin is exposed. IRC Tramp carries channel/power commands, not
+the analog OSD video signal. UART6 and UART7 are often used for GPS and HD
+VTX MSP respectively, but those are wiring conventions rather than fixed
+requirements in this target.
 
 The Configurator's OSD layout editor offers **Current** as a movable item.
 It displays the measured value rounded to whole amperes, for example `45 A`.

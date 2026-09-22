@@ -492,8 +492,9 @@ static void sdcard_spi_init(void)
 #endif
 }
 
-bool board_receiver_uart_configure(bool crsf)
+bool board_receiver_uart_configure(bool crsf, uint8_t port)
 {
+    (void)port;
     if (crsf && !BOARD_HAS_CRSF) {
         return false;
     }
@@ -613,7 +614,7 @@ void board_init(void)
     osd_spi_init();
     dataflash_spi_init();
     sdcard_spi_init();
-    if (!board_receiver_uart_configure(false)) board_fatal_error();
+    if (!board_receiver_uart_configure(false, 0U)) board_fatal_error();
     battery_adc_init();
 
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;

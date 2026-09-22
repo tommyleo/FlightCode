@@ -152,8 +152,15 @@ static void send_filters(void)
 static void send_receiver_config(void)
 {
     const flight_settings_t *s = flight_settings_get();
+#if defined(BOARD_SEQUREH7V2)
+    char dynamic_port[8];
+    (void)snprintf(dynamic_port, sizeof(dynamic_port), "UART%lu",
+                   (unsigned long)s->receiver_uart);
+    const char *port = dynamic_port;
+#else
     const char *port = s->receiver_protocol == RECEIVER_PROTOCOL_CRSF
                            ? CRSF_UART_NAME : SBUS_UART_NAME;
+#endif
     reply("@CFG RECEIVER_CONFIG %s %s %s %lu %lu %lu %lu %lu %lu %u\n",
           s->receiver_protocol == RECEIVER_PROTOCOL_CRSF ? "ELRS" : "SBUS",
           port,
@@ -284,7 +291,7 @@ static void process(const char *command)
 #elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
         reply("@CFG SERIAL_PORTS UART4 UART5 UART6\n");
 #elif defined(BOARD_SEQUREH7V2)
-        reply("@CFG SERIAL_PORTS UART1 UART2 UART4\n");
+        reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART6 UART7 UART8\n");
 #elif defined(BOARD_HDZERO_HALO)
         reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART5\n");
 #else
@@ -950,6 +957,21 @@ static void process(const char *command)
         &arm_min, &arm_max, &beep_channel, &beep_min, &beep_max);
     if (receiver_with_port == 9 &&
         strncmp(receiver_port, "UART", 4U) == 0) {
+#if defined(BOARD_SEQUREH7V2)
+        unsigned int selected_port = 0U;
+        if (sscanf(receiver_port, "UART%u", &selected_port) != 1 ||
+            !(selected_port == 1U || selected_port == 2U ||
+              selected_port == 4U || selected_port == 6U ||
+              selected_port == 7U || selected_port == 8U)) {
+            reply("@CFG ERROR INVALID_RECEIVER_PORT\n");
+            return;
+        }
+        if (settings.vtx_protocol != VTX_PROTOCOL_OFF &&
+            selected_port == settings.vtx_uart) {
+            reply("@CFG ERROR UART_CONFLICT\n");
+            return;
+        }
+#else
         const char *required_port = strcmp(receiver_protocol, "ELRS") == 0
                                         ? CRSF_UART_NAME : SBUS_UART_NAME;
         if (strcmp(receiver_port, required_port) != 0) {
@@ -957,12 +979,36 @@ static void process(const char *command)
                   receiver_port, required_port);
             return;
         }
-        char compatible[160];
-        (void)snprintf(compatible, sizeof(compatible),
-                       "SET_RECEIVER_CONFIG %s %s %u %u %u %u %u %u",
-                       receiver_protocol, receiver_order, arm_channel, arm_min,
-                       arm_max, beep_channel, beep_min, beep_max);
-        process(compatible);
+#endif
+        if (strcmp(receiver_protocol, "ELRS") == 0)
+            settings.receiver_protocol = RECEIVER_PROTOCOL_CRSF;
+        else if (strcmp(receiver_protocol, "SBUS") == 0)
+            settings.receiver_protocol = RECEIVER_PROTOCOL_SBUS;
+        else { reply("@CFG ERROR INVALID_RECEIVER_PROTOCOL\n"); return; }
+        if (strcmp(receiver_order, "AETR1234") == 0)
+            settings.receiver_channel_order = RECEIVER_ORDER_AETR1234;
+        else if (strcmp(receiver_order, "TAER1234") == 0)
+            settings.receiver_channel_order = RECEIVER_ORDER_TAER1234;
+        else { reply("@CFG ERROR INVALID_RECEIVER_ORDER\n"); return; }
+        if (arm_channel < 1U || arm_channel > 16U ||
+            beep_channel < 1U || beep_channel > 16U) {
+            reply("@CFG ERROR INVALID_RECEIVER_CHANNEL\n"); return;
+        }
+        settings.arm_channel = arm_channel - 1U;
+        settings.arm_min_us = arm_min;
+        settings.arm_max_us = arm_max;
+        settings.beep_channel = beep_channel - 1U;
+        settings.beep_min_us = beep_min;
+        settings.beep_max_us = beep_max;
+#if defined(BOARD_SEQUREH7V2)
+        settings.receiver_uart = selected_port;
+#endif
+        if (flight_settings_set(&settings)) {
+            reply("@CFG OK SET_RECEIVER_CONFIG\n");
+            send_receiver_config();
+        } else {
+            reply("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+        }
         return;
     }
     char vtx_protocol[16], vtx_port[8], vtx_region[4], vtx_band;
@@ -976,7 +1022,7 @@ static void process(const char *command)
         else if (strcmp(vtx_protocol, "HDZERO_MSP") == 0) settings.vtx_protocol = VTX_PROTOCOL_HDZERO_MSP;
         else { reply("@CFG ERROR INVALID_VTX_PROTOCOL\n"); return; }
         if (sscanf(vtx_port, "UART%u", &vtx_uart) != 1 ||
-            (vtx_uart < 1U || vtx_uart > 6U)) {
+            (vtx_uart < 1U || vtx_uart > 8U)) {
             reply("@CFG ERROR INVALID_VTX_PORT\n"); return;
         }
         settings.vtx_uart = vtx_uart;

@@ -12,7 +12,8 @@
 #include "sbus.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 25U
+#define SETTINGS_VERSION 26U
+#define SETTINGS_LEGACY_VERSION_25 25U
 #define SETTINGS_LEGACY_VERSION_24 24U
 #define SETTINGS_LEGACY_VERSION_23 23U
 #define SETTINGS_LEGACY_VERSION_22 22U
@@ -267,6 +268,13 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v24_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, receiver_uart)];
+    uint32_t checksum;
+} legacy_record_v25_t;
+
 _Static_assert(offsetof(legacy_settings_v21_t, vtx_osd_enabled_mask) ==
                    offsetof(flight_settings_t, vtx_osd_enabled),
                "Flight settings v22 prefix layout changed");
@@ -393,7 +401,18 @@ static bool filters_valid(const flight_settings_t *settings)
 
 static bool receiver_valid(const flight_settings_t *settings)
 {
-    return settings->receiver_channel_order <= RECEIVER_ORDER_AETR1234 &&
+#if defined(BOARD_SEQUREH7V2)
+    const bool uart_valid = settings->receiver_uart == 1U ||
+                            settings->receiver_uart == 2U ||
+                            settings->receiver_uart == 4U ||
+                            settings->receiver_uart == 6U ||
+                            settings->receiver_uart == 7U ||
+                            settings->receiver_uart == 8U;
+#else
+    const bool uart_valid = settings->receiver_uart == 0U;
+#endif
+    return uart_valid &&
+           settings->receiver_channel_order <= RECEIVER_ORDER_AETR1234 &&
            settings->receiver_protocol <= RECEIVER_PROTOCOL_CRSF &&
 #if !BOARD_HAS_CRSF
            settings->receiver_protocol == RECEIVER_PROTOCOL_SBUS &&
@@ -408,8 +427,21 @@ static bool receiver_valid(const flight_settings_t *settings)
 
 static bool vtx_valid(const flight_settings_t *settings)
 {
-    return settings->vtx_protocol <= VTX_PROTOCOL_HDZERO_MSP &&
-           settings->vtx_uart >= 1U && settings->vtx_uart <= 6U &&
+#if defined(BOARD_SEQUREH7V2)
+    const bool uart_valid = settings->vtx_uart == 1U ||
+                            settings->vtx_uart == 2U ||
+                            settings->vtx_uart == 4U ||
+                            settings->vtx_uart == 6U ||
+                            settings->vtx_uart == 7U;
+    const bool no_conflict = settings->vtx_protocol == VTX_PROTOCOL_OFF ||
+                             settings->vtx_uart != settings->receiver_uart;
+#else
+    const bool uart_valid = settings->vtx_uart >= 1U &&
+                            settings->vtx_uart <= 6U;
+    const bool no_conflict = true;
+#endif
+    return uart_valid && no_conflict &&
+           settings->vtx_protocol <= VTX_PROTOCOL_HDZERO_MSP &&
            settings->vtx_region <= VTX_REGION_US &&
            settings->vtx_band < 6U && settings->vtx_channel < 8U &&
            settings->vtx_power_mw >= 1U && settings->vtx_power_mw <= 2000U &&
@@ -444,7 +476,8 @@ static void apply(void)
                              current_settings.osd_element_positions,
                              current_settings.osd_pilot_name);
     blackbox_sd_set_enabled(current_settings.blackbox_enabled != 0U);
-    (void)sbus_set_protocol(current_settings.receiver_protocol);
+    (void)sbus_set_config(current_settings.receiver_protocol,
+                          current_settings.receiver_uart);
     board_battery_set_multiplier(current_settings.vbat_multiplier);
 }
 
@@ -492,6 +525,9 @@ void flight_settings_reset_defaults(void)
         .osd_position = 4U,
         .blackbox_enabled = 0U,
         .receiver_protocol = BOARD_DEFAULT_RECEIVER_PROTOCOL,
+#if defined(BOARD_SEQUREH7V2)
+        .receiver_uart = 1U,
+#endif
         .main_loop_hz = 16000U,
         .gyro_rate_hz = BOARD_IMU_TYPE == IMU_TYPE_MPU6000 ? 8000U : 16000U,
         .vbat_multiplier = 1.0f,
@@ -553,6 +589,19 @@ void flight_settings_init(void)
         (const legacy_record_v23_t *)SETTINGS_ADDRESS;
     const legacy_record_v24_t *legacy_v24 =
         (const legacy_record_v24_t *)SETTINGS_ADDRESS;
+    const legacy_record_v25_t *legacy_v25 =
+        (const legacy_record_v25_t *)SETTINGS_ADDRESS;
+    if (legacy_v25->magic == SETTINGS_MAGIC &&
+        legacy_v25->version == SETTINGS_LEGACY_VERSION_25 &&
+        legacy_v25->checksum == checksum_bytes(
+            legacy_v25, offsetof(legacy_record_v25_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v25->settings,
+               sizeof(legacy_v25->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v24->magic == SETTINGS_MAGIC &&
         legacy_v24->version == SETTINGS_LEGACY_VERSION_24 &&
         legacy_v24->checksum == checksum_bytes(

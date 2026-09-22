@@ -322,6 +322,7 @@
 #define MAX7456_CS_PORT GPIOA
 #define MAX7456_CS_PIN GPIO_PIN_4
 #define BOARD_DEFAULT_OSD_ENABLED 1U
+#define BOARD_DEFAULT_VTX_UART 2U
 #define BOARD_HAS_SDCARD 0
 #define BOARD_HAS_DATAFLASH 1
 #define DATAFLASH_SPI_HANDLE hspi3
@@ -458,7 +459,7 @@ extern DMA_HandleTypeDef hdma_spi2_tx;
 extern UART_HandleTypeDef hsbus_uart;
 
 void board_init(void);
-bool board_receiver_uart_configure(bool crsf);
+bool board_receiver_uart_configure(bool crsf, uint8_t port);
 bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
                                  UART_HandleTypeDef *handle);
 bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,

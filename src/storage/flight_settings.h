@@ -66,6 +66,7 @@ typedef struct {
     uint32_t gyro_rate_hz;
     uint32_t current_osd_enabled;
     uint32_t current_osd_position;
+    uint32_t receiver_uart;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0U

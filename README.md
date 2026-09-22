@@ -31,14 +31,15 @@ USB Configurator.
   `HDZERO_HALO` · STM32H743 · automatic IMU detection · integrated Gemini ELRS · flash Blackbox
 
 - **[SEQURE H743 V2](docs/boards/sequreh7v2.md)**<br>
-  `SEQUREH7V2` · STM32H743 · ICM-42688-P · analog AT7456E OSD · ADC voltage/current · flash Blackbox · SBUS/ELRS on R1 · IRC Tramp on T2
+  `SEQUREH7V2` · STM32H743 · ICM-42688-P · analog AT7456E OSD · ADC voltage/current · flash Blackbox
 
 Each board page contains its pin mapping, supported hardware, receiver and OSD
 details, build command and firmware output path.
 
 The SEQURE target compiles but still needs validation on a physical board
-before flight. ELRS/CRSF control currently uses R1 only; telemetry on T1 is
-not yet implemented.
+before flight. Receiver and VTX UARTs are selectable in the Configurator;
+SBUS RX inversion is enabled on the selected UART and disabled for ELRS/CRSF.
+ELRS telemetry transmission is not yet implemented.
 
 Want to use a different controller? Read the
 **[new board support request guide](docs/board-request.md)** before opening an

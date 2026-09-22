@@ -34,6 +34,7 @@ static volatile bool ring_resync_pending;
 static bool failsafe_pending;
 static uint32_t failsafe_started_us;
 static uint32_t receiver_protocol;
+static uint32_t receiver_uart;
 static bool driver_initialized;
 
 static void restart_uart_receive(void)
@@ -175,13 +176,15 @@ void sbus_init(void)
     HAL_UART_Receive_IT(&hsbus_uart, &irq_byte, 1U);
 }
 
-bool sbus_set_protocol(uint32_t protocol)
+bool sbus_set_config(uint32_t protocol, uint32_t uart)
 {
     if (protocol > 1U || (protocol == 1U && !BOARD_HAS_CRSF)) return false;
-    if (receiver_protocol == protocol && hsbus_uart.Instance != NULL) return true;
+    if (receiver_protocol == protocol && receiver_uart == uart &&
+        hsbus_uart.Instance != NULL) return true;
     if (driver_initialized) HAL_UART_AbortReceive(&hsbus_uart);
-    if (!board_receiver_uart_configure(protocol == 1U)) return false;
+    if (!board_receiver_uart_configure(protocol == 1U, (uint8_t)uart)) return false;
     receiver_protocol = protocol;
+    receiver_uart = uart;
     if (driver_initialized) sbus_init();
     return true;
 }

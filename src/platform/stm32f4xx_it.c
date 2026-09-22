@@ -25,6 +25,14 @@ void SBUS_UART_IRQ_HANDLER(void)
     HAL_UART_IRQHandler(&hsbus_uart);
 }
 
+#if defined(BOARD_SEQUREH7V2)
+void USART2_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
+void UART4_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
+void USART6_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
+void UART7_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
+void UART8_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
+#endif
+
 #if BOARD_HAS_CRSF && !defined(BOARD_RECEIVER_UART_SHARED)
 void CRSF_UART_IRQ_HANDLER(void)
 {
