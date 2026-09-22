@@ -398,6 +398,17 @@ static void render_layout(const char *total_voltage, const char *cell_text,
     compose_element(screen, 3U, "FLIGHTCODE");
     compose_element(screen, 4U, pilot_name);
     const flight_settings_t *settings = flight_settings_get();
+#if BOARD_HAS_CURRENT
+    if (settings->current_osd_enabled != 0U) {
+        char current[OSD_TEXT_LENGTH + 1U];
+        (void)snprintf(current, sizeof(current), "%.0f A",
+                       (double)board_battery_current());
+        const uint32_t position = settings->current_osd_position;
+        const uint8_t column = (uint8_t)(position % SCREEN_COLUMNS);
+        for (uint8_t i = 0U; i < OSD_TEXT_LENGTH && current[i] != '\0' &&
+             column + i < SCREEN_COLUMNS; ++i) screen[position + i] = current[i];
+    }
+#endif
     static const char bands[] = "ABEFRL";
     char vtx[OSD_TEXT_LENGTH + 1U];
     (void)snprintf(vtx, sizeof(vtx), "%c:%lu:%lu",

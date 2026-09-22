@@ -62,7 +62,7 @@ static void hardware_init(void)
         .Speed = GPIO_SPEED_FREQ_VERY_HIGH,
         .Alternate = GPIO_AF2_TIM3,
     };
-    HAL_GPIO_Init(GPIOC, &gpio);
+    HAL_GPIO_Init(MOTOR_1_PORT, &gpio);
 
     const uint32_t psc = timer_clock_hz() / 12000000U - 1U;
     const uint32_t period = dshot_period_ticks();

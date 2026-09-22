@@ -76,9 +76,12 @@ static void send_motor_protocol(void)
 
 static void send_main_loop(void)
 {
-    reply("@CFG MAIN_LOOP %lu %u\n",
+    reply("@CFG MAIN_LOOP %lu %lu %u\n",
           (unsigned long)flight_settings_get()->main_loop_hz,
+          (unsigned long)flight_settings_get()->gyro_rate_hz,
           flight_settings_are_saved() ? 1U : 0U);
+    reply("@CFG GYRO_RATES 8000%s\n",
+          imu_gyro_rate_supported(16000U) ? " 16000" : "");
 }
 
 #if BOARD_HAS_VBAT_CALIBRATION
@@ -233,6 +236,12 @@ static void send_osd_layout(void)
           (unsigned long)s->vtx_osd_position,
           pilot[0] != '\0' ? pilot : "-",
           flight_settings_are_saved() ? 1U : 0U);
+#if BOARD_HAS_CURRENT
+    reply("@CFG OSD_CURRENT %lu %lu %u\n",
+          (unsigned long)s->current_osd_enabled,
+          (unsigned long)s->current_osd_position,
+          flight_settings_are_saved() ? 1U : 0U);
+#endif
 #endif
 }
 
@@ -274,6 +283,8 @@ static void process(const char *command)
         reply("@CFG SERIAL_PORTS UART1 UART3 UART4 UART6\n");
 #elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
         reply("@CFG SERIAL_PORTS UART4 UART5 UART6\n");
+#elif defined(BOARD_SEQUREH7V2)
+        reply("@CFG SERIAL_PORTS UART1 UART2 UART4\n");
 #elif defined(BOARD_HDZERO_HALO)
         reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART5\n");
 #else
@@ -285,6 +296,9 @@ static void process(const char *command)
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
               "VTX_CONFIG "
+#if BOARD_HAS_CURRENT
+              "BATTERY_CURRENT "
+#endif
 #if BOARD_HAS_OSD || BOARD_HAS_DIGITAL_OSD
               "OSD_LAYOUT "
 #endif
@@ -464,6 +478,15 @@ static void process(const char *command)
         send_vbat_multiplier();
 #else
         reply("@CFG ERROR VBAT_CALIBRATION_UNSUPPORTED\n");
+#endif
+        return;
+    }
+    if (strcmp(command, "GET_BATTERY_CURRENT") == 0) {
+#if BOARD_HAS_CURRENT
+        last_activity_us = board_micros();
+        reply("@CFG BATTERY_CURRENT %.2f\n", board_battery_current());
+#else
+        reply("@CFG ERROR BATTERY_CURRENT_UNSUPPORTED\n");
 #endif
         return;
     }
@@ -903,6 +926,21 @@ static void process(const char *command)
         }
         return;
     }
+#if BOARD_HAS_CURRENT
+    unsigned int current_enabled, current_position;
+    if (sscanf(command, "SET_OSD_CURRENT %u %u", &current_enabled,
+               &current_position) == 2) {
+        settings.current_osd_enabled = current_enabled;
+        settings.current_osd_position = current_position;
+        if (!flight_settings_set(&settings)) {
+            reply("@CFG ERROR INVALID_OSD_CURRENT\n");
+        } else {
+            reply("@CFG OK SET_OSD_CURRENT\n");
+            send_osd_layout();
+        }
+        return;
+    }
+#endif
     char receiver_protocol[8], receiver_port[8], receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
@@ -1082,12 +1120,16 @@ static void process(const char *command)
         send_filters();
         return;
     }
-    unsigned int main_loop_hz;
-    if (sscanf(command, "SET_MAIN_LOOP %u", &main_loop_hz) == 1) {
+    unsigned int main_loop_hz, gyro_rate_hz;
+    if (sscanf(command, "SET_MAIN_LOOP %u %u", &main_loop_hz,
+               &gyro_rate_hz) == 2) {
         settings = *flight_settings_get();
         settings.main_loop_hz = main_loop_hz;
+        settings.gyro_rate_hz = gyro_rate_hz;
         if (flight_control_is_armed()) {
             reply("@CFG ERROR ARMED\n");
+        } else if (!imu_gyro_rate_supported(gyro_rate_hz)) {
+            reply("@CFG ERROR INVALID_GYRO_RATE\n");
         } else if (flight_settings_set(&settings)) {
             reply("@CFG OK SET_MAIN_LOOP REBOOT_REQUIRED\n");
             send_main_loop();
@@ -1246,6 +1288,14 @@ void config_protocol_send_telemetry(const sbus_data_t *rx,
         telemetry_char(&battery_text, '\n');
         if (battery_text.valid)
             usb_cdc_write((const uint8_t *)battery_line, battery_text.length);
+#if BOARD_HAS_CURRENT
+        telemetry_text_t current_text = {battery_line, sizeof(battery_line), 0U, true};
+        telemetry_literal(&current_text, "@CFG BATTERY_CURRENT");
+        telemetry_fixed(&current_text, board_battery_current(), 2U);
+        telemetry_char(&current_text, '\n');
+        if (current_text.valid)
+            usb_cdc_write((const uint8_t *)battery_line, current_text.length);
+#endif
     }
 #endif
     static uint32_t last_osd_status_us;

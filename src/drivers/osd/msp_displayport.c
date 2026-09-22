@@ -146,6 +146,14 @@ static void enqueue_layout(float voltage)
     }
     if (settings->vtx_osd_enabled != 0U)
         enqueue_string(settings->vtx_osd_position, vtx);
+#if BOARD_HAS_CURRENT
+    if (settings->current_osd_enabled != 0U) {
+        char current[16];
+        (void)snprintf(current, sizeof(current), "%.0f A",
+                       (double)board_battery_current());
+        enqueue_string(settings->current_osd_position, current);
+    }
+#endif
     enqueue_simple(MSP_DP_DRAW_SCREEN);
 }
 #endif

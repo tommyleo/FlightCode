@@ -66,7 +66,11 @@ bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
     uint16_t gpio_pin = 0U;
     uint32_t gpio_af = 0U;
     if (port == 1U) {
+#if defined(BOARD_SEQUREH7V2)
+        instance = USART1; gpio_port = GPIOA; gpio_pin = GPIO_PIN_9;
+#else
         instance = USART1; gpio_port = GPIOB; gpio_pin = GPIO_PIN_6;
+#endif
         gpio_af = GPIO_AF7_USART1; __HAL_RCC_USART1_CLK_ENABLE();
     } else if (port == 2U) {
         instance = USART2; gpio_port = GPIOA; gpio_pin = GPIO_PIN_2;
@@ -159,10 +163,10 @@ static void gpio_init(void)
         .Pull = GPIO_NOPULL,
         .Speed = GPIO_SPEED_FREQ_VERY_HIGH,
     };
-    HAL_GPIO_WritePin(GPIOC, MOTOR_1_PIN | MOTOR_2_PIN |
+    HAL_GPIO_WritePin(MOTOR_1_PORT, MOTOR_1_PIN | MOTOR_2_PIN |
                              MOTOR_3_PIN | MOTOR_4_PIN, GPIO_PIN_RESET);
     gpio.Pin = MOTOR_1_PIN | MOTOR_2_PIN | MOTOR_3_PIN | MOTOR_4_PIN;
-    HAL_GPIO_Init(GPIOC, &gpio);
+    HAL_GPIO_Init(MOTOR_1_PORT, &gpio);
 
     gpio.Pin = STATUS_LED_PIN;
     HAL_GPIO_Init(STATUS_LED_PORT, &gpio);
@@ -184,6 +188,9 @@ static void spi_init(void)
 {
     __HAL_RCC_SPI1_CLK_ENABLE();
     __HAL_RCC_SPI2_CLK_ENABLE();
+#if defined(BOARD_SEQUREH7V2)
+    __HAL_RCC_SPI3_CLK_ENABLE();
+#endif
 
     GPIO_InitTypeDef gpio = {
         .Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7,
@@ -216,13 +223,24 @@ static void spi_init(void)
     hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
     if (HAL_SPI_Init(&hspi1) != HAL_OK) board_fatal_error();
 
+#if defined(BOARD_SEQUREH7V2)
+    gpio.Pin = MAX7456_CS_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Alternate = 0U;
+    HAL_GPIO_Init(MAX7456_CS_PORT, &gpio);
+    HAL_GPIO_WritePin(MAX7456_CS_PORT, MAX7456_CS_PIN, GPIO_PIN_SET);
+#endif
+
     gpio.Pin = GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
+    gpio.Mode = GPIO_MODE_AF_PP;
     gpio.Alternate = GPIO_AF5_SPI2;
     HAL_GPIO_Init(GPIOB, &gpio);
+#if !defined(BOARD_SEQUREH7V2)
     gpio.Pin = DATAFLASH_CS_PIN;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     HAL_GPIO_Init(DATAFLASH_CS_PORT, &gpio);
     HAL_GPIO_WritePin(DATAFLASH_CS_PORT, DATAFLASH_CS_PIN, GPIO_PIN_SET);
+#endif
 
     hspi2 = (SPI_HandleTypeDef){0};
     hspi2.Instance = SPI2;
@@ -231,6 +249,21 @@ static void spi_init(void)
     hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
     hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
     if (HAL_SPI_Init(&hspi2) != HAL_OK) board_fatal_error();
+#if defined(BOARD_SEQUREH7V2)
+    gpio.Pin = GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Alternate = GPIO_AF6_SPI3;
+    HAL_GPIO_Init(GPIOC, &gpio);
+    gpio.Pin = DATAFLASH_CS_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Alternate = 0U;
+    HAL_GPIO_Init(DATAFLASH_CS_PORT, &gpio);
+    HAL_GPIO_WritePin(DATAFLASH_CS_PORT, DATAFLASH_CS_PIN, GPIO_PIN_SET);
+    hspi3 = (SPI_HandleTypeDef){0};
+    hspi3.Instance = SPI3;
+    hspi3.Init = hspi2.Init;
+    if (HAL_SPI_Init(&hspi3) != HAL_OK) board_fatal_error();
+#endif
 }
 
 bool board_receiver_uart_configure(bool crsf)
@@ -240,6 +273,7 @@ bool board_receiver_uart_configure(bool crsf)
                             ? CRSF_UART_IRQn : SBUS_UART_IRQn);
         (void)HAL_UART_DeInit(&hsbus_uart);
     }
+    hsbus_uart = (UART_HandleTypeDef){0};
     GPIO_InitTypeDef gpio = {
         .Mode = GPIO_MODE_AF_PP,
         .Pull = GPIO_NOPULL,
@@ -277,6 +311,10 @@ bool board_receiver_uart_configure(bool crsf)
     hsbus_uart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
     hsbus_uart.Init.OverSampling = UART_OVERSAMPLING_16;
     hsbus_uart.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+#if defined(BOARD_SEQUREH7V2)
+    hsbus_uart.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_RXINVERT_INIT;
+    hsbus_uart.AdvancedInit.RxPinLevelInvert = UART_ADVFEATURE_RXINV_ENABLE;
+#endif
     if (HAL_UART_Init(&hsbus_uart) != HAL_OK) return false;
     HAL_NVIC_SetPriority(SBUS_UART_IRQn, 5U, 0U);
     HAL_NVIC_EnableIRQ(SBUS_UART_IRQn);
@@ -292,6 +330,10 @@ static void battery_adc_init(void)
         .Pull = GPIO_NOPULL,
     };
     HAL_GPIO_Init(BATTERY_ADC_PORT, &gpio);
+#if BOARD_HAS_CURRENT
+    gpio.Pin = CURRENT_ADC_PIN;
+    HAL_GPIO_Init(CURRENT_ADC_PORT, &gpio);
+#endif
     hadc1.Instance = ADC1;
     hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV8;
     hadc1.Init.Resolution = ADC_RESOLUTION_12B;
@@ -339,6 +381,12 @@ static uint8_t battery_adc_samples;
 static bool battery_adc_pending;
 static float battery_voltage_filtered;
 static float battery_voltage_multiplier = 1.0f;
+#if BOARD_HAS_CURRENT
+static uint32_t current_adc_total;
+static uint8_t current_adc_samples;
+static bool current_adc_pending;
+static float battery_current_filtered;
+#endif
 
 uint32_t board_micros(void)
 {
@@ -367,6 +415,15 @@ void board_battery_update(void)
     if (!battery_adc_pending) {
         const uint32_t now = board_micros();
         if ((int32_t)(now - battery_adc_next_sample_us) < 0) return;
+#if BOARD_HAS_CURRENT
+        ADC_ChannelConfTypeDef channel = {0};
+        channel.Channel = current_adc_pending ? CURRENT_ADC_CHANNEL : BATTERY_ADC_CHANNEL;
+        channel.Rank = ADC_REGULAR_RANK_1;
+        channel.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
+        channel.SingleDiff = ADC_SINGLE_ENDED;
+        channel.OffsetNumber = ADC_OFFSET_NONE;
+        if (HAL_ADC_ConfigChannel(&hadc1, &channel) != HAL_OK) return;
+#endif
         if (HAL_ADC_Start(&hadc1) == HAL_OK) {
             battery_adc_pending = true;
             battery_adc_next_sample_us = now + 25000U;
@@ -374,9 +431,28 @@ void board_battery_update(void)
         return;
     }
     if (HAL_ADC_PollForConversion(&hadc1, 0U) != HAL_OK) return;
-    battery_adc_total += HAL_ADC_GetValue(&hadc1);
+    const uint32_t sample = HAL_ADC_GetValue(&hadc1);
     HAL_ADC_Stop(&hadc1);
     battery_adc_pending = false;
+#if BOARD_HAS_CURRENT
+    if (current_adc_pending) {
+        current_adc_total += sample;
+        if (++current_adc_samples >= 8U) {
+            const float millivolts = ((float)current_adc_total / 8.0f) *
+                3300.0f / 4095.0f;
+            const float measured = millivolts * 10.0f / CURRENT_METER_SCALE;
+            battery_current_filtered = current_adc_samples == 8U &&
+                battery_current_filtered == 0.0f ? measured :
+                battery_current_filtered * 0.85f + measured * 0.15f;
+            current_adc_total = 0U;
+            current_adc_samples = 0U;
+        }
+        current_adc_pending = false;
+        return;
+    }
+    current_adc_pending = true;
+#endif
+    battery_adc_total += sample;
     if (++battery_adc_samples < 8U) return;
     const float measured = ((float)battery_adc_total / 8.0f) * 3.3f *
         BATTERY_VOLTAGE_DIVIDER * battery_voltage_multiplier / 4095.0f;
@@ -387,6 +463,14 @@ void board_battery_update(void)
 }
 
 float board_battery_voltage(void) { return battery_voltage_filtered; }
+float board_battery_current(void)
+{
+#if BOARD_HAS_CURRENT
+    return battery_current_filtered;
+#else
+    return 0.0f;
+#endif
+}
 
 void board_buzzer_set(bool enabled)
 {

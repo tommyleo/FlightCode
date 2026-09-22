@@ -85,6 +85,15 @@
       }
     },
     {
+      "name": "sequreh7v2-release",
+      "displayName": "FlightCode SEQURE H743 V2 Release",
+      "inherits": "hdzero-halo-release",
+      "binaryDir": "${sourceDir}/build/sequreh7v2-release",
+      "cacheVariables": {
+        "BOARD": "SEQUREH7V2"
+      }
+    },
+    {
       "name": "hdzero-halo-release",
       "displayName": "FlightCode HDZero Halo Release",
       "inherits": "hdzero-halo-debug",
@@ -104,6 +113,7 @@
     { "name": "flywoof405nano-analog-debug", "configurePreset": "flywoof405nano-analog-debug" },
     { "name": "flywoof405nano-analog-release", "configurePreset": "flywoof405nano-analog-release" },
     { "name": "hdzero-halo-debug", "configurePreset": "hdzero-halo-debug" },
-    { "name": "hdzero-halo-release", "configurePreset": "hdzero-halo-release" }
+    { "name": "hdzero-halo-release", "configurePreset": "hdzero-halo-release" },
+    { "name": "sequreh7v2-release", "configurePreset": "sequreh7v2-release" }
   ]
 }

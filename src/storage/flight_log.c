@@ -8,7 +8,11 @@
 #include "flight_settings.h"
 #include "imu.h"
 
+#if BOARD_HAS_BLACKBOX_STORAGE
+#define FLIGHT_LOG_CAPACITY 1U
+#else
 #define FLIGHT_LOG_CAPACITY BOARD_FLIGHT_LOG_CAPACITY
+#endif
 #define DSHOT_MIN 48U
 #define DSHOT_MAX 2047U
 #define LOG_FLASH_MAGIC 0x46344C47U
@@ -27,25 +31,32 @@ typedef struct {
     flight_log_metadata_t metadata;
 } flight_log_flash_header_t;
 
+#if !BOARD_HAS_BLACKBOX_STORAGE
 static flight_log_record_t records[FLIGHT_LOG_CAPACITY];
 static uint32_t write_index;
 static uint32_t record_count;
 static uint16_t decimation_count;
 static uint16_t log_decimation = 1U;
+#endif
 static uint16_t blackbox_decimation_count;
 static uint16_t blackbox_decimation = 1U;
 static bool recording;
 static bool inhibited;
+#if !BOARD_HAS_BLACKBOX_STORAGE
 static bool using_flash;
+#endif
 static bool persist_pending;
 static uint32_t persist_requested_us;
 static bool flight_qualified;
+#if !BOARD_HAS_BLACKBOX_STORAGE
 static uint32_t preserved_flash_count;
+#endif
 static uint16_t battery_centivolts;
 static uint16_t cell_centivolts;
 static uint8_t battery_cells;
 static flight_log_metadata_t flight_metadata;
 
+#if !BOARD_HAS_BLACKBOX_STORAGE
 static uint32_t hash_bytes(uint32_t hash, const void *data, size_t length)
 {
     const uint8_t *bytes = (const uint8_t *)data;
@@ -54,7 +65,9 @@ static uint32_t hash_bytes(uint32_t hash, const void *data, size_t length)
     }
     return hash;
 }
+#endif
 
+#if !BOARD_HAS_BLACKBOX_STORAGE
 static const flight_log_record_t *flash_records(void)
 {
     return (const flight_log_record_t *)
@@ -67,6 +80,7 @@ static const flight_log_record_t *ram_record(uint32_t index)
         record_count == FLIGHT_LOG_CAPACITY ? write_index : 0U;
     return &records[(oldest + index) % FLIGHT_LOG_CAPACITY];
 }
+#endif
 
 static int16_t scaled_i16(float value, float scale)
 {
@@ -86,21 +100,28 @@ static int8_t scaled_pid(float value)
 
 void flight_log_init(void)
 {
+#if !BOARD_HAS_BLACKBOX_STORAGE
     write_index = 0U;
     record_count = 0U;
     decimation_count = 0U;
+#endif
     blackbox_decimation_count = 0U;
     recording = false;
     inhibited = false;
+#if !BOARD_HAS_BLACKBOX_STORAGE
     using_flash = false;
+#endif
     persist_pending = false;
     persist_requested_us = 0U;
     flight_qualified = false;
+#if !BOARD_HAS_BLACKBOX_STORAGE
     preserved_flash_count = 0U;
+#endif
     battery_centivolts = 0U;
     cell_centivolts = 0U;
     battery_cells = 0U;
 
+#if !BOARD_HAS_BLACKBOX_STORAGE
     const flight_log_flash_header_t *const header =
         (const flight_log_flash_header_t *)FLIGHT_LOG_ADDRESS;
     if (header->magic == LOG_FLASH_MAGIC &&
@@ -119,6 +140,7 @@ void flight_log_init(void)
                 &header->blackbox_diagnostics);
         }
     }
+#endif
 }
 
 void flight_log_set_inhibited(bool value)
@@ -149,18 +171,24 @@ void flight_log_set_battery_voltage(float voltage)
 void flight_log_start(void)
 {
     if (inhibited) return;
+#if !BOARD_HAS_BLACKBOX_STORAGE
     preserved_flash_count = using_flash ? record_count : 0U;
     using_flash = false;
+#endif
     persist_pending = false;
+#if !BOARD_HAS_BLACKBOX_STORAGE
     write_index = 0U;
     record_count = 0U;
     decimation_count = 0U;
+#endif
     blackbox_decimation_count = 0U;
     flight_qualified = false;
     const flight_settings_t *const settings = flight_settings_get();
+#if !BOARD_HAS_BLACKBOX_STORAGE
     log_decimation = (uint16_t)(
         imu_get_gyro_rate_hz() / FLIGHT_LOG_RATE_HZ);
     if (log_decimation == 0U) log_decimation = 1U;
+#endif
     blackbox_decimation = (uint16_t)(
         imu_get_gyro_rate_hz() / BLACKBOX_LOG_RATE_HZ);
     if (blackbox_decimation == 0U) blackbox_decimation = 1U;
@@ -207,11 +235,14 @@ void flight_log_stop(uint8_t stop_flag)
     if (recording && !flight_qualified) {
         recording = false;
         persist_pending = false;
+#if !BOARD_HAS_BLACKBOX_STORAGE
         write_index = 0U;
         record_count = preserved_flash_count;
         using_flash = preserved_flash_count > 0U;
+#endif
         return;
     }
+#if !BOARD_HAS_BLACKBOX_STORAGE
     if (recording && record_count > 0U) {
         /*
          * Always retain the event that ended the flight.  The buffer remains
@@ -227,6 +258,7 @@ void flight_log_stop(uint8_t stop_flag)
         persist_pending = true;
         persist_requested_us = board_micros();
     }
+#endif
     recording = false;
 }
 
@@ -238,24 +270,50 @@ void flight_log_stop_rx(bool failsafe)
 }
 
 bool flight_log_is_recording(void) { return recording; }
-bool flight_log_is_available(void) { return !recording && record_count > 0U; }
-uint32_t flight_log_count(void) { return record_count; }
+bool flight_log_is_available(void)
+{
+#if BOARD_HAS_BLACKBOX_STORAGE
+    return false;
+#else
+    return !recording && record_count > 0U;
+#endif
+}
+
+uint32_t flight_log_count(void)
+{
+#if BOARD_HAS_BLACKBOX_STORAGE
+    return 0U;
+#else
+    return record_count;
+#endif
+}
 
 bool flight_log_get(uint32_t index, flight_log_record_t *record)
 {
+#if BOARD_HAS_BLACKBOX_STORAGE
+    (void)index;
+    (void)record;
+    return false;
+#else
     if (recording || index >= record_count || record == NULL) return false;
     *record = using_flash ? flash_records()[index] : *ram_record(index);
     return true;
+#endif
 }
 
 bool flight_log_get_metadata(flight_log_metadata_t *metadata)
 {
+#if BOARD_HAS_BLACKBOX_STORAGE
+    (void)metadata;
+    return false;
+#else
     if (metadata == NULL) return false;
     const flight_log_flash_header_t *header =
         (const flight_log_flash_header_t *)FLIGHT_LOG_ADDRESS;
     if (using_flash && header->version != LOG_FLASH_VERSION) return false;
     return flight_log_metadata_decode(metadata,
         using_flash ? &header->metadata : &flight_metadata);
+#endif
 }
 
 bool flight_log_persist_pending(void)
@@ -265,6 +323,12 @@ bool flight_log_persist_pending(void)
 
 void flight_log_persist_if_ready(void)
 {
+#if BOARD_HAS_BLACKBOX_STORAGE
+    /* Persistent Blackbox targets deliberately do not write the separate
+     * ~10-13 second flight log into the MCU program flash. */
+    persist_pending = false;
+    return;
+#else
     if (!persist_pending || recording ||
         (uint32_t)(board_micros() - persist_requested_us) <
             LOG_PERSIST_DELAY_US) {
@@ -287,13 +351,6 @@ void flight_log_persist_if_ready(void)
     }
 
     board_status_led_set(true);
-#if defined(PLATFORM_STM32H7)
-    /* Halo stores long-flight Blackbox data in its onboard W25Q128. */
-    persist_pending = false;
-    using_flash = false;
-    board_status_led_set(false);
-    return;
-#else
     HAL_FLASH_Unlock();
     FLASH_EraseInitTypeDef erase = {
         .TypeErase = FLASH_TYPEERASE_SECTORS,
@@ -405,6 +462,9 @@ void flight_log_record(const float gyro_raw[3], const float gyro_filtered[3],
         blackbox_sd_append(&persistent);
     }
 
+#if BOARD_HAS_BLACKBOX_STORAGE
+    return;
+#else
     if (++decimation_count < log_decimation) return;
     decimation_count = 0U;
 
@@ -437,4 +497,5 @@ void flight_log_record(const float gyro_raw[3], const float gyro_filtered[3],
     item->battery_cells = battery_cells;
     write_index = (write_index + 1U) % FLIGHT_LOG_CAPACITY;
     if (record_count < FLIGHT_LOG_CAPACITY) ++record_count;
+#endif
 }

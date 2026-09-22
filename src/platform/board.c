@@ -700,6 +700,8 @@ float board_battery_voltage(void)
 #endif
 }
 
+float board_battery_current(void) { return 0.0f; }
+
 uint32_t board_micros(void)
 {
     /*

@@ -12,7 +12,9 @@
 #include "sbus.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 23U
+#define SETTINGS_VERSION 25U
+#define SETTINGS_LEGACY_VERSION_24 24U
+#define SETTINGS_LEGACY_VERSION_23 23U
 #define SETTINGS_LEGACY_VERSION_22 22U
 #define SETTINGS_LEGACY_VERSION_21 21U
 #define SETTINGS_LEGACY_VERSION_20 20U
@@ -251,6 +253,20 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v22_t;
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, gyro_rate_hz)];
+    uint32_t checksum;
+} legacy_record_v23_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, current_osd_enabled)];
+    uint32_t checksum;
+} legacy_record_v24_t;
+
 _Static_assert(offsetof(legacy_settings_v21_t, vtx_osd_enabled_mask) ==
                    offsetof(flight_settings_t, vtx_osd_enabled),
                "Flight settings v22 prefix layout changed");
@@ -303,6 +319,11 @@ static bool angle_valid(float angle)
 }
 
 static bool main_loop_valid(uint32_t hz)
+{
+    return hz == 8000U || hz == 16000U;
+}
+
+static bool gyro_rate_valid(uint32_t hz)
 {
     return hz == 8000U || hz == 16000U;
 }
@@ -452,7 +473,12 @@ void flight_settings_reset_defaults(void)
         .motor_protocol = MOTOR_PROTOCOL_DSHOT600,
         .board_roll_deg = 0.0f,
         .board_pitch_deg = 0.0f,
-        .board_yaw_deg = 0.0f,
+        .board_yaw_deg =
+#if defined(BOARD_SEQUREH7V2)
+            90.0f,
+#else
+            0.0f,
+#endif
         .motor_direction_reversed = 0U,
         .motor_idle_percent = 5.0f,
         .receiver_channel_order = RECEIVER_ORDER_TAER1234,
@@ -467,9 +493,12 @@ void flight_settings_reset_defaults(void)
         .blackbox_enabled = 0U,
         .receiver_protocol = BOARD_DEFAULT_RECEIVER_PROTOCOL,
         .main_loop_hz = 16000U,
+        .gyro_rate_hz = BOARD_IMU_TYPE == IMU_TYPE_MPU6000 ? 8000U : 16000U,
         .vbat_multiplier = 1.0f,
         .osd_element_enabled_mask = 1U,
         .osd_element_positions = {31U, 61U, 51U, 340U, 369U},
+        .current_osd_enabled = 0U,
+        .current_osd_position = 85U,
         .osd_pilot_name = "PILOT",
         .vtx_protocol = BOARD_DEFAULT_VTX_PROTOCOL,
         .vtx_uart = BOARD_DEFAULT_VTX_UART,
@@ -520,6 +549,32 @@ void flight_settings_init(void)
         (const legacy_record_v21_t *)SETTINGS_ADDRESS;
     const legacy_record_v22_t *legacy_v22 =
         (const legacy_record_v22_t *)SETTINGS_ADDRESS;
+    const legacy_record_v23_t *legacy_v23 =
+        (const legacy_record_v23_t *)SETTINGS_ADDRESS;
+    const legacy_record_v24_t *legacy_v24 =
+        (const legacy_record_v24_t *)SETTINGS_ADDRESS;
+    if (legacy_v24->magic == SETTINGS_MAGIC &&
+        legacy_v24->version == SETTINGS_LEGACY_VERSION_24 &&
+        legacy_v24->checksum == checksum_bytes(
+            legacy_v24, offsetof(legacy_record_v24_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v24->settings,
+               sizeof(legacy_v24->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
+    if (legacy_v23->magic == SETTINGS_MAGIC &&
+        legacy_v23->version == SETTINGS_LEGACY_VERSION_23 &&
+        legacy_v23->checksum == checksum_bytes(
+            legacy_v23, offsetof(legacy_record_v23_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v23->settings,
+               sizeof(legacy_v23->settings));
+        settings_saved = false;
+        apply();
+        return;
+    }
     if (legacy_v22->magic == SETTINGS_MAGIC &&
         legacy_v22->version == SETTINGS_LEGACY_VERSION_22 &&
         legacy_v22->checksum == checksum_bytes(
@@ -744,8 +799,12 @@ void flight_settings_init(void)
         !receiver_valid(&stored->settings) ||
         !vtx_valid(&stored->settings) ||
         !main_loop_valid(stored->settings.main_loop_hz) ||
+        !gyro_rate_valid(stored->settings.gyro_rate_hz) ||
+        stored->settings.gyro_rate_hz > stored->settings.main_loop_hz ||
         !vbat_multiplier_valid(stored->settings.vbat_multiplier) ||
         !osd_layout_valid(&stored->settings) ||
+        stored->settings.current_osd_enabled > 1U ||
+        stored->settings.current_osd_position >= 30U * 16U ||
         stored->settings.osd_enabled > 1U ||
         stored->settings.osd_position > 8U ||
         stored->settings.blackbox_enabled > 1U ||
@@ -789,8 +848,12 @@ bool flight_settings_set(const flight_settings_t *settings)
         !receiver_valid(settings) ||
         !vtx_valid(settings) ||
         !main_loop_valid(settings->main_loop_hz) ||
+        !gyro_rate_valid(settings->gyro_rate_hz) ||
+        settings->gyro_rate_hz > settings->main_loop_hz ||
         !vbat_multiplier_valid(settings->vbat_multiplier) ||
         !osd_layout_valid(settings) ||
+        settings->current_osd_enabled > 1U ||
+        settings->current_osd_position >= 30U * 16U ||
         settings->osd_enabled > 1U || settings->osd_position > 8U ||
         settings->blackbox_enabled > 1U ||
         !isfinite(settings->tpa_attenuation) ||

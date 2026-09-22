@@ -34,7 +34,7 @@ static bool task_due(loop_task_t *task, uint32_t loop_hz)
 static void main_loop_state_init(main_loop_state_t *state)
 {
     state->loop_hz = flight_settings_get()->main_loop_hz;
-    state->imu_ready = imu_init(state->loop_hz);
+    state->imu_ready = imu_init(flight_settings_get()->gyro_rate_hz);
     state->loop_cycles = SystemCoreClock / state->loop_hz;
     state->next_loop = DWT->CYCCNT;
     state->service_task = (loop_task_t){0U, 1000U};
@@ -181,7 +181,8 @@ static void main_loop_step(main_loop_state_t *state)
     max7456_process();
     if (!state->imu_ready &&
         task_due(&state->imu_retry_task, state->loop_hz)) {
-            state->imu_ready = imu_init(state->loop_hz);
+            state->imu_ready = imu_init(
+                flight_settings_get()->gyro_rate_hz);
             state->consecutive_imu_failures = 0U;
             state->previous_gyro_update_us = 0U;
             state->next_loop = DWT->CYCCNT;

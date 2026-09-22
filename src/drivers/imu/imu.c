@@ -124,6 +124,19 @@ uint32_t imu_get_gyro_rate_hz(void)
 #endif
 }
 
+bool imu_gyro_rate_supported(uint32_t rate_hz)
+{
+    if (rate_hz == 8000U) return true;
+    if (rate_hz != 16000U) return false;
+#if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
+    return false;
+#elif BOARD_IMU_TYPE == IMU_TYPE_ICM42688P
+    return true;
+#else
+    return detected_imu_type == IMU_TYPE_ICM42688P;
+#endif
+}
+
 bool imu_read(imu_sample_t *sample)
 {
 #if BOARD_IMU_TYPE == IMU_TYPE_MPU6000
