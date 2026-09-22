@@ -187,6 +187,15 @@ static const char *osd_position_name(uint8_t position)
 
 static void send_osd_status(void)
 {
+#if BOARD_HAS_DIGITAL_OSD
+    if (flight_settings_get()->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP) {
+        reply("@CFG OSD_STATUS %u %u DIGITAL HD MSP_DISPLAYPORT 00 0 %u\n",
+              msp_displayport_is_available() ? 1U : 0U,
+              msp_displayport_is_enabled() ? 1U : 0U,
+              flight_settings_are_saved() ? 1U : 0U);
+        return;
+    }
+#endif
 #if BOARD_HAS_OSD
     reply("@CFG OSD_STATUS %u %u %s %s %s %02X %u %u\n",
           max7456_is_available() ? 1U : 0U,
@@ -295,7 +304,7 @@ static void process(const char *command)
 #elif defined(BOARD_HDZERO_HALO)
         reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART5\n");
 #else
-        reply("@CFG SERIAL_PORTS UART1\n");
+        reply("@CFG SERIAL_PORTS UART1 UART2\n");
 #endif
 #if BOARD_HAS_BATTERY_VOLTAGE
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "

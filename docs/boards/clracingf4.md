@@ -15,6 +15,7 @@ hardware mapping.
 | Motors | M1 PB0, M2 PB1, M3 PA3, M4 PA2 |
 | Battery voltage | ADC PC2, 11:1 base divider with calibration |
 | Analog OSD | MAX7456/AT7456E on SPI3, CS PA15 |
+| Digital OSD | MSP DisplayPort on a free TX UART |
 | Status LED | PB5 |
 | Buzzer | Passive 5 kHz timer-driven output on PB4 |
 | Persistent Blackbox | microSD on SPI2, CS PB12, detect PB7 |
@@ -26,6 +27,10 @@ SBUS inverter is isolated before entering the ROM bootloader so an active
 receiver cannot prevent USB DFU detection.
 
 ## OSD tuning menu
+
+For digital video, select **HDZero V3 · MSP + DisplayPort** and a free TX UART
+in the Configurator VTX tab, then save and reboot. Do not reuse the receiver
+UART.
 
 With the quad disarmed and the ARM switch off, center roll and hold **throttle
 at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center

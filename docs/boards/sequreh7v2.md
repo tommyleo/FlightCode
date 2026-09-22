@@ -12,6 +12,7 @@ Pin assignments follow the [Betaflight SQRE target](https://github.com/betafligh
 | Motors 1–4 | PB4, PB5, PB0, PB1 (TIM3 CH1–4) |
 | ICM-42688-P | SPI2, CS PB12; gyro yaw alignment 90 degrees |
 | AT7456E analog OSD | SPI1, CS PA4 |
+| Digital OSD | MSP DisplayPort on a free TX UART |
 | W25Q128 flash | SPI3, CS PA15 |
 | Receiver SBUS or ELRS/CRSF | Selectable RX UART; default UART1 / PA10 |
 | IRC Tramp VTX control | Selectable TX UART; default UART2 / PA2 |
@@ -26,6 +27,10 @@ current pad cannot provide a meaningful reading. FlightCode reports
 `GET_BATTERY_CURRENT` for a one-time reading. The current scale is an initial
 board default and must be checked against a known load before relying on amps
 or consumed capacity.
+
+For digital video, select **HDZero V3 · MSP + DisplayPort** and a free TX UART
+in the Configurator VTX tab, then save and reboot. UART8 has no exposed TX pin
+and cannot carry MSP DisplayPort.
 
 The board exposes six UARTs: UART1 (PA9/PA10), UART2 (PA2/PA3), UART4
 (PA0/PA1), UART6 (PC6/PC7), UART7 (PE8/PE7), and UART8 RX only (PE0).

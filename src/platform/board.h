@@ -74,6 +74,8 @@
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_0
 #define BATTERY_VOLTAGE_DIVIDER 16.20f
 #define BOARD_HAS_OSD 1
+#define BOARD_HAS_DIGITAL_OSD 1
+#define BOARD_DEFAULT_VTX_UART 2U
 #define BOARD_HAS_SDCARD 0
 #define BOARD_FLIGHT_LOG_CAPACITY 2688U
 #define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM2_TIM3_TIM4
@@ -143,6 +145,7 @@
 #define BATTERY_VOLTAGE_DIVIDER 11.00f
 #define BOARD_HAS_VBAT_CALIBRATION 1
 #define BOARD_HAS_OSD 1
+#define BOARD_HAS_DIGITAL_OSD 1
 #define BOARD_HAS_SDCARD 1
 /* Persistent Blackbox is the primary recorder on this target.  Keeping a
  * slightly shorter 200 Hz RAM log leaves enough SRAM for an SD write queue
@@ -232,6 +235,7 @@
 #if defined(BOARD_FLYWOOF405NANO_ANALOG)
 /* Legacy analog board: MAX7456 and flash share SPI3 with separate CS pins. */
 #define BOARD_HAS_OSD 1
+#define BOARD_HAS_DIGITAL_OSD 1
 #define OSD_SPI_HANDLE hspi3
 #define MAX7456_CS_PORT GPIOB
 #define MAX7456_CS_PIN GPIO_PIN_14
@@ -318,6 +322,7 @@
 /* Betaflight default scale: 1052 in 0.1 mV/A, zero offset. */
 #define CURRENT_METER_SCALE 1052.0f
 #define BOARD_HAS_OSD 1
+#define BOARD_HAS_DIGITAL_OSD 1
 #define OSD_SPI_HANDLE hspi1
 #define MAX7456_CS_PORT GPIOA
 #define MAX7456_CS_PIN GPIO_PIN_4

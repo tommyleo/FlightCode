@@ -16,6 +16,7 @@ configuration.
 | Motors | M1 PB0, M2 PB1, M3 PA3, M4 PA2 |
 | Battery voltage | ADC PC3, 11:1 base divider with calibration |
 | Analog OSD | MAX7456/AT7456E on SPI3, CS PB14 |
+| Digital OSD | MSP DisplayPort on a free TX UART |
 | Status LED | PC14 |
 | Buzzer | PC13 |
 | Persistent Blackbox | 16 MiB W25Q128 on SPI3, CS PB3 |
@@ -25,6 +26,10 @@ The OSD and W25Q128 share SPI3 in mode 0 and use independent chip-select pins.
 The internal FlightCode font and 30-column PAL/NTSC layout are supported.
 
 ## OSD tuning menu
+
+For digital video, select **HDZero V3 · MSP + DisplayPort** and a free TX UART
+in the Configurator VTX tab, then save and reboot. Do not reuse the receiver
+UART.
 
 With the quad disarmed and the ARM switch off, center roll and hold **throttle
 at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center

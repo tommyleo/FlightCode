@@ -43,6 +43,12 @@ bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
         gpio_af = GPIO_AF7_USART1; __HAL_RCC_USART1_CLK_ENABLE();
     }
 #endif
+#if defined(BOARD_MAMBAF411)
+    if (port == 2U) {
+        instance = USART2; gpio_port = GPIOA; gpio_pin = GPIO_PIN_2;
+        gpio_af = GPIO_AF7_USART2; __HAL_RCC_USART2_CLK_ENABLE();
+    }
+#endif
 #if defined(BOARD_CLRACINGF4)
     if (port == 3U) {
         instance = USART3; gpio_port = GPIOB; gpio_pin = GPIO_PIN_10;
@@ -91,7 +97,29 @@ bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
     uint16_t gpio_pin = 0U;
     uint32_t gpio_af = 0U;
 
-#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+#if defined(BOARD_MAMBAF411) || defined(BOARD_CLRACINGF4)
+    if (port == 1U) {
+        instance = USART1; gpio_port = GPIOA; gpio_pin = GPIO_PIN_9;
+        gpio_af = GPIO_AF7_USART1; __HAL_RCC_USART1_CLK_ENABLE();
+    }
+#endif
+#if defined(BOARD_MAMBAF411)
+    if (port == 2U) {
+        instance = USART2; gpio_port = GPIOA; gpio_pin = GPIO_PIN_2;
+        gpio_af = GPIO_AF7_USART2; __HAL_RCC_USART2_CLK_ENABLE();
+    }
+#elif defined(BOARD_CLRACINGF4)
+    if (port == 3U) {
+        instance = USART3; gpio_port = GPIOB; gpio_pin = GPIO_PIN_10;
+        gpio_af = GPIO_AF7_USART3; __HAL_RCC_USART3_CLK_ENABLE();
+    } else if (port == 4U) {
+        instance = UART4; gpio_port = GPIOA; gpio_pin = GPIO_PIN_0;
+        gpio_af = GPIO_AF8_UART4; __HAL_RCC_UART4_CLK_ENABLE();
+    } else if (port == 6U) {
+        instance = USART6; gpio_port = GPIOC; gpio_pin = GPIO_PIN_6;
+        gpio_af = GPIO_AF8_USART6; __HAL_RCC_USART6_CLK_ENABLE();
+    }
+#elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
     if (port == 4U) {
         instance = UART4; gpio_port = GPIOA; gpio_pin = GPIO_PIN_0;
         gpio_af = GPIO_AF8_UART4; __HAL_RCC_UART4_CLK_ENABLE();
@@ -102,8 +130,6 @@ bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
         instance = USART6; gpio_port = GPIOC; gpio_pin = GPIO_PIN_6;
         gpio_af = GPIO_AF8_USART6; __HAL_RCC_USART6_CLK_ENABLE();
     }
-#else
-    (void)port;
 #endif
     if (instance == NULL) return false;
 

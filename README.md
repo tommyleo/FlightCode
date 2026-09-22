@@ -16,22 +16,22 @@ USB Configurator.
 ## Supported flight controllers
 
 - **[DIAT Mamba F411](docs/boards/mambaf411.md)**<br>
-  `MAMBAF411` · STM32F411 · MPU6000 · SBUS/CRSF · analog OSD
+  `MAMBAF411` · STM32F411 · MPU6000 · SBUS/CRSF · Analog/Digital OSD
 
 - **[CL Racing F4](docs/boards/clracingf4.md)**<br>
-  `CLRACINGF4` · STM32F405 · MPU6000 · SBUS/CRSF · analog OSD · microSD Blackbox
+  `CLRACINGF4` · STM32F405 · MPU6000 · SBUS/CRSF · Analog/Digital OSD · microSD Blackbox
 
 - **[Flywoo GOKU GN405 Nano HD V3](docs/boards/flywoof405nano.md)**<br>
-  `FLYWOOF405NANO` · STM32F405 · ICM-42688-P · SBUS/CRSF · flash Blackbox
+  `FLYWOOF405NANO` · STM32F405 · ICM-42688-P · SBUS/CRSF · Digital OSD · flash Blackbox
 
 - **[Flywoo GOKU GN405 Nano Analog](docs/boards/flywoof405nano-analog.md)**<br>
-  `FLYWOOF405NANO_ANALOG` · STM32F405 · automatic IMU detection · analog OSD · flash Blackbox
+  `FLYWOOF405NANO_ANALOG` · STM32F405 · automatic IMU detection · Analog/Digital OSD · flash Blackbox
 
 - **[HDZero Halo](docs/boards/hdzero-halo.md)**<br>
-  `HDZERO_HALO` · STM32H743 · automatic IMU detection · integrated Gemini ELRS · flash Blackbox
+  `HDZERO_HALO` · STM32H743 · automatic IMU detection · integrated Gemini ELRS · Digital OSD · flash Blackbox
 
 - **[SEQURE H743 V2](docs/boards/sequreh7v2.md)**<br>
-  `SEQUREH7V2` · STM32H743 · ICM-42688-P · analog AT7456E OSD · ADC voltage/current · flash Blackbox
+  `SEQUREH7V2` · STM32H743 · ICM-42688-P · Analog/Digital OSD (AT7456E + MSP DisplayPort) · ADC voltage/current · flash Blackbox
 
 Each board page contains its pin mapping, supported hardware, receiver and OSD
 details, build command and firmware output path.
@@ -99,15 +99,16 @@ exits without saving.
 
 ### Digital OSD
 
-The `FLYWOOF405NANO` and `HDZERO_HALO` digital targets support MSP DisplayPort
-at 115200 baud. FlightCode sends a non-blocking HDZero-compatible 30 × 16
+All listed STM32 targets can send MSP DisplayPort on a free TX UART at
+115200 baud. FlightCode sends a non-blocking HDZero-compatible 30 × 16
 canvas centered in the HD display, so the same Configurator layout editor and
 saved element positions work on analog and digital video.
 
-On a newly flashed digital target, MSP DisplayPort and the OSD overlay are
-enabled by default on the board's dedicated UART. Existing saved settings are
-preserved: select **HDZero V3 · MSP + DisplayPort**, choose the correct UART,
-save, reboot, and enable the overlay in the Camera OSD tab if necessary.
+On the Flywoo HD and HDZero Halo targets, MSP DisplayPort is enabled by
+default. On boards that also have an analog OSD chip, select **HDZero V3 ·
+MSP + DisplayPort** and a free TX UART in the VTX tab, save, then reboot.
+Do not assign that UART to the receiver or another peripheral. The analog
+chip remains available for analog video when digital OSD is not selected.
 
 ## Building on Windows
 

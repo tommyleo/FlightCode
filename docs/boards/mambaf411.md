@@ -15,6 +15,7 @@ hardware mapping.
 | Motors | M1 PB3, M2 PB4, M3 PB6, M4 PB7 |
 | Battery voltage | ADC PA0, 16.2:1 base divider |
 | Analog OSD | MAX7456/AT7456E on SPI2, CS PB12 |
+| Digital OSD | MSP DisplayPort on a free TX UART (typically UART2 / PA2) |
 | Status LED | PC13 |
 | Buzzer | Active-low PB2 |
 | Persistent Blackbox | Not available; RAM flight log remains supported |
@@ -24,6 +25,9 @@ The status LED flashes rapidly during gyroscope calibration, once per second
 as a heartbeat, and twice per second when valid receiver data is present.
 
 ## OSD tuning menu
+
+For digital video, select **HDZero V3 · MSP + DisplayPort** and UART2 in the
+Configurator VTX tab, then save and reboot. UART1 is used by the receiver.
 
 With the quad disarmed and the ARM switch off, center roll and hold **throttle
 at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center
