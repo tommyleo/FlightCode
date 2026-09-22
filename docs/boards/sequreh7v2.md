@@ -5,7 +5,7 @@ FlightCode target for the STM32H743 board. Build with
 `cmake --build --preset sequreh7v2-release`. The result is
 `build/sequreh7v2-release/FlightCode-SEQUREH7V2.hex`.
 
-Pin assignments follow the [Betaflight SQRE target](https://github.com/betaflight/config/blob/master/configs/SQRE/SEQUREH7V2/config.h):
+Pin assignments for this target:
 
 | Function | Connection |
 | --- | --- |
@@ -17,7 +17,7 @@ Pin assignments follow the [Betaflight SQRE target](https://github.com/betafligh
 | Receiver SBUS or ELRS/CRSF | Selectable RX UART; default UART1 / PA10 |
 | IRC Tramp VTX control | Selectable TX UART; default UART2 / PA2 |
 | Battery voltage ADC | ADC1 PC3, default 11:1 divider |
-| Current ADC | ADC1 PC2, Betaflight default scale 1052, offset 0 |
+| Current ADC | ADC1 PC2, default scale 1052, offset 0 |
 
 The OSD driver detects the chip before enabling the overlay. Analog video must
 pass through the board's camera and VTX video pads. The current ADC requires a

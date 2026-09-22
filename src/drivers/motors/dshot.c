@@ -354,8 +354,8 @@ void dshot_write(const uint16_t values[4])
         /*
          * Non interrompere un frame ancora in corso. Un loop anticipato o
          * ravvicinato allungherebbe un impulso e potrebbe trasformare lo STOP
-         * in un comando DShot valido. Betaflight lascia terminare il DMA e
-         * mantiene l'uscita bassa prima di preparare il frame successivo.
+         * in un comando DShot valido. Lascia terminare il DMA e mantieni
+         * l'uscita bassa prima di preparare il frame successivo.
          */
         if (dshot_dma_transfer_active()) {
             return;

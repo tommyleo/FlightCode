@@ -136,7 +136,7 @@ bool icm42688p_init(uint32_t sample_rate_hz)
         return false;
     }
 
-    /* Betaflight's 258 Hz anti-alias configuration for the ICM-42688-P. */
+    /* 258 Hz anti-alias configuration for the ICM-42688-P. */
     if (!write_reg(REG_BANK_SELECT, 1U) ||
         !write_reg(REG_GYRO_CONFIG_STATIC3, 6U) ||
         !write_reg(REG_GYRO_CONFIG_STATIC4, 36U) ||

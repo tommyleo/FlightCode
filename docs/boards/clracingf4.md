@@ -2,8 +2,7 @@
 
 [Back to supported boards](../../README.md#supported-flight-controllers)
 
-The `CLRACINGF4` target follows the official Betaflight `CLRA/CLRACINGF4`
-hardware mapping.
+The `CLRACINGF4` target uses the CL Racing F4 hardware mapping.
 
 ## Hardware
 

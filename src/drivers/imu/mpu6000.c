@@ -108,9 +108,9 @@ bool mpu6000_init(void)
     HAL_Delay(1U);
 
     /*
-     * Follow the proven Betaflight MPU6000 warm-start sequence.  In
-     * particular, use the Z-gyro PLL and leave enough CS-high/settling time
-     * between register writes.  A CPU reset does not power-cycle the IMU.
+     * Use the MPU6000 warm-start sequence with the Z-gyro PLL and enough
+     * CS-high/settling time between register writes. A CPU reset does not
+     * power-cycle the IMU.
      */
     if (!write_reg(REG_PWR_MGMT_1, 0x03U)) return false;
     HAL_Delay(1U);

@@ -14,7 +14,7 @@ Please include as much of the following information as possible:
 - MCU model and flash/RAM capacity;
 - IMU model and bus connection (SPI or I2C), including chip-select and
   interrupt pins;
-- official schematic, pinout, or a reliable Betaflight target/configuration;
+- official schematic, pinout, or another reliable hardware mapping;
 - USB, status LED, buzzer, battery ADC, current sensor, and boot-button pins;
 - receiver protocols and the UARTs normally used for SBUS, CRSF, or integrated
   ELRS;
@@ -58,7 +58,7 @@ template into the description:
 - Product page:
 - MCU:
 - IMU:
-- Closest Betaflight target, if known:
+- Existing hardware mapping or configuration, if known:
 
 ## Hardware documentation
 

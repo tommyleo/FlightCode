@@ -182,7 +182,7 @@ static void jump_to_system_bootloader(void)
     /*
      * This runs immediately after a real MCU reset. Keep PRIMASK clear:
      * the ROM USB DFU bootloader needs interrupts during enumeration.
-     * This mirrors Betaflight's STM32F4 bootloader-request path.
+     * Keep the interrupt state compatible with the STM32F4 ROM bootloader.
      */
     SCB->VTOR = SYSTEM_MEMORY_ADDRESS;
     __DSB();

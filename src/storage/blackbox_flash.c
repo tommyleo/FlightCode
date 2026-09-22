@@ -242,8 +242,8 @@ void blackbox_sd_init(void)
     program_length = 0U;
     written_bytes = dropped_records = 0U;
 
-    /* Match the W25Q128 startup sequence used by Betaflight.  This also
-     * recovers a chip left in an incomplete command state after a reset. */
+    /* Reset W25Q128 so it also recovers from an incomplete command
+     * state after an MCU reset. */
     if (!reset_device()) {
         fail(ERR_RESET, 0U, status_register());
         return;

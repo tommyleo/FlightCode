@@ -2,8 +2,7 @@
 
 [Back to supported boards](../../README.md#supported-flight-controllers)
 
-The `MAMBAF411` target follows the official Betaflight `DIAT/MAMBAF411`
-hardware mapping.
+The `MAMBAF411` target uses the DIAT Mamba F411 hardware mapping.
 
 ## Hardware
 

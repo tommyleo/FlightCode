@@ -2,8 +2,8 @@
 
 [Back to supported boards](../../README.md#supported-flight-controllers)
 
-The `HDZERO_HALO` target follows the official Betaflight `HDZO/HDZERO_HALO`
-hardware mapping and supports the Halo BLHeli_32 stack.
+The `HDZERO_HALO` target uses the HDZero Halo hardware mapping and supports
+the Halo BLHeli_32 stack.
 
 ## Hardware
 

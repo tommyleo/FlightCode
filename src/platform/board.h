@@ -18,7 +18,7 @@
 
 #if defined(BOARD_MAMBAF411)
 #define BOARD_NAME "MAMBAF411"
-// Official Betaflight DIAT/MAMBAF411 target mapping.
+// DIAT Mamba F411 pin mapping.
 #define MOTOR_1_PORT GPIOB
 #define MOTOR_1_PIN GPIO_PIN_3
 #define MOTOR_2_PORT GPIOB
@@ -87,7 +87,7 @@
 
 #elif defined(BOARD_CLRACINGF4)
 #define BOARD_NAME "CLRACINGF4"
-// Official Betaflight CLRA/CLRACINGF4 target mapping.
+// CL Racing F4 pin mapping.
 #define MOTOR_1_PORT GPIOB
 #define MOTOR_1_PIN GPIO_PIN_0
 #define MOTOR_2_PORT GPIOB
@@ -141,7 +141,7 @@
 #define BATTERY_ADC_PORT GPIOC
 #define BATTERY_ADC_PIN GPIO_PIN_2
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_12
-/* Betaflight's standard vbat_scale=110 corresponds to an 11:1 divider. */
+/* Default 11:1 battery-voltage divider. */
 #define BATTERY_VOLTAGE_DIVIDER 11.00f
 #define BOARD_HAS_VBAT_CALIBRATION 1
 #define BOARD_HAS_OSD 1
@@ -171,7 +171,7 @@
 #else
 #define BOARD_NAME "FLYWOOF405NANO"
 #endif
-/* Official Betaflight FLWO/FLYWOOF405NANO family mapping. */
+/* Flywoo GN405 Nano family pin mapping. */
 #define MOTOR_1_PORT GPIOB
 #define MOTOR_1_PIN GPIO_PIN_0
 #define MOTOR_2_PORT GPIOB
@@ -228,7 +228,7 @@
 #define BATTERY_ADC_PORT GPIOC
 #define BATTERY_ADC_PIN GPIO_PIN_3
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_13
-/* Betaflight's default vbat_scale=110 corresponds to an 11:1 divider. */
+/* Default 11:1 battery-voltage divider. */
 #define BATTERY_VOLTAGE_DIVIDER 11.00f
 #define BOARD_HAS_VBAT_CALIBRATION 1
 
@@ -259,7 +259,7 @@
 #define BOARD_BUZZER_OUTPUT_OPEN_DRAIN 0
 #elif defined(BOARD_SEQUREH7V2)
 #define BOARD_NAME "SEQUREH7V2"
-/* Betaflight SQRE/SEQUREH7V2: SPI1 OSD, SPI2 gyro, SPI3 flash. */
+/* SEQURE H743 V2: SPI1 OSD, SPI2 gyro, SPI3 flash. */
 #define MOTOR_1_PORT GPIOB
 #define MOTOR_1_PIN GPIO_PIN_4
 #define MOTOR_2_PORT GPIOB
@@ -319,7 +319,7 @@
 #define CURRENT_ADC_PORT GPIOC
 #define CURRENT_ADC_PIN GPIO_PIN_2
 #define CURRENT_ADC_CHANNEL ADC_CHANNEL_12
-/* Betaflight default scale: 1052 in 0.1 mV/A, zero offset. */
+/* Default current scale: 1052 in 0.1 mV/A, zero offset. */
 #define CURRENT_METER_SCALE 1052.0f
 #define BOARD_HAS_OSD 1
 #define BOARD_HAS_DIGITAL_OSD 1
@@ -339,7 +339,7 @@
 #define BOARD_BUZZER_OUTPUT_OPEN_DRAIN 1
 #elif defined(BOARD_HDZERO_HALO)
 #define BOARD_NAME "HDZERO_HALO"
-/* Official Betaflight HDZO/HDZERO_HALO target mapping. */
+/* HDZero Halo pin mapping. */
 #define MOTOR_1_PORT GPIOC
 #define MOTOR_1_PIN GPIO_PIN_6
 #define MOTOR_2_PORT GPIOC
