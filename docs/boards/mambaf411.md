@@ -27,6 +27,8 @@ as a heartbeat, and twice per second when valid receiver data is present.
 
 For digital video, select **HDZero V3 · MSP + DisplayPort** and UART2 in the
 Configurator VTX tab, then save and reboot. UART1 is used by the receiver.
+Its controllable inverter is enabled only for SBUS; the receiver/VTX UART
+conflict is rejected by the Configurator and firmware.
 
 With the quad disarmed and the ARM switch off, center roll and hold **throttle
 at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center

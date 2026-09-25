@@ -80,6 +80,15 @@ typedef struct {
 #define VTX_REGION_EU 0U
 #define VTX_REGION_US 1U
 
+typedef enum {
+    VTX_UART_OK = 0,
+    VTX_UART_UNAVAILABLE,
+    VTX_UART_RECEIVER_CONFLICT,
+    VTX_UART_INVERTED_SBUS_ONLY,
+} vtx_uart_status_t;
+
+vtx_uart_status_t flight_settings_vtx_uart_status(const flight_settings_t *settings);
+
 void flight_settings_init(void);
 const flight_settings_t *flight_settings_get(void);
 bool flight_settings_set(const flight_settings_t *settings);

@@ -425,22 +425,51 @@ static bool receiver_valid(const flight_settings_t *settings)
            settings->beep_min_us < settings->beep_max_us;
 }
 
+vtx_uart_status_t flight_settings_vtx_uart_status(const flight_settings_t *settings)
+{
+    const uint32_t port = settings->vtx_uart;
+    if (settings->vtx_protocol == VTX_PROTOCOL_OFF)
+        return port >= 1U && port <= 8U ? VTX_UART_OK : VTX_UART_UNAVAILABLE;
+#if defined(BOARD_SEQUREH7V2)
+    const bool supported = port == 1U || port == 2U || port == 4U ||
+                           port == 6U || port == 7U;
+#elif defined(BOARD_CLRACINGF4)
+    const bool supported = port == 1U || port == 3U || port == 4U ||
+                           port == 6U;
+#elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+    if (port == 5U) return VTX_UART_INVERTED_SBUS_ONLY;
+    const bool supported = port == 4U || port == 6U;
+#elif defined(BOARD_HDZERO_HALO)
+    const bool supported = port == 1U || port == 2U || port == 4U ||
+                           (settings->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP &&
+                            port == 5U);
+#else
+    const bool supported = port == 1U || port == 2U;
+#endif
+    if (!supported) return VTX_UART_UNAVAILABLE;
+#if defined(BOARD_SEQUREH7V2)
+    const uint32_t receiver_port = settings->receiver_uart;
+#elif defined(BOARD_MAMBAF411)
+    const uint32_t receiver_port = 1U;
+#elif defined(BOARD_CLRACINGF4) || defined(BOARD_FLYWOOF405NANO) || \
+      defined(BOARD_FLYWOOF405NANO_ANALOG)
+    const uint32_t receiver_port = settings->receiver_protocol == RECEIVER_PROTOCOL_CRSF
+                                       ? 4U :
+#if defined(BOARD_CLRACINGF4)
+                                         1U;
+#else
+                                         5U;
+#endif
+#else
+    const uint32_t receiver_port = settings->receiver_protocol == RECEIVER_PROTOCOL_CRSF
+                                       ? 1U : 2U;
+#endif
+    return port == receiver_port ? VTX_UART_RECEIVER_CONFLICT : VTX_UART_OK;
+}
+
 static bool vtx_valid(const flight_settings_t *settings)
 {
-#if defined(BOARD_SEQUREH7V2)
-    const bool uart_valid = settings->vtx_uart == 1U ||
-                            settings->vtx_uart == 2U ||
-                            settings->vtx_uart == 4U ||
-                            settings->vtx_uart == 6U ||
-                            settings->vtx_uart == 7U;
-    const bool no_conflict = settings->vtx_protocol == VTX_PROTOCOL_OFF ||
-                             settings->vtx_uart != settings->receiver_uart;
-#else
-    const bool uart_valid = settings->vtx_uart >= 1U &&
-                            settings->vtx_uart <= 6U;
-    const bool no_conflict = true;
-#endif
-    return uart_valid && no_conflict &&
+    return flight_settings_vtx_uart_status(settings) == VTX_UART_OK &&
            settings->vtx_protocol <= VTX_PROTOCOL_HDZERO_MSP &&
            settings->vtx_region <= VTX_REGION_US &&
            settings->vtx_band < 6U && settings->vtx_channel < 8U &&

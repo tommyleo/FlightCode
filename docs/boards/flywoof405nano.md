@@ -23,6 +23,9 @@ Do not use the Analog target firmware on this board.
 The dedicated SBUS(5) input uses the board's fixed hardware inverter. FlightCode
 uses UART6 for the digital VTX connection, matching Flywoo's HD wiring. MSP
 DisplayPort and the OSD overlay are enabled by default on a fresh configuration.
+UART5 is reserved for inverted SBUS and cannot be assigned to MSP DisplayPort
+or VTX control or used for ELRS; the Configurator and firmware reject those
+assignments. Use UART4 for an external ELRS receiver.
 
 The FC transmits standard MSP v1 DisplayPort frames at 115200 baud. HDZero's
 centered 30 × 16 compatibility canvas is used, preserving the layout edited in

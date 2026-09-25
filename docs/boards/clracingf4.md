@@ -29,7 +29,10 @@ receiver cannot prevent USB DFU detection.
 
 For digital video, select **HDZero V3 · MSP + DisplayPort** and a free TX UART
 in the Configurator VTX tab, then save and reboot. Do not reuse the receiver
-UART.
+UART. The controllable inverter affects the UART1 SBUS RX path only; UART3
+is not inverted. UART1 can be used for DisplayPort only when the receiver is
+on UART4 (ELRS/CRSF), and UART4 only when the receiver is on UART1 (SBUS).
+The Configurator and firmware reject receiver/VTX UART conflicts.
 
 With the quad disarmed and the ARM switch off, center roll and hold **throttle
 at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center

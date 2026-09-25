@@ -29,7 +29,8 @@ The internal FlightCode font and 30-column PAL/NTSC layout are supported.
 
 For digital video, select **HDZero V3 · MSP + DisplayPort** and a free TX UART
 in the Configurator VTX tab, then save and reboot. Do not reuse the receiver
-UART.
+UART. UART5 is reserved for the fixed, inverted SBUS input and cannot be
+assigned to MSP DisplayPort, VTX control, or ELRS. Use UART4 for ELRS.
 
 With the quad disarmed and the ARM switch off, center roll and hold **throttle
 at middle + yaw left + pitch up** for 0.8 seconds. Return every stick to center

@@ -981,6 +981,34 @@ static void process(const char *command)
             return;
         }
 #else
+#if defined(BOARD_CLRACINGF4)
+        if (strcmp(receiver_protocol, "SBUS") == 0 &&
+            strcmp(receiver_port, "UART1") != 0) {
+            reply("@CFG ERROR SBUS_REQUIRES_UART1\n");
+            return;
+        }
+#elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+        if (strcmp(receiver_protocol, "SBUS") == 0 &&
+            strcmp(receiver_port, "UART5") != 0) {
+            reply("@CFG ERROR SBUS_REQUIRES_UART5\n");
+            return;
+        }
+#endif
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+        if (strcmp(receiver_protocol, "ELRS") == 0 &&
+            strcmp(receiver_port, "UART5") == 0) {
+            reply("@CFG ERROR UART_RESERVED_FOR_INVERTED_SBUS\n");
+            return;
+        }
+#endif
+#if defined(BOARD_CLRACINGF4) || defined(BOARD_FLYWOOF405NANO) || \
+    defined(BOARD_FLYWOOF405NANO_ANALOG)
+        if (strcmp(receiver_protocol, "ELRS") == 0 &&
+            strcmp(receiver_port, "UART4") != 0) {
+            reply("@CFG ERROR ELRS_REQUIRES_UART4\n");
+            return;
+        }
+#endif
         const char *required_port = strcmp(receiver_protocol, "ELRS") == 0
                                         ? CRSF_UART_NAME : SBUS_UART_NAME;
         if (strcmp(receiver_port, required_port) != 0) {
@@ -1012,6 +1040,10 @@ static void process(const char *command)
 #if defined(BOARD_SEQUREH7V2)
         settings.receiver_uart = selected_port;
 #endif
+        if (flight_settings_vtx_uart_status(&settings) == VTX_UART_RECEIVER_CONFLICT) {
+            reply("@CFG ERROR UART_CONFLICT\n");
+            return;
+        }
         if (flight_settings_set(&settings)) {
             reply("@CFG OK SET_RECEIVER_CONFIG\n");
             send_receiver_config();
@@ -1035,6 +1067,22 @@ static void process(const char *command)
             reply("@CFG ERROR INVALID_VTX_PORT\n"); return;
         }
         settings.vtx_uart = vtx_uart;
+        switch (flight_settings_vtx_uart_status(&settings)) {
+        case VTX_UART_UNAVAILABLE:
+            reply("@CFG ERROR INVALID_VTX_PORT\n"); return;
+        case VTX_UART_RECEIVER_CONFLICT:
+            reply(settings.vtx_protocol == VTX_PROTOCOL_HDZERO_MSP
+                      ? "@CFG ERROR DISPLAYPORT_UART_IN_USE_BY_RECEIVER\n"
+                      : "@CFG ERROR UART_CONFLICT\n");
+            return;
+        case VTX_UART_INVERTED_SBUS_ONLY:
+            reply(settings.vtx_protocol == VTX_PROTOCOL_HDZERO_MSP
+                      ? "@CFG ERROR DISPLAYPORT_UART_RESERVED_FOR_SBUS\n"
+                      : "@CFG ERROR UART_RESERVED_FOR_INVERTED_SBUS\n");
+            return;
+        case VTX_UART_OK:
+            break;
+        }
         if (strcmp(vtx_region, "EU") == 0) settings.vtx_region = VTX_REGION_EU;
         else if (strcmp(vtx_region, "US") == 0) settings.vtx_region = VTX_REGION_US;
         else { reply("@CFG ERROR INVALID_VTX_REGION\n"); return; }
