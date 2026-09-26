@@ -93,15 +93,15 @@ static inline uint16_t blackbox_record_gyro_loop_us(
         ((uint16_t)record->loop_timing[2] << 4U));
 }
 
-#define FLIGHT_LOG_METADATA_VERSION 4U
+#define FLIGHT_LOG_METADATA_VERSION 5U
 typedef struct __attribute__((packed)) {
     uint32_t version;
     uint32_t main_loop_hz;
     uint32_t gyro_rate_hz;
     uint32_t log_rate_hz;
-    float pids[9];
+    uint32_t pids[9];
     float rates[4];
-    float feedforward[3];
+    uint32_t feedforward[3];
     float tpa[2];
     float filters[2];
     float alignment[3];
@@ -115,7 +115,7 @@ typedef struct __attribute__((packed)) {
 } flight_log_metadata_t;
 
 _Static_assert(sizeof(flight_log_metadata_t) == 128U,
-               "metadata v4 must remain 128 bytes");
+               "metadata v5 must remain 128 bytes");
 static inline bool flight_log_metadata_decode(flight_log_metadata_t *out,
                                                const void *stored)
 {

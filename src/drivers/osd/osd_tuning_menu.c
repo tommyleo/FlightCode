@@ -16,8 +16,6 @@
 #define STICK_CENTER_LOW_US 1350U
 #define STICK_CENTER_HIGH_US 1650U
 #define MENU_ITEM_COUNT 21U
-#define PID_GAIN_STEP 0.00001f
-#define PID_GAIN_SCALE 100000.0f
 
 typedef enum {
     ITEM_ROLL_P,
@@ -49,8 +47,8 @@ static uint8_t selected_item;
 static uint32_t entry_started_us;
 static uint32_t last_action_us;
 typedef struct {
-    pid_gains_t roll, pitch, yaw;
-    float roll_feedforward, pitch_feedforward, yaw_feedforward;
+    pid_settings_t roll, pitch, yaw;
+    uint32_t roll_feedforward, pitch_feedforward, yaw_feedforward;
     float roll_rate_dps, pitch_rate_dps, yaw_rate_dps;
     float rate_expo, tpa_attenuation, tpa_breakpoint_percent;
     uint32_t vtx_band, vtx_channel, vtx_power_mw;
@@ -79,11 +77,11 @@ static float clampf(float value, float minimum, float maximum)
            (value > maximum ? maximum : value);
 }
 
-static float change_pid_gain(float value, int8_t direction, float maximum)
+static uint32_t change_integer(uint32_t value, int8_t direction,
+                               uint32_t maximum)
 {
-    const float steps = roundf(value * PID_GAIN_SCALE) +
-        (direction > 0 ? 1.0f : -1.0f);
-    return clampf(steps * PID_GAIN_STEP, 0.0f, maximum);
+    if (direction > 0) return value < maximum ? value + 1U : maximum;
+    return value > 0U ? value - 1U : 0U;
 }
 
 static void primary_channels(const flight_settings_t *settings,
@@ -109,18 +107,18 @@ static void format_item(char label[20], char value[20])
     };
     (void)snprintf(label, 20U, "%s", labels[selected_item]);
     switch ((menu_item_t)selected_item) {
-    case ITEM_ROLL_P: (void)snprintf(value, 20U, "%.5f", edited_settings.roll.kp); break;
-    case ITEM_ROLL_I: (void)snprintf(value, 20U, "%.5f", edited_settings.roll.ki); break;
-    case ITEM_ROLL_D: (void)snprintf(value, 20U, "%.5f", edited_settings.roll.kd); break;
-    case ITEM_ROLL_FF: (void)snprintf(value, 20U, "%.3f", edited_settings.roll_feedforward); break;
-    case ITEM_PITCH_P: (void)snprintf(value, 20U, "%.5f", edited_settings.pitch.kp); break;
-    case ITEM_PITCH_I: (void)snprintf(value, 20U, "%.5f", edited_settings.pitch.ki); break;
-    case ITEM_PITCH_D: (void)snprintf(value, 20U, "%.5f", edited_settings.pitch.kd); break;
-    case ITEM_PITCH_FF: (void)snprintf(value, 20U, "%.3f", edited_settings.pitch_feedforward); break;
-    case ITEM_YAW_P: (void)snprintf(value, 20U, "%.5f", edited_settings.yaw.kp); break;
-    case ITEM_YAW_I: (void)snprintf(value, 20U, "%.5f", edited_settings.yaw.ki); break;
-    case ITEM_YAW_D: (void)snprintf(value, 20U, "%.5f", edited_settings.yaw.kd); break;
-    case ITEM_YAW_FF: (void)snprintf(value, 20U, "%.3f", edited_settings.yaw_feedforward); break;
+    case ITEM_ROLL_P: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.roll.kp); break;
+    case ITEM_ROLL_I: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.roll.ki); break;
+    case ITEM_ROLL_D: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.roll.kd); break;
+    case ITEM_ROLL_FF: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.roll_feedforward); break;
+    case ITEM_PITCH_P: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.pitch.kp); break;
+    case ITEM_PITCH_I: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.pitch.ki); break;
+    case ITEM_PITCH_D: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.pitch.kd); break;
+    case ITEM_PITCH_FF: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.pitch_feedforward); break;
+    case ITEM_YAW_P: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.yaw.kp); break;
+    case ITEM_YAW_I: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.yaw.ki); break;
+    case ITEM_YAW_D: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.yaw.kd); break;
+    case ITEM_YAW_FF: (void)snprintf(value, 20U, "%lu", (unsigned long)edited_settings.yaw_feedforward); break;
     case ITEM_ROLL_RATE: (void)snprintf(value, 20U, "%.0f DPS", edited_settings.roll_rate_dps); break;
     case ITEM_PITCH_RATE: (void)snprintf(value, 20U, "%.0f DPS", edited_settings.pitch_rate_dps); break;
     case ITEM_YAW_RATE: (void)snprintf(value, 20U, "%.0f DPS", edited_settings.yaw_rate_dps); break;
@@ -157,18 +155,18 @@ static void change_value(int8_t direction)
 {
     const float sign = direction > 0 ? 1.0f : -1.0f;
     switch ((menu_item_t)selected_item) {
-    case ITEM_ROLL_P: edited_settings.roll.kp = change_pid_gain(edited_settings.roll.kp, direction, 2.0f); break;
-    case ITEM_ROLL_I: edited_settings.roll.ki = change_pid_gain(edited_settings.roll.ki, direction, 2.0f); break;
-    case ITEM_ROLL_D: edited_settings.roll.kd = change_pid_gain(edited_settings.roll.kd, direction, 0.05f); break;
-    case ITEM_ROLL_FF: edited_settings.roll_feedforward = clampf(edited_settings.roll_feedforward + sign * 0.001f, 0.0f, 1.0f); break;
-    case ITEM_PITCH_P: edited_settings.pitch.kp = change_pid_gain(edited_settings.pitch.kp, direction, 2.0f); break;
-    case ITEM_PITCH_I: edited_settings.pitch.ki = change_pid_gain(edited_settings.pitch.ki, direction, 2.0f); break;
-    case ITEM_PITCH_D: edited_settings.pitch.kd = change_pid_gain(edited_settings.pitch.kd, direction, 0.05f); break;
-    case ITEM_PITCH_FF: edited_settings.pitch_feedforward = clampf(edited_settings.pitch_feedforward + sign * 0.001f, 0.0f, 1.0f); break;
-    case ITEM_YAW_P: edited_settings.yaw.kp = change_pid_gain(edited_settings.yaw.kp, direction, 2.0f); break;
-    case ITEM_YAW_I: edited_settings.yaw.ki = change_pid_gain(edited_settings.yaw.ki, direction, 2.0f); break;
-    case ITEM_YAW_D: edited_settings.yaw.kd = change_pid_gain(edited_settings.yaw.kd, direction, 0.05f); break;
-    case ITEM_YAW_FF: edited_settings.yaw_feedforward = clampf(edited_settings.yaw_feedforward + sign * 0.001f, 0.0f, 1.0f); break;
+    case ITEM_ROLL_P: edited_settings.roll.kp = change_integer(edited_settings.roll.kp, direction, 2000U); break;
+    case ITEM_ROLL_I: edited_settings.roll.ki = change_integer(edited_settings.roll.ki, direction, 2000U); break;
+    case ITEM_ROLL_D: edited_settings.roll.kd = change_integer(edited_settings.roll.kd, direction, 5000U); break;
+    case ITEM_ROLL_FF: edited_settings.roll_feedforward = change_integer(edited_settings.roll_feedforward, direction, 1000U); break;
+    case ITEM_PITCH_P: edited_settings.pitch.kp = change_integer(edited_settings.pitch.kp, direction, 2000U); break;
+    case ITEM_PITCH_I: edited_settings.pitch.ki = change_integer(edited_settings.pitch.ki, direction, 2000U); break;
+    case ITEM_PITCH_D: edited_settings.pitch.kd = change_integer(edited_settings.pitch.kd, direction, 5000U); break;
+    case ITEM_PITCH_FF: edited_settings.pitch_feedforward = change_integer(edited_settings.pitch_feedforward, direction, 1000U); break;
+    case ITEM_YAW_P: edited_settings.yaw.kp = change_integer(edited_settings.yaw.kp, direction, 2000U); break;
+    case ITEM_YAW_I: edited_settings.yaw.ki = change_integer(edited_settings.yaw.ki, direction, 2000U); break;
+    case ITEM_YAW_D: edited_settings.yaw.kd = change_integer(edited_settings.yaw.kd, direction, 5000U); break;
+    case ITEM_YAW_FF: edited_settings.yaw_feedforward = change_integer(edited_settings.yaw_feedforward, direction, 1000U); break;
     case ITEM_ROLL_RATE: edited_settings.roll_rate_dps = clampf(edited_settings.roll_rate_dps + sign, 100.0f, 1200.0f); break;
     case ITEM_PITCH_RATE: edited_settings.pitch_rate_dps = clampf(edited_settings.pitch_rate_dps + sign, 100.0f, 1200.0f); break;
     case ITEM_YAW_RATE: edited_settings.yaw_rate_dps = clampf(edited_settings.yaw_rate_dps + sign, 100.0f, 1200.0f); break;

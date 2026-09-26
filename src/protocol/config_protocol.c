@@ -1,6 +1,7 @@
 #include "config_protocol.h"
 #include "telemetry_text.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -60,10 +61,12 @@ static void reply(const char *format, ...)
 static void send_pids(void)
 {
     const flight_settings_t *s = flight_settings_get();
-    reply("@CFG PIDS %.5f %.5f %.5f %.5f %.5f %.5f %.5f %.5f %.5f %u\n",
-          s->roll.kp, s->roll.ki, s->roll.kd,
-          s->pitch.kp, s->pitch.ki, s->pitch.kd,
-          s->yaw.kp, s->yaw.ki, s->yaw.kd,
+    reply("@CFG PIDS %lu %lu %lu %lu %lu %lu %lu %lu %lu %u\n",
+          (unsigned long)s->roll.kp, (unsigned long)s->roll.ki,
+          (unsigned long)s->roll.kd, (unsigned long)s->pitch.kp,
+          (unsigned long)s->pitch.ki, (unsigned long)s->pitch.kd,
+          (unsigned long)s->yaw.kp, (unsigned long)s->yaw.ki,
+          (unsigned long)s->yaw.kd,
           flight_settings_are_saved() ? 1U : 0U);
 }
 
@@ -127,9 +130,11 @@ static void send_rates(void)
 static void send_feedforward(void)
 {
     const flight_settings_t *s = flight_settings_get();
-    reply("@CFG FEEDFORWARD %.6f %.6f %.6f %u\n",
-          s->roll_feedforward, s->pitch_feedforward,
-          s->yaw_feedforward, flight_settings_are_saved() ? 1U : 0U);
+    reply("@CFG FEEDFORWARD %lu %lu %lu %u\n",
+          (unsigned long)s->roll_feedforward,
+          (unsigned long)s->pitch_feedforward,
+          (unsigned long)s->yaw_feedforward,
+          flight_settings_are_saved() ? 1U : 0U);
 }
 
 static void send_tpa(void)
@@ -524,11 +529,11 @@ static void process(const char *command)
               metadata.initial_battery_centivolts / 100.0f,
               FLIGHT_LOG_FORMAT_VERSION_MAJOR,
               FLIGHT_LOG_FORMAT_VERSION_MINOR);
-        reply("@CFG FLIGHT_LOG_METADATA_PIDS %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n",
+        reply("@CFG FLIGHT_LOG_METADATA_PIDS %lu %lu %lu %lu %lu %lu %lu %lu %lu\n",
               metadata.pids[0], metadata.pids[1], metadata.pids[2],
               metadata.pids[3], metadata.pids[4], metadata.pids[5],
               metadata.pids[6], metadata.pids[7], metadata.pids[8]);
-        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
+        reply("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %lu %lu %lu %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
               metadata.rates[0], metadata.rates[1], metadata.rates[2],
               metadata.rates[3], metadata.feedforward[0],
               metadata.feedforward[1], metadata.feedforward[2],
@@ -558,12 +563,12 @@ static void process(const char *command)
               metadata.initial_battery_centivolts / 100.0f,
               FLIGHT_LOG_FORMAT_VERSION_MAJOR,
               FLIGHT_LOG_FORMAT_VERSION_MINOR);
-        reply("@CFG BLACKBOX_METADATA_PIDS %u %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n",
+        reply("@CFG BLACKBOX_METADATA_PIDS %u %lu %lu %lu %lu %lu %lu %lu %lu %lu\n",
               metadata_flight, metadata.pids[0], metadata.pids[1],
               metadata.pids[2], metadata.pids[3], metadata.pids[4],
               metadata.pids[5], metadata.pids[6], metadata.pids[7],
               metadata.pids[8]);
-        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
+        reply("@CFG BLACKBOX_METADATA_TUNING %u %.2f %.2f %.2f %.4f %lu %lu %lu %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
               metadata_flight, metadata.rates[0], metadata.rates[1],
               metadata.rates[2], metadata.rates[3], metadata.feedforward[0],
               metadata.feedforward[1], metadata.feedforward[2],
@@ -1121,9 +1126,12 @@ static void process(const char *command)
         }
         return;
     }
-    if (sscanf(command, "SET_FEEDFORWARD %f %f %f",
-               &settings.roll_feedforward, &settings.pitch_feedforward,
-               &settings.yaw_feedforward) == 3) {
+    unsigned long feedforward[3];
+    if (sscanf(command, "SET_FEEDFORWARD %lu %lu %lu",
+               &feedforward[0], &feedforward[1], &feedforward[2]) == 3) {
+        settings.roll_feedforward = (uint32_t)feedforward[0];
+        settings.pitch_feedforward = (uint32_t)feedforward[1];
+        settings.yaw_feedforward = (uint32_t)feedforward[2];
         if (flight_settings_set(&settings)) {
             reply("@CFG OK SET_FEEDFORWARD\n");
             send_feedforward();
@@ -1183,10 +1191,17 @@ static void process(const char *command)
         }
         return;
     }
-    if (sscanf(command, "SET_PIDS %f %f %f %f %f %f %f %f %f",
-               &settings.roll.kp, &settings.roll.ki, &settings.roll.kd,
-               &settings.pitch.kp, &settings.pitch.ki, &settings.pitch.kd,
-               &settings.yaw.kp, &settings.yaw.ki, &settings.yaw.kd) == 9) {
+    unsigned long pids[9];
+    if (sscanf(command, "SET_PIDS %lu %lu %lu %lu %lu %lu %lu %lu %lu",
+               &pids[0], &pids[1], &pids[2],
+               &pids[3], &pids[4], &pids[5],
+               &pids[6], &pids[7], &pids[8]) == 9) {
+        settings.roll = (pid_settings_t){(uint32_t)pids[0], (uint32_t)pids[1],
+                                         (uint32_t)pids[2]};
+        settings.pitch = (pid_settings_t){(uint32_t)pids[3], (uint32_t)pids[4],
+                                          (uint32_t)pids[5]};
+        settings.yaw = (pid_settings_t){(uint32_t)pids[6], (uint32_t)pids[7],
+                                        (uint32_t)pids[8]};
         if (flight_settings_set(&settings)) {
             reply("@CFG OK SET_PIDS\n");
             send_pids();

@@ -12,7 +12,7 @@
 #include "sbus.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 26U
+#define SETTINGS_VERSION 27U
 #define SETTINGS_LEGACY_VERSION_25 25U
 #define SETTINGS_LEGACY_VERSION_24 24U
 #define SETTINGS_LEGACY_VERSION_23 23U
@@ -313,12 +313,9 @@ static uint32_t checksum_bytes(const void *data, size_t length)
     return hash;
 }
 
-static bool gains_valid(const pid_gains_t *gains)
+static bool gains_valid(const pid_settings_t *gains)
 {
-    return isfinite(gains->kp) && isfinite(gains->ki) && isfinite(gains->kd) &&
-           gains->kp >= 0.0f && gains->kp <= 1000.0f &&
-           gains->ki >= 0.0f && gains->ki <= 1000.0f &&
-           gains->kd >= 0.0f && gains->kd <= 1000.0f;
+    return gains->kp <= 2000U && gains->ki <= 2000U && gains->kd <= 5000U;
 }
 
 static bool angle_valid(float angle)
@@ -374,15 +371,9 @@ static bool rates_valid(const flight_settings_t *settings)
 
 static bool feedforward_valid(const flight_settings_t *settings)
 {
-    return isfinite(settings->roll_feedforward) &&
-           isfinite(settings->pitch_feedforward) &&
-           isfinite(settings->yaw_feedforward) &&
-           settings->roll_feedforward >= 0.0f &&
-           settings->roll_feedforward <= 1.0f &&
-           settings->pitch_feedforward >= 0.0f &&
-           settings->pitch_feedforward <= 1.0f &&
-           settings->yaw_feedforward >= 0.0f &&
-           settings->yaw_feedforward <= 1.0f;
+    return settings->roll_feedforward <= 1000U &&
+           settings->pitch_feedforward <= 1000U &&
+           settings->yaw_feedforward <= 1000U;
 }
 
 static bool filters_valid(const flight_settings_t *settings)
@@ -480,16 +471,30 @@ static bool vtx_valid(const flight_settings_t *settings)
 
 static void apply(void)
 {
-    flight_control_set_gains(&current_settings.roll,
-                             &current_settings.pitch,
-                             &current_settings.yaw);
+    const pid_gains_t roll = {
+        (float)current_settings.roll.kp / PID_PI_DIVISOR,
+        (float)current_settings.roll.ki / PID_PI_DIVISOR,
+        (float)current_settings.roll.kd / PID_D_DIVISOR,
+    };
+    const pid_gains_t pitch = {
+        (float)current_settings.pitch.kp / PID_PI_DIVISOR,
+        (float)current_settings.pitch.ki / PID_PI_DIVISOR,
+        (float)current_settings.pitch.kd / PID_D_DIVISOR,
+    };
+    const pid_gains_t yaw = {
+        (float)current_settings.yaw.kp / PID_PI_DIVISOR,
+        (float)current_settings.yaw.ki / PID_PI_DIVISOR,
+        (float)current_settings.yaw.kd / PID_D_DIVISOR,
+    };
+    flight_control_set_gains(&roll, &pitch, &yaw);
     flight_control_set_rates(current_settings.roll_rate_dps,
                              current_settings.pitch_rate_dps,
                              current_settings.yaw_rate_dps,
                              current_settings.rate_expo);
-    flight_control_set_feedforward(current_settings.roll_feedforward,
-                                   current_settings.pitch_feedforward,
-                                   current_settings.yaw_feedforward);
+    flight_control_set_feedforward(
+        (float)current_settings.roll_feedforward / FEEDFORWARD_DIVISOR,
+        (float)current_settings.pitch_feedforward / FEEDFORWARD_DIVISOR,
+        (float)current_settings.yaw_feedforward / FEEDFORWARD_DIVISOR);
     flight_control_set_tpa(current_settings.tpa_attenuation,
                            current_settings.tpa_breakpoint_percent);
     motor_protocol_set(current_settings.motor_protocol);
@@ -512,16 +517,16 @@ static void apply(void)
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
 {
-    settings->roll = (pid_gains_t){0.10100f, 0.19000f, 0.00120f};
-    settings->pitch = (pid_gains_t){0.09950f, 0.20000f, 0.00100f};
-    settings->yaw = (pid_gains_t){0.15000f, 0.25000f, 0.00000f};
+    settings->roll = (pid_settings_t){101U, 190U, 120U};
+    settings->pitch = (pid_settings_t){100U, 200U, 100U};
+    settings->yaw = (pid_settings_t){150U, 250U, 0U};
     settings->roll_rate_dps = 420.0f;
     settings->pitch_rate_dps = 420.0f;
     settings->yaw_rate_dps = 350.0f;
     settings->rate_expo = 0.30f;
-    settings->roll_feedforward = 0.025f;
-    settings->pitch_feedforward = 0.025f;
-    settings->yaw_feedforward = 0.015f;
+    settings->roll_feedforward = 25U;
+    settings->pitch_feedforward = 25U;
+    settings->yaw_feedforward = 15U;
     settings->tpa_attenuation = 0.20f;
     settings->tpa_breakpoint_percent = 70.0f;
     settings->gyro_lpf_hz = 90.0f;
@@ -532,7 +537,7 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
 void flight_settings_reset_defaults(void)
 {
     current_settings = (flight_settings_t){
-        .motor_protocol = MOTOR_PROTOCOL_DSHOT600,
+        .motor_protocol = MOTOR_PROTOCOL_DSHOT300,
         .board_roll_deg = 0.0f,
         .board_pitch_deg = 0.0f,
         .board_yaw_deg =
@@ -582,6 +587,10 @@ void flight_settings_reset_defaults(void)
 void flight_settings_init(void)
 {
     const settings_record_t *stored = (const settings_record_t *)SETTINGS_ADDRESS;
+    if (stored->magic == SETTINGS_MAGIC && stored->version < SETTINGS_VERSION) {
+        flight_settings_reset_defaults();
+        return;
+    }
     const legacy_record_v7_t *legacy =
         (const legacy_record_v7_t *)SETTINGS_ADDRESS;
     const legacy_record_v8_t *legacy_v8 =
@@ -758,7 +767,7 @@ void flight_settings_init(void)
         if (current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT300 &&
             current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT600 &&
             current_settings.motor_protocol != MOTOR_PROTOCOL_DSHOT1200) {
-            current_settings.motor_protocol = MOTOR_PROTOCOL_DSHOT600;
+            current_settings.motor_protocol = MOTOR_PROTOCOL_DSHOT300;
         }
         settings_saved = false;
         apply();
@@ -850,9 +859,18 @@ void flight_settings_init(void)
         legacy->checksum ==
             checksum_bytes(legacy, offsetof(legacy_record_v7_t, checksum))) {
         flight_settings_reset_defaults();
-        current_settings.roll = legacy->settings.roll;
-        current_settings.pitch = legacy->settings.pitch;
-        current_settings.yaw = legacy->settings.yaw;
+        current_settings.roll = (pid_settings_t){
+            (uint32_t)lroundf(legacy->settings.roll.kp * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.roll.ki * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.roll.kd * PID_D_DIVISOR)};
+        current_settings.pitch = (pid_settings_t){
+            (uint32_t)lroundf(legacy->settings.pitch.kp * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.pitch.ki * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.pitch.kd * PID_D_DIVISOR)};
+        current_settings.yaw = (pid_settings_t){
+            (uint32_t)lroundf(legacy->settings.yaw.kp * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.yaw.ki * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.yaw.kd * PID_D_DIVISOR)};
         current_settings.motor_protocol = legacy->settings.motor_protocol;
         current_settings.board_roll_deg = legacy->settings.board_roll_deg;
         current_settings.board_pitch_deg = legacy->settings.board_pitch_deg;
