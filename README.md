@@ -158,6 +158,24 @@ After flashing, restart the board normally, launch the Configurator in Chrome
 or Edge, press **Connect**, and select the FlightCode USB serial device.
 Configuration changes and diagnostic motor output are rejected while armed.
 
+### AM32 ESC configurator
+
+FlightCode exposes a Betaflight-compatible MSP/4-way passthrough to
+[AM32 Configurator](https://am32.ca/configurator). Remove the propellers,
+connect USB, open the AM32 configurator in Chrome or Edge, select the
+FlightCode serial port, and only then power the ESCs. The passthrough is
+rejected while the flight controller is armed. It supports AM32 ARM
+bootloader discovery, settings read/write and firmware updates over each
+motor signal wire; legacy Atmel and Silabs ESC bootloaders are not supported.
+
+AM32 bootloader discovery uses the current 21-byte BLHeli probe: twelve
+leading `0x00` bytes followed by `0D 42 4C 48 65 6C 69 F4 7D`.  Do not use
+the legacy 17-byte/eight-zero probe: current AM32 bootloaders do not answer it,
+and the configurator reports `cmd_DeviceInitFlash: ACK_D_GENERAL_ERROR`.
+The complete discovery and configuration-read path has been verified on a
+CLRacingF4 with a SEQURE 4-in-1 F421 ESC running AM32 2.17 (bootloader v13),
+with all four ESC channels detected through their motor signal wires.
+
 ## Safety
 
 Always perform the first test without propellers. Verify motor order, motor

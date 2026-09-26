@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "board.h"
+#include "am32_passthrough.h"
 #include "flight_control.h"
 #include "flight_log.h"
 #include "flight_settings.h"
@@ -1288,17 +1289,27 @@ void config_protocol_init(void)
     reboot_pending = false;
     memset(motor_test_percent, 0, sizeof(motor_test_percent));
     usb_cdc_init();
+    am32_passthrough_init(usb_cdc_write);
 }
 
 bool config_protocol_motor_output_suppressed(void)
 {
-    return pid_simulation_enabled;
+    return pid_simulation_enabled || am32_passthrough_active();
+}
+
+bool config_protocol_esc_passthrough_active(void)
+{
+    return am32_passthrough_active();
 }
 
 void config_protocol_update(void)
 {
     uint8_t character;
     while (usb_cdc_read(&character, 1U) == 1U) {
+        if (am32_passthrough_consume(character,
+                                     flight_control_is_armed())) {
+            continue;
+        }
         if (character == '\r') {
             continue;
         }

@@ -120,6 +120,11 @@ static void main_loop_step(main_loop_state_t *state)
      * downloads otherwise drain only one 64-byte packet per 1 kHz service
      * tick, limiting an idle, disarmed controller to about 64 kB/s. */
     usb_cdc_poll();
+    if (config_protocol_esc_passthrough_active()) {
+        state->motors[0] = state->motors[1] =
+            state->motors[2] = state->motors[3] = 0U;
+        return;
+    }
     const bool radio_beep = receiver->valid &&
         receiver->channel_us[settings->beep_channel] >= settings->beep_min_us &&
         receiver->channel_us[settings->beep_channel] <= settings->beep_max_us;
