@@ -113,24 +113,110 @@ chip remains available for analog video when digital OSD is not selected.
 
 ## Building on Windows
 
-From PowerShell:
+### Requirements
+
+Use a 64-bit Windows PC with:
+
+- Git for Windows;
+- Windows PowerShell 5.1 or PowerShell 7;
+- CMake and Ninja;
+- the GNU Arm Embedded `arm-none-eabi` compiler, `objcopy` and `size`.
+
+The simplest setup is Visual Studio Code with the official
+[Raspberry Pi Pico extension](https://www.raspberrypi.com/documentation/microcontrollers/c_sdk.html).
+The extension downloads CMake, Ninja and the Arm toolchain under
+`%USERPROFILE%\.pico-sdk`, which is the location automatically used by
+`tools\build.ps1`. FlightCode does not depend on the Pico SDK itself; it only
+reuses the development tools installed by the extension.
+
+The build also works with a separately installed GNU Arm Embedded toolchain
+when `arm-none-eabi-gcc`, `arm-none-eabi-objcopy` and `arm-none-eabi-size` are
+available in `PATH`. The helper script still expects CMake and Ninja under
+`%USERPROFILE%\.pico-sdk`; for a completely manual installation, invoke the
+CMake presets directly or adjust their executable paths locally.
+
+Verify the automatic installation from PowerShell:
 
 ```powershell
-cd C:\SvilST\FlightCode
+Get-ChildItem "$env:USERPROFILE\.pico-sdk\cmake" -Filter cmake.exe -Recurse
+Get-ChildItem "$env:USERPROFILE\.pico-sdk\ninja" -Filter ninja.exe -Recurse
+Get-ChildItem "$env:USERPROFILE\.pico-sdk\toolchain" -Filter arm-none-eabi-gcc.exe -Recurse
+```
 
-# Build one Release target
+All three commands must return an executable before using the helper script.
+An internet connection is required the first time a fresh build directory is
+configured because CMake downloads the official CMSIS, STM32 HAL and USB
+Device source dependencies. Subsequent incremental builds reuse the downloaded
+copies stored inside that build directory.
+
+### Get the source
+
+Clone the repository and enter its directory:
+
+```powershell
+git clone https://github.com/tommyleo/FlightCode.git
+Set-Location .\FlightCode
+```
+
+If the repository is already present, open PowerShell in its root directory,
+the one containing `CMakePresets.json` and the `tools` folder.
+
+### Build the firmware
+
+Build one Release target:
+
+```powershell
 .\tools\build.ps1 -Board MAMBAF411
 .\tools\build.ps1 -Board CLRACINGF4
 .\tools\build.ps1 -Board FLYWOOF405NANO
 .\tools\build.ps1 -Board FLYWOOF405NANO_ANALOG
 .\tools\build.ps1 -Board HDZERO_HALO
+.\tools\build.ps1 -Board SEQUREH7V2
+```
 
-# Build every target
+Build every supported target:
+
+```powershell
 .\tools\build.ps1 -Board All
 ```
 
-Use `-Configuration Debug` to produce a debug build. The exact output path for
-each target is listed on its dedicated board page.
+Release is the default configuration. Add `-Configuration Debug` when a debug
+build is required:
+
+```powershell
+.\tools\build.ps1 -Board FLYWOOF405NANO -Configuration Debug
+```
+
+The script selects the appropriate CMake preset, creates or refreshes the
+target-specific directory under `build\`, and generates `.elf`, `.bin`, `.hex`
+and linker `.map` files. For example:
+
+```text
+build\flywoof405nano-release\FlightCode-FLYWOOF405NANO.bin
+build\clracingf4-release\FlightCode-CLRACINGF4.bin
+build\hdzero-halo-release\FlightCode-HDZERO_HALO.bin
+```
+
+The exact output path for every board is also listed on its dedicated board
+page. Build directories are reusable; running the same command again performs
+an incremental build.
+
+### Troubleshooting
+
+- **`CMake/Ninja non trovati`**: install the Raspberry Pi Pico extension and
+  let it finish downloading its tools, then open a new PowerShell window.
+- **`arm-none-eabi-gcc` not found**: confirm that the compiler exists below
+  `%USERPROFILE%\.pico-sdk\toolchain`, or add a GNU Arm Embedded `bin`
+  directory to `PATH`.
+- **PowerShell blocks `build.ps1`**: allow scripts only for the current process
+  and rerun the build:
+
+  ```powershell
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  ```
+
+- **A stale build directory reports the wrong board or toolchain**: remove
+  only that target's directory under `build\` and run the command again.
 
 ## Project structure
 
