@@ -1,14 +1,20 @@
-#include "am32_passthrough.h"
+#include "esc_passthrough.h"
 
 #include <string.h>
 
-#include "am32_esc_io.h"
+#include "esc_passthrough_io.h"
 
-/* MSP commands queried by am32.ca/configurator before entering 4-way mode. */
+/* MSP commands queried by ESC configurators before entering 4-way mode. */
 #define MSP_API_VERSION 1U
 #define MSP_FC_VARIANT 2U
+#define MSP_FC_VERSION 3U
+#define MSP_BOARD_INFO 4U
+#define MSP_BUILD_INFO 5U
+#define MSP_FEATURE_CONFIG 36U
+#define MSP_MOTOR 104U
 #define MSP_BATTERY_STATE 130U
 #define MSP_MOTOR_CONFIG 131U
+#define MSP_UID 160U
 #define MSP_SET_PASSTHROUGH 245U
 
 #define FOURWAY_LOCAL_ESCAPE 0x2FU
@@ -36,6 +42,7 @@
 #define ACK_INVALID_PARAM 0x09U
 #define ACK_DEVICE_ERROR 0x0FU
 
+#define MODE_SILABS_BOOTLOADER 1U
 #define MODE_ARM_BOOTLOADER 4U
 #define BOOT_ACK_OK 0x30U
 #define BOOT_ACK_VERIFY 0xC0U
@@ -72,7 +79,7 @@ typedef enum {
     FW_CRC_LO
 } fourway_state_t;
 
-static am32_host_write_fn host_write;
+static esc_passthrough_host_write_fn host_write;
 static msp_state_t msp_state;
 static uint8_t msp_length, msp_command, msp_offset, msp_checksum;
 static uint8_t msp_payload[255];
@@ -123,20 +130,20 @@ static void send_msp(uint8_t command, const uint8_t *payload, uint8_t length)
 
 static bool boot_read_byte(uint8_t *value, uint32_t timeout_us)
 {
-    const uint32_t started = am32_esc_micros();
-    while (am32_esc_read(selected_esc)) {
-        if ((uint32_t)(am32_esc_micros() - started) >= timeout_us) return false;
+    const uint32_t started = esc_passthrough_micros();
+    while (esc_passthrough_read(selected_esc)) {
+        if ((uint32_t)(esc_passthrough_micros() - started) >= timeout_us) return false;
     }
-    const uint32_t irq_state = am32_esc_critical_enter();
-    const uint32_t timing_start = am32_esc_timing_now();
-    am32_esc_wait_until(timing_start, 39U);
+    const uint32_t irq_state = esc_passthrough_critical_enter();
+    const uint32_t timing_start = esc_passthrough_timing_now();
+    esc_passthrough_wait_until(timing_start, 39U);
     uint16_t bits = 0U;
     for (uint8_t bit = 0U; bit < 10U; ++bit) {
-        if (am32_esc_read(selected_esc)) bits |= (uint16_t)(1U << bit);
+        if (esc_passthrough_read(selected_esc)) bits |= (uint16_t)(1U << bit);
         if (bit != 9U)
-            am32_esc_wait_until(timing_start, 39U + (uint32_t)(bit + 1U) * 52U);
+            esc_passthrough_wait_until(timing_start, 39U + (uint32_t)(bit + 1U) * 52U);
     }
-    am32_esc_critical_exit(irq_state);
+    esc_passthrough_critical_exit(irq_state);
     if ((bits & 1U) != 0U || (bits & (1U << 9U)) == 0U) return false;
     *value = (uint8_t)(bits >> 1U);
     return true;
@@ -145,21 +152,21 @@ static bool boot_read_byte(uint8_t *value, uint32_t timeout_us)
 static void boot_write_byte(uint8_t value)
 {
     uint16_t bits = (uint16_t)(((uint16_t)value << 2U) | 1U | (1U << 10U));
-    const uint32_t irq_state = am32_esc_critical_enter();
-    const uint32_t timing_start = am32_esc_timing_now();
+    const uint32_t irq_state = esc_passthrough_critical_enter();
+    const uint32_t timing_start = esc_passthrough_timing_now();
     uint8_t bit = 0U;
     do {
-        am32_esc_write(selected_esc, (bits & 1U) != 0U);
+        esc_passthrough_write(selected_esc, (bits & 1U) != 0U);
         bits >>= 1U;
-        if (bits != 0U) am32_esc_wait_until(timing_start, (uint32_t)++bit * 52U);
+        if (bits != 0U) esc_passthrough_wait_until(timing_start, (uint32_t)++bit * 52U);
     } while (bits != 0U);
-    am32_esc_critical_exit(irq_state);
+    esc_passthrough_critical_exit(irq_state);
 }
 
 static void boot_send(const uint8_t *data, uint16_t length, bool with_crc)
 {
     uint16_t crc = 0U;
-    am32_esc_output(selected_esc);
+    esc_passthrough_output(selected_esc);
     for (uint16_t i = 0U; i < length; ++i) {
         boot_write_byte(data[i]);
         crc = crc_modbus(crc, data[i]);
@@ -168,7 +175,7 @@ static void boot_send(const uint8_t *data, uint16_t length, bool with_crc)
         boot_write_byte((uint8_t)crc);
         boot_write_byte((uint8_t)(crc >> 8U));
     }
-    am32_esc_input(selected_esc);
+    esc_passthrough_input(selected_esc);
 }
 
 static uint8_t boot_ack(uint16_t attempts)
@@ -195,29 +202,36 @@ static bool boot_receive(uint8_t *data, uint16_t length, bool connected)
     return boot_read_byte(&ack, 2000U) && ack == BOOT_ACK_OK;
 }
 
-static bool boot_connect(void)
+static bool boot_signature_is_silabs(void)
 {
-    /*
-     * AM32 uses the 21-byte BLHeli probe (12 leading zero bytes).  The
-     * shorter 17-byte variant is used by some legacy 4-way builds, but an
-     * AM32 bootloader does not recognise it and consequently never returns
-     * the expected "471x" device information response.
-     */
-    static const uint8_t init[] = {
-        0,0,0,0,0,0,0,0,0,0,0,0,
-        0x0D,'B','L','H','e','l','i',0xF4,0x7D
-    };
+    const uint16_t signature = (uint16_t)device_info[0] |
+                               ((uint16_t)device_info[1] << 8U);
+    return signature > 0xE800U && signature < 0xF900U;
+}
+
+static bool boot_signature_is_arm(void)
+{
+    return device_info[0] == 0x06U && device_info[1] > 0U &&
+           device_info[1] < 0x90U;
+}
+
+static bool boot_probe(const uint8_t *init, uint16_t init_length)
+{
     for (uint8_t attempt = 0U; attempt < 3U; ++attempt) {
         memset(device_info, 0, sizeof(device_info));
-        boot_send(init, sizeof(init), false);
+        boot_send(init, init_length, false);
         uint8_t response[8];
         if (!boot_receive(response, sizeof(response), false)) continue;
         if (response[0] != '4' || response[1] != '7' || response[2] != '1') continue;
         device_info[2] = response[3];
         device_info[1] = response[4];
         device_info[0] = response[5];
-        if (device_info[0] == 0x06U && device_info[1] > 0U &&
-            device_info[1] < 0x90U) {
+        if (boot_signature_is_silabs()) {
+            interface_mode = MODE_SILABS_BOOTLOADER;
+            device_info[3] = interface_mode;
+            return true;
+        }
+        if (boot_signature_is_arm()) {
             interface_mode = MODE_ARM_BOOTLOADER;
             device_info[3] = interface_mode;
             return true;
@@ -225,6 +239,26 @@ static bool boot_connect(void)
     }
     memset(device_info, 0, sizeof(device_info));
     return false;
+}
+
+static bool boot_connect(void)
+{
+    /*
+     * BLHeli_S SiLabs bootloaders use the original probe with eight leading
+     * zero bytes.  AM32 ARM bootloaders use the newer twelve-zero variant.
+     * Try both so the same 4-way interface can auto-detect either family.
+     */
+    static const uint8_t silabs_init[] = {
+        0,0,0,0,0,0,0,0,
+        0x0D,'B','L','H','e','l','i',0xF4,0x7D
+    };
+    static const uint8_t arm_init[] = {
+        0,0,0,0,0,0,0,0,0,0,0,0,
+        0x0D,'B','L','H','e','l','i',0xF4,0x7D
+    };
+
+    return boot_probe(silabs_init, sizeof(silabs_init)) ||
+           boot_probe(arm_init, sizeof(arm_init));
 }
 static bool boot_set_address(uint16_t address)
 {
@@ -274,7 +308,10 @@ static uint8_t boot_verify(uint16_t address, const uint8_t *data, uint16_t lengt
 
 static bool boot_erase_page(uint8_t page)
 {
-    const uint16_t address = (uint16_t)page << 10U;
+    const uint8_t page_shift = interface_mode == MODE_SILABS_BOOTLOADER
+        ? 9U
+        : 10U;
+    const uint16_t address = (uint16_t)page << page_shift;
     if (!boot_set_address(address)) return false;
     const uint8_t command[] = {BOOT_CMD_ERASE, 1U};
     boot_send(command, sizeof(command), true);
@@ -333,14 +370,16 @@ static void process_fourway(void)
         response[0] = 200U; response[1] = 6U; response_length = 2U; break;
     case CMD_INTERFACE_EXIT:
         fourway_active = false;
-        am32_esc_end();
+        esc_passthrough_end();
         break;
     case CMD_INTERFACE_SET_MODE:
-        if (fw_payload[0] == MODE_ARM_BOOTLOADER) interface_mode = fw_payload[0];
+        if (fw_payload[0] == MODE_SILABS_BOOTLOADER ||
+            fw_payload[0] == MODE_ARM_BOOTLOADER)
+            interface_mode = fw_payload[0];
         else ack = ACK_INVALID_PARAM;
         break;
     case CMD_DEVICE_INIT_FLASH:
-        if (fw_payload[0] >= am32_esc_count()) ack = ACK_INVALID_CHANNEL;
+        if (fw_payload[0] >= esc_passthrough_count()) ack = ACK_INVALID_CHANNEL;
         else {
             selected_esc = fw_payload[0];
             if (!boot_connect()) ack = ACK_DEVICE_ERROR;
@@ -348,7 +387,7 @@ static void process_fourway(void)
         }
         break;
     case CMD_DEVICE_RESET:
-        if (fw_payload[0] >= am32_esc_count()) ack = ACK_INVALID_CHANNEL;
+        if (fw_payload[0] >= esc_passthrough_count()) ack = ACK_INVALID_CHANNEL;
         else {
             selected_esc = fw_payload[0];
             const uint8_t reset[] = {BOOT_CMD_RESTART, 0U};
@@ -358,24 +397,31 @@ static void process_fourway(void)
         }
         break;
     case CMD_DEVICE_PAGE_ERASE:
-        if (interface_mode != MODE_ARM_BOOTLOADER || !boot_erase_page(fw_payload[0]))
+        if ((interface_mode != MODE_SILABS_BOOTLOADER &&
+             interface_mode != MODE_ARM_BOOTLOADER) ||
+            !boot_erase_page(fw_payload[0]))
             ack = ACK_DEVICE_ERROR;
         break;
     case CMD_DEVICE_READ: {
         const uint16_t count = fw_payload[0] == 0U ? 256U : fw_payload[0];
-        if (interface_mode != MODE_ARM_BOOTLOADER ||
+        if ((interface_mode != MODE_SILABS_BOOTLOADER &&
+             interface_mode != MODE_ARM_BOOTLOADER) ||
             !boot_read(address, response, count)) ack = ACK_DEVICE_ERROR;
         else response_length = count;
         break;
     }
     case CMD_DEVICE_WRITE:
-        if (interface_mode != MODE_ARM_BOOTLOADER ||
+        if ((interface_mode != MODE_SILABS_BOOTLOADER &&
+             interface_mode != MODE_ARM_BOOTLOADER) ||
             !boot_write(address, fw_payload, fw_length)) ack = ACK_DEVICE_ERROR;
         break;
     case CMD_DEVICE_VERIFY: {
-        const uint8_t result = boot_verify(address, fw_payload, fw_length);
-        if (result == BOOT_ACK_VERIFY) ack = ACK_VERIFY_ERROR;
-        else if (result != BOOT_ACK_OK) ack = ACK_DEVICE_ERROR;
+        if (interface_mode != MODE_ARM_BOOTLOADER) ack = ACK_INVALID_CMD;
+        else {
+            const uint8_t result = boot_verify(address, fw_payload, fw_length);
+            if (result == BOOT_ACK_VERIFY) ack = ACK_VERIFY_ERROR;
+            else if (result != BOOT_ACK_OK) ack = ACK_DEVICE_ERROR;
+        }
         break;
     }
     default: ack = ACK_INVALID_CMD; break;
@@ -385,22 +431,44 @@ static void process_fourway(void)
 
 static void process_msp(bool armed)
 {
-    uint8_t response[16] = {0};
+    uint8_t response[32] = {0};
     uint8_t length = 0U;
     switch (msp_command) {
     case MSP_API_VERSION:
         response[0] = 0U; response[1] = 1U; response[2] = 46U; length = 3U; break;
     case MSP_FC_VARIANT:
         memcpy(response, "BTFL", 4U); length = 4U; break;
+    case MSP_FC_VERSION:
+        response[0] = 4U; response[1] = 5U; response[2] = 0U; length = 3U; break;
+    case MSP_BOARD_INFO:
+        memcpy(response, "FLTC", 4U); length = 6U; break;
+    case MSP_BUILD_INFO:
+        memcpy(response, __DATE__, 11U);
+        memcpy(&response[11], __TIME__, 8U);
+        length = 26U;
+        break;
+    case MSP_FEATURE_CONFIG:
+        length = 4U;
+        break;
+    case MSP_MOTOR:
+        for (uint8_t i = 0U; i < esc_passthrough_count(); ++i) {
+            response[2U * i] = 0xE8U;
+            response[2U * i + 1U] = 0x03U;
+        }
+        length = (uint8_t)(2U * esc_passthrough_count());
+        break;
     case MSP_BATTERY_STATE:
         length = 9U; break;
     case MSP_MOTOR_CONFIG:
-        response[6] = am32_esc_count(); length = 10U; break;
+        response[6] = esc_passthrough_count(); length = 10U; break;
+    case MSP_UID:
+        length = 12U;
+        break;
     case MSP_SET_PASSTHROUGH:
-        response[0] = armed ? 0U : am32_esc_count(); length = 1U;
+        response[0] = armed ? 0U : esc_passthrough_count(); length = 1U;
         send_msp(msp_command, response, length);
         if (!armed) {
-            am32_esc_begin();
+            esc_passthrough_begin();
             fourway_active = true;
             fw_state = FW_ESCAPE;
         }
@@ -410,7 +478,7 @@ static void process_msp(bool armed)
     send_msp(msp_command, response, length);
 }
 
-void am32_passthrough_init(am32_host_write_fn writer)
+void esc_passthrough_init(esc_passthrough_host_write_fn writer)
 {
     host_write = writer;
     msp_state = MSP_IDLE;
@@ -420,9 +488,9 @@ void am32_passthrough_init(am32_host_write_fn writer)
     memset(device_info, 0, sizeof(device_info));
 }
 
-bool am32_passthrough_active(void) { return fourway_active; }
+bool esc_passthrough_active(void) { return fourway_active; }
 
-bool am32_passthrough_consume(uint8_t byte, bool armed)
+bool esc_passthrough_consume(uint8_t byte, bool armed)
 {
     if (fourway_active) {
         switch (fw_state) {

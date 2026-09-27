@@ -1,6 +1,6 @@
 #include "dshot.h"
 
-#include "am32_esc_io.h"
+#include "esc_passthrough_io.h"
 #include "board.h"
 
 #define DSHOT_MIN 48U
@@ -492,9 +492,9 @@ static const uint16_t am32_pins[4] = {
     MOTOR_1_PIN, MOTOR_2_PIN, MOTOR_3_PIN, MOTOR_4_PIN
 };
 
-uint8_t am32_esc_count(void) { return 4U; }
+uint8_t esc_passthrough_count(void) { return 4U; }
 
-void am32_esc_begin(void)
+void esc_passthrough_begin(void)
 {
     dshot_timers_stop();
     for (uint8_t i = 0U; i < 4U; ++i) {
@@ -508,9 +508,9 @@ void am32_esc_begin(void)
     }
 }
 
-void am32_esc_end(void) { hardware_dshot_init(); }
+void esc_passthrough_end(void) { hardware_dshot_init(); }
 
-void am32_esc_input(uint8_t index)
+void esc_passthrough_input(uint8_t index)
 {
     GPIO_InitTypeDef gpio = {
         .Pin = am32_pins[index], .Mode = GPIO_MODE_INPUT,
@@ -519,7 +519,7 @@ void am32_esc_input(uint8_t index)
     HAL_GPIO_Init(am32_ports[index], &gpio);
 }
 
-void am32_esc_output(uint8_t index)
+void esc_passthrough_output(uint8_t index)
 {
     HAL_GPIO_WritePin(am32_ports[index], am32_pins[index], GPIO_PIN_SET);
     GPIO_InitTypeDef gpio = {
@@ -529,35 +529,35 @@ void am32_esc_output(uint8_t index)
     HAL_GPIO_Init(am32_ports[index], &gpio);
 }
 
-bool am32_esc_read(uint8_t index)
+bool esc_passthrough_read(uint8_t index)
 {
     return HAL_GPIO_ReadPin(am32_ports[index], am32_pins[index]) == GPIO_PIN_SET;
 }
 
-void am32_esc_write(uint8_t index, bool high)
+void esc_passthrough_write(uint8_t index, bool high)
 {
     HAL_GPIO_WritePin(am32_ports[index], am32_pins[index],
                       high ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
-uint32_t am32_esc_micros(void) { return board_micros(); }
+uint32_t esc_passthrough_micros(void) { return board_micros(); }
 
-uint32_t am32_esc_timing_now(void) { return DWT->CYCCNT; }
+uint32_t esc_passthrough_timing_now(void) { return DWT->CYCCNT; }
 
-void am32_esc_wait_until(uint32_t started, uint32_t offset_us)
+void esc_passthrough_wait_until(uint32_t started, uint32_t offset_us)
 {
     const uint32_t cycles_per_us = SystemCoreClock / 1000000U;
     while ((uint32_t)(DWT->CYCCNT - started) < offset_us * cycles_per_us) { }
 }
 
-uint32_t am32_esc_critical_enter(void)
+uint32_t esc_passthrough_critical_enter(void)
 {
     const uint32_t state = __get_PRIMASK();
     __disable_irq();
     return state;
 }
 
-void am32_esc_critical_exit(uint32_t state)
+void esc_passthrough_critical_exit(uint32_t state)
 {
     if (state == 0U) __enable_irq();
 }

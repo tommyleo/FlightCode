@@ -127,7 +127,7 @@ add_executable(FlightCode
     src/drivers/imu/icm42688p.c
     src/drivers/imu/mpu6000.c
     ${DSHOT_SOURCE}
-    src/protocol/am32_passthrough.c
+    src/protocol/esc_passthrough.c
     src/drivers/osd/max7456.c
     src/drivers/osd/msp_displayport.c
     src/drivers/osd/osd_tuning_menu.c

@@ -58,6 +58,7 @@ a safe, maintainable port.
 - protected motor test, guided IMU diagnostics and PID/mixer simulation;
 - RAM flight logging and persistent Blackbox on equipped boards;
 - USB CDC configuration and restart into STM32 DFU;
+- Betaflight-compatible ESC passthrough for BLHeli_S/Bluejay and AM32;
 - persistent settings stored in a reserved internal flash sector.
 
 The selected main-loop rate controls the main scheduler, motor output and timed
@@ -158,20 +159,22 @@ After flashing, restart the board normally, launch the Configurator in Chrome
 or Edge, press **Connect**, and select the FlightCode USB serial device.
 Configuration changes and diagnostic motor output are rejected while armed.
 
-### AM32 ESC configurator
+### AM32 and BLHeli_S ESC configurator
 
 FlightCode exposes a Betaflight-compatible MSP/4-way passthrough to
-[AM32 Configurator](https://am32.ca/configurator). Remove the propellers,
-connect USB, open the AM32 configurator in Chrome or Edge, select the
-FlightCode serial port, and only then power the ESCs. The passthrough is
-rejected while the flight controller is armed. It supports AM32 ARM
-bootloader discovery, settings read/write and firmware updates over each
-motor signal wire; legacy Atmel and Silabs ESC bootloaders are not supported.
+[ESC Configurator](https://esc-configurator.com/) for BLHeli_S and Bluejay,
+and to [AM32 Configurator](https://am32.ca/configurator) for AM32. Remove the
+propellers, connect USB, open the appropriate configurator in Chrome or Edge,
+select the FlightCode serial port, and only then power the ESCs. The
+passthrough is rejected while the flight controller is armed. It supports
+SiLabs BLHeli bootloaders and AM32 ARM bootloaders over each motor signal
+wire. Legacy Atmel bootloaders and direct SiLabs C2 programming are not
+supported.
 
-AM32 bootloader discovery uses the current 21-byte BLHeli probe: twelve
-leading `0x00` bytes followed by `0D 42 4C 48 65 6C 69 F4 7D`.  Do not use
-the legacy 17-byte/eight-zero probe: current AM32 bootloaders do not answer it,
-and the configurator reports `cmd_DeviceInitFlash: ACK_D_GENERAL_ERROR`.
+Bootloader discovery automatically tries the original 17-byte BLHeli probe
+used by SiLabs BLHeli_S ESCs and the current 21-byte AM32 probe. The latter
+uses twelve leading `0x00` bytes followed by
+`0D 42 4C 48 65 6C 69 F4 7D`.
 The complete discovery and configuration-read path has been verified on a
 CLRacingF4 with a SEQURE 4-in-1 F421 ESC running AM32 2.17 (bootloader v13),
 with all four ESC channels detected through their motor signal wires.
