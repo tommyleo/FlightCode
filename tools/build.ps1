@@ -7,13 +7,34 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$cmake = Get-ChildItem "$env:USERPROFILE\.pico-sdk\cmake" -Filter cmake.exe -Recurse |
-    Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
-$ninja = Get-ChildItem "$env:USERPROFILE\.pico-sdk\ninja" -Filter ninja.exe -Recurse |
-    Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+$cmakeCommand = Get-Command cmake.exe -ErrorAction SilentlyContinue
+$ninjaCommand = Get-Command ninja.exe -ErrorAction SilentlyContinue
+$cmake = if ($cmakeCommand) { $cmakeCommand.Source } else { $null }
+$ninja = if ($ninjaCommand) { $ninjaCommand.Source } else { $null }
+
+if (-not $cmake) {
+    $cmake = Get-ChildItem "$env:ProgramFiles\CMake" -Filter cmake.exe -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
+
+if (-not $ninja) {
+    $ninja = Get-ChildItem "$env:ProgramFiles\Ninja" -Filter ninja.exe -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
+
+# Keep compatibility with development-tool bundles already installed locally.
+if (-not $cmake) {
+    $cmake = Get-ChildItem "$env:USERPROFILE\.pico-sdk\cmake" -Filter cmake.exe -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
+
+if (-not $ninja) {
+    $ninja = Get-ChildItem "$env:USERPROFILE\.pico-sdk\ninja" -Filter ninja.exe -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
 
 if (-not $cmake -or -not $ninja) {
-    throw "CMake/Ninja non trovati. Installa STM32CubeCLT oppure il toolchain Pico."
+    throw "CMake/Ninja non trovati. Installali e aggiungi i relativi eseguibili al PATH."
 }
 
 $boards = if ($Board -eq "All") {

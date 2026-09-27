@@ -122,28 +122,20 @@ Use a 64-bit Windows PC with:
 - CMake and Ninja;
 - the GNU Arm Embedded `arm-none-eabi` compiler, `objcopy` and `size`.
 
-The simplest setup is Visual Studio Code with the official
-[Raspberry Pi Pico extension](https://www.raspberrypi.com/documentation/microcontrollers/c_sdk.html).
-The extension downloads CMake, Ninja and the Arm toolchain under
-`%USERPROFILE%\.pico-sdk`, which is the location automatically used by
-`tools\build.ps1`. FlightCode does not depend on the Pico SDK itself; it only
-reuses the development tools installed by the extension.
+Install CMake, Ninja and the GNU Arm Embedded toolchain using their Windows
+installers or a package manager. During installation, enable the option to add
+each tool to `PATH` when available.
 
-The build also works with a separately installed GNU Arm Embedded toolchain
-when `arm-none-eabi-gcc`, `arm-none-eabi-objcopy` and `arm-none-eabi-size` are
-available in `PATH`. The helper script still expects CMake and Ninja under
-`%USERPROFILE%\.pico-sdk`; for a completely manual installation, invoke the
-CMake presets directly or adjust their executable paths locally.
-
-Verify the automatic installation from PowerShell:
+Verify the installation from a new PowerShell window:
 
 ```powershell
-Get-ChildItem "$env:USERPROFILE\.pico-sdk\cmake" -Filter cmake.exe -Recurse
-Get-ChildItem "$env:USERPROFILE\.pico-sdk\ninja" -Filter ninja.exe -Recurse
-Get-ChildItem "$env:USERPROFILE\.pico-sdk\toolchain" -Filter arm-none-eabi-gcc.exe -Recurse
+cmake --version
+ninja --version
+arm-none-eabi-gcc --version
+arm-none-eabi-objcopy --version
 ```
 
-All three commands must return an executable before using the helper script.
+All four commands must complete successfully before using the helper script.
 An internet connection is required the first time a fresh build directory is
 configured because CMake downloads the official CMSIS, STM32 HAL and USB
 Device source dependencies. Subsequent incremental builds reuse the downloaded
@@ -203,11 +195,10 @@ an incremental build.
 
 ### Troubleshooting
 
-- **`CMake/Ninja non trovati`**: install the Raspberry Pi Pico extension and
-  let it finish downloading its tools, then open a new PowerShell window.
-- **`arm-none-eabi-gcc` not found**: confirm that the compiler exists below
-  `%USERPROFILE%\.pico-sdk\toolchain`, or add a GNU Arm Embedded `bin`
-  directory to `PATH`.
+- **`CMake/Ninja non trovati`**: install the missing program, add its directory
+  to `PATH`, then open a new PowerShell window.
+- **`arm-none-eabi-gcc` not found**: add the GNU Arm Embedded toolchain `bin`
+  directory to `PATH` and reopen PowerShell.
 - **PowerShell blocks `build.ps1`**: allow scripts only for the current process
   and rerun the build:
 
