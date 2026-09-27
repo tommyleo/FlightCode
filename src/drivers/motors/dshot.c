@@ -18,7 +18,18 @@ static uint32_t dshot_period_ticks(void)
 }
 
 enum { DSHOT_FRAME_WORDS = 18 };
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+/*
+ * The Flywoo outputs are split across TIM3 CH3/4 and TIM2 CH3/4. Feed each
+ * timer with one update-triggered DMA burst so both compare registers change
+ * together at the bit boundary. Other F4 targets retain the per-channel path
+ * below, which is validated on CLRACINGF4 with AM32 hardware.
+ */
+static uint32_t dshot_dma_tim3[DSHOT_FRAME_WORDS][2];
+static uint32_t dshot_dma_tim2[DSHOT_FRAME_WORDS][2];
+#else
 static uint32_t dshot_dma_buffer[4][DSHOT_FRAME_WORDS];
+#endif
 
 #if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
 static DMA_Stream_TypeDef *const dshot_dma_streams[4] = {
@@ -32,12 +43,17 @@ static DMA_Stream_TypeDef *const dshot_dma_streams[4] = {
 
 static bool dshot_dma_transfer_active(void)
 {
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+    return (DMA1_Stream2->CR & DMA_SxCR_EN) != 0U ||
+           (DMA1_Stream1->CR & DMA_SxCR_EN) != 0U;
+#else
     for (uint8_t motor = 0U; motor < 4U; ++motor) {
         if ((dshot_dma_streams[motor]->CR & DMA_SxCR_EN) != 0U) {
             return true;
         }
     }
     return false;
+#endif
 }
 
 static uint16_t dshot_sanitize_value(uint16_t value)
@@ -57,6 +73,7 @@ static uint32_t timer_clock_hz(void)
     return clock;
 }
 
+#if !defined(BOARD_FLYWOOF405NANO) && !defined(BOARD_FLYWOOF405NANO_ANALOG)
 static void dma_stream_setup(DMA_Stream_TypeDef *stream, uint32_t channel,
                              volatile uint32_t *peripheral)
 {
@@ -70,6 +87,30 @@ static void dma_stream_setup(DMA_Stream_TypeDef *stream, uint32_t channel,
     stream->PAR = (uint32_t)peripheral;
     stream->FCR = DMA_FIFOMODE_DISABLE;
 }
+#endif
+
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+static uint32_t flywoo_dshot_pulse_ticks(uint32_t period_ticks, bool one)
+{
+    /* Match Betaflight's 7/20 and 14/20 DShot compare timings exactly. */
+    const uint32_t numerator = one ? 14U : 7U;
+    return (period_ticks * numerator + 10U) / 20U;
+}
+
+static void dma_burst_stream_setup(DMA_Stream_TypeDef *stream,
+                                   uint32_t channel, TIM_TypeDef *timer)
+{
+    stream->CR &= ~DMA_SxCR_EN;
+    while ((stream->CR & DMA_SxCR_EN) != 0U) {
+    }
+    stream->CR = channel | DMA_MEMORY_TO_PERIPH |
+                 DMA_PINC_DISABLE | DMA_MINC_ENABLE |
+                 DMA_PDATAALIGN_WORD | DMA_MDATAALIGN_WORD |
+                 DMA_NORMAL | DMA_PRIORITY_VERY_HIGH;
+    stream->PAR = (uint32_t)&timer->DMAR;
+    stream->FCR = DMA_FIFOMODE_DISABLE;
+}
+#endif
 
 static void hardware_dshot_init(void)
 {
@@ -115,10 +156,18 @@ static void hardware_dshot_init(void)
     TIM2->DIER = 0U;
     TIM2->CR1 = TIM_CR1_ARPE;
 
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+    /* CCR3 is DMA-burst register index 15; DBL=1 selects CCR3 and CCR4. */
+    TIM3->DCR = (15U << TIM_DCR_DBA_Pos) | (1U << TIM_DCR_DBL_Pos);
+    TIM2->DCR = (15U << TIM_DCR_DBA_Pos) | (1U << TIM_DCR_DBL_Pos);
+    dma_burst_stream_setup(DMA1_Stream2, DMA_CHANNEL_5, TIM3);
+    dma_burst_stream_setup(DMA1_Stream1, DMA_CHANNEL_3, TIM2);
+#else
     dma_stream_setup(DMA1_Stream7, DMA_CHANNEL_5, &TIM3->CCR3);
     dma_stream_setup(DMA1_Stream2, DMA_CHANNEL_5, &TIM3->CCR4);
     dma_stream_setup(DMA1_Stream6, DMA_CHANNEL_3, &TIM2->CCR4);
     dma_stream_setup(DMA1_Stream1, DMA_CHANNEL_3, &TIM2->CCR3);
+#endif
 #else
     TIM2->PSC = psc; TIM2->ARR = period_ticks - 1U; TIM2->CCR2 = 0U;
     TIM2->CCMR1 = (6U << TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE;
@@ -156,8 +205,13 @@ static void dma_prepare(DMA_Stream_TypeDef *stream, uint32_t *data)
 static void dshot_timers_stop(void)
 {
 #if BOARD_MOTOR_OUTPUT_LAYOUT == MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+    TIM3->DIER &= ~TIM_DIER_UDE;
+    TIM2->DIER &= ~TIM_DIER_UDE;
+#else
     TIM3->DIER &= ~(TIM_DIER_CC3DE | TIM_DIER_CC4DE);
     TIM2->DIER &= ~(TIM_DIER_CC3DE | TIM_DIER_CC4DE);
+#endif
     TIM3->CR1 &= ~TIM_CR1_CEN;
     TIM2->CR1 &= ~TIM_CR1_CEN;
 #else
@@ -177,10 +231,12 @@ static void dshot_dma_flags_clear(void)
                   DMA_LIFCR_CTEIF1 | DMA_LIFCR_CHTIF1 | DMA_LIFCR_CTCIF1 |
                   DMA_LIFCR_CFEIF2 | DMA_LIFCR_CDMEIF2 |
                   DMA_LIFCR_CTEIF2 | DMA_LIFCR_CHTIF2 | DMA_LIFCR_CTCIF2;
+#if !defined(BOARD_FLYWOOF405NANO) && !defined(BOARD_FLYWOOF405NANO_ANALOG)
     DMA1->HIFCR = DMA_HIFCR_CFEIF6 | DMA_HIFCR_CDMEIF6 |
                   DMA_HIFCR_CTEIF6 | DMA_HIFCR_CHTIF6 | DMA_HIFCR_CTCIF6 |
                   DMA_HIFCR_CFEIF7 | DMA_HIFCR_CDMEIF7 |
                   DMA_HIFCR_CTEIF7 | DMA_HIFCR_CHTIF7 | DMA_HIFCR_CTCIF7;
+#endif
 #else
     DMA1->LIFCR = DMA_LIFCR_CFEIF0 | DMA_LIFCR_CDMEIF0 |
                   DMA_LIFCR_CTEIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CTCIF0 |
@@ -200,8 +256,13 @@ static void dshot_timers_start(void)
     TIM2->CNT = 0U;
     TIM3->SR = 0U;
     TIM2->SR = 0U;
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+    TIM3->DIER |= TIM_DIER_UDE;
+    TIM2->DIER |= TIM_DIER_UDE;
+#else
     TIM3->DIER |= TIM_DIER_CC3DE | TIM_DIER_CC4DE;
     TIM2->DIER |= TIM_DIER_CC3DE | TIM_DIER_CC4DE;
+#endif
     __DMB();
     TIM3->CR1 |= TIM_CR1_CEN;
     TIM2->CR1 |= TIM_CR1_CEN;
@@ -366,13 +427,35 @@ void dshot_write(const uint16_t values[4])
                 dshot_sanitize_value(values[motor]));
             const uint32_t period_ticks = dshot_period_ticks();
             for (uint8_t bit = 0U; bit < 16U; ++bit) {
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+                const uint32_t pulse = flywoo_dshot_pulse_ticks(
+                    period_ticks,
+                    (frame & (1U << (15U - bit))) != 0U);
+                if (motor < 2U) {
+                    dshot_dma_tim3[bit][motor] = pulse;
+                } else {
+                    /* TIM2 CCR3 drives motor 4; CCR4 drives motor 3. */
+                    dshot_dma_tim2[bit][3U - motor] = pulse;
+                }
+#else
                 dshot_dma_buffer[motor][bit] =
                     (frame & (1U << (15U - bit))) != 0U
                         ? (period_ticks * 3U + 2U) / 4U
                         : (period_ticks * 3U + 4U) / 8U;
+#endif
             }
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+            if (motor < 2U) {
+                dshot_dma_tim3[16][motor] = 0U;
+                dshot_dma_tim3[17][motor] = 0U;
+            } else {
+                dshot_dma_tim2[16][3U - motor] = 0U;
+                dshot_dma_tim2[17][3U - motor] = 0U;
+            }
+#else
             dshot_dma_buffer[motor][16] = 0U;
             dshot_dma_buffer[motor][17] = 0U;
+#endif
         }
         /*
          * Stage every channel while the timer DMA requests are disabled.
@@ -380,14 +463,26 @@ void dshot_write(const uint16_t values[4])
          * event on a channel that happens to be at the end of its period.
          */
         dshot_timers_stop();
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+        dma_prepare(DMA1_Stream2, &dshot_dma_tim3[0][0]);
+        DMA1_Stream2->NDTR = DSHOT_FRAME_WORDS * 2U;
+        dma_prepare(DMA1_Stream1, &dshot_dma_tim2[0][0]);
+        DMA1_Stream1->NDTR = DSHOT_FRAME_WORDS * 2U;
+#else
         for (uint8_t motor = 0U; motor < 4U; ++motor) {
             dma_prepare(dshot_dma_streams[motor], dshot_dma_buffer[motor]);
         }
+#endif
         dshot_dma_flags_clear();
         __DMB();
+#if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
+        DMA1_Stream2->CR |= DMA_SxCR_EN;
+        DMA1_Stream1->CR |= DMA_SxCR_EN;
+#else
         for (uint8_t motor = 0U; motor < 4U; ++motor) {
             dshot_dma_streams[motor]->CR |= DMA_SxCR_EN;
         }
+#endif
         __DMB();
         dshot_timers_start();
         return;
