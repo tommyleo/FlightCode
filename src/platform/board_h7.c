@@ -138,7 +138,7 @@ static void clock_init(void)
     }
 
 #if defined(BOARD_SEQUREH7V2)
-    /* Betaflight applies this workaround on STM32H743/H750 before enabling
+    /* Apply this workaround on STM32H743/H750 before enabling
      * HSE.  On affected silicon HSERDY can otherwise take many seconds (or
      * time out altogether), which leaves the board apparently dead before
      * USB is ever initialized.  PH0/PH1 are the HSE oscillator pins. */
@@ -194,7 +194,7 @@ static void clock_init(void)
 #endif
                             ) != HAL_OK) board_fatal_error();
 
-    /* Betaflight enables the H7 I/O compensation cell before bringing up
+    /* Enable the H7 I/O compensation cell before bringing up
      * high-speed peripherals, including USB. */
     __HAL_RCC_CSI_ENABLE();
     __HAL_RCC_SYSCFG_CLK_ENABLE();
@@ -480,7 +480,7 @@ static void battery_adc_init(void)
     HAL_GPIO_Init(CURRENT_ADC_PORT, &gpio);
 #endif
     hadc1.Instance = ADC1;
-    /* Match Betaflight's H743 ADC clocking.  The previous asynchronous mode
+    /* Use synchronous H743 ADC clocking.  The previous asynchronous mode
      * had no RCC ADC source configured, so calibration ran without a clock
      * and eventually timed out. */
     hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;

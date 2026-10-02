@@ -61,7 +61,7 @@ void usb_cdc_init(void)
     if (USBD_CDC_RegisterInterface(&usb_device, &cdc_interface) != USBD_OK) return;
     USBD_Start(&usb_device);
 #if defined(PLATFORM_STM32H7)
-    /* Match Betaflight's H7 cold-start sequence: enable VDD33USB detection
+    /* H7 cold-start sequence: enable VDD33USB detection
      * after the device core has started, then allow the PHY to settle. */
     HAL_PWREx_EnableUSBVoltageDetector();
     HAL_Delay(100U);

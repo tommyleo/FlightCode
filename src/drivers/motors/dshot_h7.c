@@ -113,7 +113,7 @@ void dshot_write(const uint16_t values[4])
     for (uint8_t motor = 0U; motor < DSHOT_MOTOR_COUNT; ++motor) {
         const uint16_t frame = packet(sanitize(values[motor]));
         for (uint8_t bit = 0U; bit < 16U; ++bit) {
-            /* Match Betaflight's DShot pulse ratios: 14/20 for a one and
+            /* Use DShot pulse ratios: 14/20 for a one and
              * 7/20 for a zero. */
             dshot_dma_buffer[bit][motor] =
                 (frame & (1U << (15U - bit))) != 0U

@@ -92,7 +92,7 @@ static void dma_stream_setup(DMA_Stream_TypeDef *stream, uint32_t channel,
 #if defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
 static uint32_t flywoo_dshot_pulse_ticks(uint32_t period_ticks, bool one)
 {
-    /* Match Betaflight's 7/20 and 14/20 DShot compare timings exactly. */
+    /* Use 7/20 and 14/20 DShot compare timings. */
     const uint32_t numerator = one ? 14U : 7U;
     return (period_ticks * numerator + 10U) / 20U;
 }

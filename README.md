@@ -58,7 +58,7 @@ a safe, maintainable port.
 - protected motor test, guided IMU diagnostics and PID/mixer simulation;
 - RAM flight logging and persistent Blackbox on equipped boards;
 - USB CDC configuration and restart into STM32 DFU;
-- Betaflight-compatible ESC passthrough for BLHeli_S/Bluejay and AM32;
+- MSP/4-way ESC passthrough for BLHeli_S/Bluejay and AM32;
 - persistent settings stored in a reserved internal flash sector.
 
 The selected main-loop rate controls the main scheduler, motor output and timed
@@ -73,7 +73,14 @@ the measured main-scheduler period and the interval between fresh gyroscope/PID
 updates. Each sample exposes the periods in microseconds and their derived
 frequencies, alongside the separated P/I/D/FF terms.
 
-## TBS SmartAudio VTX control
+## VTX control: TBS SmartAudio and IRC Tramp
+
+FlightCode supports TBS SmartAudio and IRC Tramp for analog VTX control.
+Select the protocol supported by your VTX and a free UART TX pad in the
+Configurator, set band/channel and power, then save and reboot with the VTX
+powered. Configuration transactions run only while disarmed.
+
+### TBS SmartAudio
 
 SmartAudio V1, V2 and V2.1 use the selected UART TX pad as a single-wire
 4800-baud, 8N2 connection. Select SmartAudio, a free UART, band/channel and
@@ -90,6 +97,18 @@ unconfirmed channel reports `NOT_CONFIRMED`. The regional channel availability
 matches the Configurator. Physical VTX confirmation still requires bench testing.
 
 Host regression: `gcc -std=c11 -Wall -Wextra -Werror -I tests/smartaudio_stubs tests/smartaudio_test.c -lm -o build/smartaudio_test`
+
+### IRC Tramp
+
+IRC Tramp uses the selected UART TX pad as a single-wire, half-duplex
+9600-baud, 8N1 connection. FlightCode queries the VTX limits and current
+settings, applies the frequency corresponding to the selected band/channel
+and the requested power in mW, then reads the settings back before reporting
+`APPLIED`. A VTX race lock reports `RACE_LOCKED`; missing responses report
+`NO_RESPONSE`, and UART failures report `UART_ERROR`. The regional channel
+availability matches the Configurator.
+
+For digital OSD, MSP DisplayPort / HDZero configuration is described below.
 
 ## Analog / Digital OSD
 
@@ -256,7 +275,7 @@ Configuration changes and diagnostic motor output are rejected while armed.
 
 ### AM32 and BLHeli_S ESC configurator
 
-FlightCode exposes a Betaflight-compatible MSP/4-way passthrough to
+FlightCode exposes an MSP/4-way passthrough to
 [ESC Configurator](https://esc-configurator.com/) for BLHeli_S and Bluejay,
 and to [AM32 Configurator](https://am32.ca/configurator) for AM32. Remove the
 propellers, connect USB, open the appropriate configurator in Chrome or Edge,
