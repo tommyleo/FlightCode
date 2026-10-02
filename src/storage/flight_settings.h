@@ -77,7 +77,12 @@ typedef struct {
     uint32_t current_osd_enabled;
     uint32_t current_osd_position;
     uint32_t receiver_uart;
+    uint32_t osd_video_mode;
 } flight_settings_t;
+
+#define OSD_VIDEO_AUTO 0U
+#define OSD_VIDEO_PAL 1U
+#define OSD_VIDEO_NTSC 2U
 
 #define RECEIVER_ORDER_TAER1234 0U
 #define RECEIVER_ORDER_AETR1234 1U

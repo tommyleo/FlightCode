@@ -29,7 +29,7 @@ static volatile bool buzzer_tone_enabled;
 
 static void jump_to_system_bootloader(void) __attribute__((noreturn));
 
-bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
+bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate, uint32_t stop_bits,
                                  UART_HandleTypeDef *handle)
 {
     USART_TypeDef *instance = NULL;
@@ -83,7 +83,7 @@ bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
     *handle = (UART_HandleTypeDef){0};
     handle->Instance = instance; handle->Init.BaudRate = baud_rate;
     handle->Init.WordLength = UART_WORDLENGTH_8B;
-    handle->Init.StopBits = UART_STOPBITS_1; handle->Init.Parity = UART_PARITY_NONE;
+    handle->Init.StopBits = stop_bits; handle->Init.Parity = UART_PARITY_NONE;
     handle->Init.Mode = UART_MODE_TX_RX; handle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
     handle->Init.OverSampling = UART_OVERSAMPLING_16;
     return HAL_HalfDuplex_Init(handle) == HAL_OK;

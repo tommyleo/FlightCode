@@ -1,4 +1,5 @@
 #include "vtx_tramp.h"
+#include "vtx_smartaudio.h"
 #include <stdint.h>
 #include <string.h>
 #include "board.h"
@@ -22,6 +23,7 @@ typedef enum { STATUS_NOT_CONFIGURED, STATUS_INITIALIZING, STATUS_APPLIED,
 #else
 static UART_HandleTypeDef uart;
 #endif
+static bool smartaudio_selected;
 static uint8_t state;
 static uint8_t status_code;
 static uint16_t desired_frequency, desired_power;
@@ -38,6 +40,7 @@ static const uint16_t frequencies_us[5][8] = {
 
 const char *vtx_tramp_status_name(void)
 {
+ if (smartaudio_selected) return vtx_smartaudio_status_name();
  switch((tramp_status_t)status_code) {
  case STATUS_INITIALIZING: return "INITIALIZING";
  case STATUS_APPLIED: return "APPLIED";
@@ -91,12 +94,14 @@ static void schedule_status_query(void)
 bool vtx_tramp_init(void)
 {
  const flight_settings_t *s=flight_settings_get();
+ smartaudio_selected = s->vtx_protocol == VTX_PROTOCOL_SMARTAUDIO;
+ if (smartaudio_selected) { state=IDLE; return vtx_smartaudio_init(); }
  if(s->vtx_protocol!=VTX_PROTOCOL_TRAMP){status_code=STATUS_NOT_CONFIGURED;state=IDLE;return false;}
  if(s->vtx_band>=5||s->vtx_channel>=8){fail(STATUS_INVALID_SETTINGS);return false;}
  desired_frequency=s->vtx_region==VTX_REGION_US?frequencies_us[s->vtx_band][s->vtx_channel]:frequencies_eu[s->vtx_band][s->vtx_channel];
  if(!desired_frequency||!s->vtx_power_mw||s->vtx_power_mw>UINT16_MAX){fail(STATUS_INVALID_SETTINGS);return false;}
  desired_power=(uint16_t)s->vtx_power_mw;
- if(!board_uart_half_duplex_init((uint8_t)s->vtx_uart,BAUD_RATE,&uart)){fail(STATUS_UART_ERROR);return false;}
+ if(!board_uart_half_duplex_init((uint8_t)s->vtx_uart,BAUD_RATE,UART_STOPBITS_1,&uart)){fail(STATUS_UART_ERROR);return false;}
  retries=0;status_code=STATUS_INITIALIZING;state=START_DELAY;deadline_ms=HAL_GetTick()+START_DELAY_MS;return true;
 }
 static void retry_query(uint8_t command,tramp_state_t waiting)
@@ -106,6 +111,7 @@ static void retry_query(uint8_t command,tramp_state_t waiting)
 }
 void vtx_tramp_update(bool armed)
 {
+ if (smartaudio_selected) { vtx_smartaudio_update(armed); return; }
  if(armed||state==IDLE||state==DONE||state==FAILED)return;
  uint32_t now=HAL_GetTick();
  if(state==START_DELAY){if((int32_t)(now-deadline_ms)>=0&&!begin_query('r',WAIT_LIMITS))fail(STATUS_UART_ERROR);return;}

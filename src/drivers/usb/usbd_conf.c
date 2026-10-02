@@ -13,6 +13,19 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd)
     if (hpcd->Instance != USB_OTG_FS) {
         return;
     }
+#if defined(PLATFORM_STM32H7)
+    /* The STM32H7 ROM DFU bootloader can start the application without a
+     * full chip reset.  Reset OTG_FS explicitly so HAL does not inherit the
+     * bootloader's endpoint, interrupt, or soft-disconnect state. */
+    HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
+    HAL_NVIC_ClearPendingIRQ(OTG_FS_IRQn);
+    __HAL_RCC_USB2_OTG_FS_FORCE_RESET();
+    __DSB();
+    __NOP();
+    __NOP();
+    __HAL_RCC_USB2_OTG_FS_RELEASE_RESET();
+    __DSB();
+#endif
     __HAL_RCC_GPIOA_CLK_ENABLE();
     GPIO_InitTypeDef gpio = {
         .Pin = GPIO_PIN_11 | GPIO_PIN_12,

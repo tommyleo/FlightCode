@@ -12,7 +12,7 @@
 #include "sbus.h"
 
 #define SETTINGS_MAGIC 0x46344643U
-#define SETTINGS_VERSION 27U
+#define SETTINGS_VERSION 28U
 #define SETTINGS_LEGACY_VERSION_25 25U
 #define SETTINGS_LEGACY_VERSION_24 24U
 #define SETTINGS_LEGACY_VERSION_23 23U
@@ -397,8 +397,7 @@ static bool receiver_valid(const flight_settings_t *settings)
                             settings->receiver_uart == 2U ||
                             settings->receiver_uart == 4U ||
                             settings->receiver_uart == 6U ||
-                            settings->receiver_uart == 7U ||
-                            settings->receiver_uart == 8U;
+                            settings->receiver_uart == 7U;
 #else
     const bool uart_valid = settings->receiver_uart == 0U;
 #endif
@@ -504,6 +503,7 @@ static void apply(void)
     flight_control_set_motor_direction_reversed(
         current_settings.motor_direction_reversed != 0U);
     flight_control_set_motor_idle_percent(current_settings.motor_idle_percent);
+    (void)max7456_set_video_mode(current_settings.osd_video_mode);
     (void)max7456_set_config(current_settings.osd_enabled != 0U,
                              (uint8_t)current_settings.osd_position);
     (void)max7456_set_layout(current_settings.osd_element_enabled_mask,
@@ -587,6 +587,21 @@ void flight_settings_reset_defaults(void)
 void flight_settings_init(void)
 {
     const settings_record_t *stored = (const settings_record_t *)SETTINGS_ADDRESS;
+    /* Version 27 is the exact prefix preceding the new video-mode field. */
+    if (stored->magic == SETTINGS_MAGIC && stored->version == 27U) {
+        const size_t prefix = offsetof(flight_settings_t, osd_video_mode);
+        const size_t checksum_offset = offsetof(settings_record_t, settings) + prefix;
+        uint32_t stored_checksum;
+        memcpy(&stored_checksum, (const uint8_t *)stored + checksum_offset,
+               sizeof(stored_checksum));
+        flight_settings_reset_defaults();
+        if (stored_checksum == checksum_bytes(stored, checksum_offset)) {
+            flight_settings_t migrated = current_settings;
+            memcpy(&migrated, &stored->settings, prefix);
+            (void)flight_settings_set(&migrated);
+        }
+        return;
+    }
     if (stored->magic == SETTINGS_MAGIC && stored->version < SETTINGS_VERSION) {
         flight_settings_reset_defaults();
         return;
@@ -899,6 +914,7 @@ void flight_settings_init(void)
         stored->settings.gyro_rate_hz > stored->settings.main_loop_hz ||
         !vbat_multiplier_valid(stored->settings.vbat_multiplier) ||
         !osd_layout_valid(&stored->settings) ||
+        stored->settings.osd_video_mode > OSD_VIDEO_NTSC ||
         stored->settings.current_osd_enabled > 1U ||
         stored->settings.current_osd_position >= 30U * 16U ||
         stored->settings.osd_enabled > 1U ||
@@ -948,6 +964,7 @@ bool flight_settings_set(const flight_settings_t *settings)
         settings->gyro_rate_hz > settings->main_loop_hz ||
         !vbat_multiplier_valid(settings->vbat_multiplier) ||
         !osd_layout_valid(settings) ||
+        settings->osd_video_mode > OSD_VIDEO_NTSC ||
         settings->current_osd_enabled > 1U ||
         settings->current_osd_position >= 30U * 16U ||
         settings->osd_enabled > 1U || settings->osd_position > 8U ||

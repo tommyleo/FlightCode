@@ -308,7 +308,7 @@
 #define IMU_CS_PIN board_imu_cs_pin()
 #define IMU_SPI_HANDLE hspi2
 #define BOARD_IMU_TYPE IMU_TYPE_ICM42688P
-#define BOARD_CORE_CLOCK_HZ 480000000U
+#define BOARD_CORE_CLOCK_HZ 400000000U
 #define BOARD_HAS_BATTERY_VOLTAGE 1
 #define BATTERY_ADC_PORT GPIOC
 #define BATTERY_ADC_PIN GPIO_PIN_3
@@ -464,8 +464,11 @@ extern DMA_HandleTypeDef hdma_spi2_tx;
 extern UART_HandleTypeDef hsbus_uart;
 
 void board_init(void);
+#if defined(PLATFORM_STM32H7)
+void board_peripherals_init(void);
+#endif
 bool board_receiver_uart_configure(bool crsf, uint8_t port);
-bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
+bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate, uint32_t stop_bits,
                                  UART_HandleTypeDef *handle);
 bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
                         UART_HandleTypeDef *handle);

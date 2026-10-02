@@ -9,6 +9,7 @@ bool max7456_font_is_ready(void);
 uint8_t max7456_probe_value(void);
 uint8_t max7456_probe_spi_mode(void);
 bool max7456_video_is_pal(void);
+bool max7456_set_video_mode(uint32_t mode);
 bool max7456_is_enabled(void);
 uint8_t max7456_position(void);
 bool max7456_set_config(bool enabled, uint8_t position);

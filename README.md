@@ -2,7 +2,7 @@
 
 *Born to race.*
 
-Current release: **1.4.0**.
+Current release: **1.5.0**.
 
 ## FlightCode in action! 🚀
 
@@ -72,6 +72,24 @@ Version 2 Blackbox metadata and version 7 Configurator JSON logs record both
 the measured main-scheduler period and the interval between fresh gyroscope/PID
 updates. Each sample exposes the periods in microseconds and their derived
 frequencies, alongside the separated P/I/D/FF terms.
+
+## TBS SmartAudio VTX control
+
+SmartAudio V1, V2 and V2.1 use the selected UART TX pad as a single-wire
+4800-baud, 8N2 connection. Select SmartAudio, a free UART, band/channel and
+power in the Configurator, save and reboot with the VTX powered. The firmware
+reads the VTX settings, applies its native A/B/E/F/R channel index and verifies
+the channel, frequency and power before reporting `APPLIED`. Configuration
+transactions run only while disarmed and transmit without blocking the flight
+loop. The OSD tuning menu can also reapply channel/power changes.
+
+V1/V2 TBS Unify power selections are 25, 200, 500 and 800 mW. V2.1 power is
+encoded in dBm and checked against the levels reported by the VTX. Unsupported
+power reports `UNSUPPORTED_POWER` after the channel has been confirmed; an
+unconfirmed channel reports `NOT_CONFIRMED`. The regional channel availability
+matches the Configurator. Physical VTX confirmation still requires bench testing.
+
+Host regression: `gcc -std=c11 -Wall -Wextra -Werror -I tests/smartaudio_stubs tests/smartaudio_test.c -lm -o build/smartaudio_test`
 
 ## Analog / Digital OSD
 

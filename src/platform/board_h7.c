@@ -23,7 +23,7 @@ static ADC_HandleTypeDef hadc1;
 static GPIO_TypeDef *active_imu_cs_port = IMU_PRIMARY_CS_PORT;
 static uint16_t active_imu_cs_pin = IMU_PRIMARY_CS_PIN;
 
-bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
+bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate, uint32_t stop_bits,
                                  UART_HandleTypeDef *handle)
 {
     USART_TypeDef *instance;
@@ -60,7 +60,7 @@ bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate,
     *handle = (UART_HandleTypeDef){0};
     handle->Instance = instance; handle->Init.BaudRate = baud_rate;
     handle->Init.WordLength = UART_WORDLENGTH_8B;
-    handle->Init.StopBits = UART_STOPBITS_1; handle->Init.Parity = UART_PARITY_NONE;
+    handle->Init.StopBits = stop_bits; handle->Init.Parity = UART_PARITY_NONE;
     handle->Init.Mode = UART_MODE_TX_RX; handle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
     handle->Init.OverSampling = UART_OVERSAMPLING_16;
     return HAL_HalfDuplex_Init(handle) == HAL_OK;
@@ -127,22 +127,50 @@ uint16_t board_imu_cs_pin(void) { return active_imu_cs_pin; }
 static void clock_init(void)
 {
     if (HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY) != HAL_OK) board_fatal_error();
+#if defined(BOARD_SEQUREH7V2)
+    /* VOS1/400 MHz also supports STM32H743 silicon revision Y. VOS0 is only
+     * available on revision V and later. */
+    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+#else
     __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE0);
+#endif
     while (!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {
     }
 
+#if defined(BOARD_SEQUREH7V2)
+    /* Betaflight applies this workaround on STM32H743/H750 before enabling
+     * HSE.  On affected silicon HSERDY can otherwise take many seconds (or
+     * time out altogether), which leaves the board apparently dead before
+     * USB is ever initialized.  PH0/PH1 are the HSE oscillator pins. */
+    __HAL_RCC_GPIOH_CLK_ENABLE();
+    HAL_GPIO_WritePin(GPIOH, GPIO_PIN_0 | GPIO_PIN_1, GPIO_PIN_RESET);
+    GPIO_InitTypeDef hse_gpio = {0};
+    hse_gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+    hse_gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    hse_gpio.Pull = GPIO_NOPULL;
+    hse_gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(GPIOH, &hse_gpio);
+#endif
+
     RCC_OscInitTypeDef osc = {0};
-    osc.OscillatorType = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_HSI48;
+    osc.OscillatorType = RCC_OSCILLATORTYPE_HSE |
+                         RCC_OSCILLATORTYPE_HSI48;
     osc.HSEState = RCC_HSE_ON;
     osc.HSI48State = RCC_HSI48_ON;
-    osc.PLL.PLLState = RCC_PLL_ON;
     osc.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+    osc.PLL.PLLState = RCC_PLL_ON;
     osc.PLL.PLLM = 4U;
-    osc.PLL.PLLN = 240U;
+#if defined(BOARD_SEQUREH7V2)
+    /* 8 MHz HSE / 4 * 400 / 2 = 400 MHz SYSCLK. */
+    osc.PLL.PLLN = 400U;
+#else
+    /* 8 MHz HSE / 4 * 480 / 2 = 480 MHz SYSCLK. */
+    osc.PLL.PLLN = 480U;
+#endif
     osc.PLL.PLLP = 2U;
-    osc.PLL.PLLQ = 20U;
-    osc.PLL.PLLR = 2U;
-    osc.PLL.PLLRGE = RCC_PLL1VCIRANGE_1;
+    osc.PLL.PLLQ = 8U;
+    osc.PLL.PLLR = 5U;
+    osc.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
     osc.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
     osc.PLL.PLLFRACN = 0U;
     if (HAL_RCC_OscConfig(&osc) != HAL_OK) board_fatal_error();
@@ -158,11 +186,38 @@ static void clock_init(void)
     clk.APB1CLKDivider = RCC_APB1_DIV2;
     clk.APB2CLKDivider = RCC_APB2_DIV2;
     clk.APB4CLKDivider = RCC_APB4_DIV2;
-    if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_4) != HAL_OK) board_fatal_error();
+    if (HAL_RCC_ClockConfig(&clk,
+#if defined(BOARD_SEQUREH7V2)
+                            FLASH_LATENCY_2
+#else
+                            FLASH_LATENCY_4
+#endif
+                            ) != HAL_OK) board_fatal_error();
+
+    /* Betaflight enables the H7 I/O compensation cell before bringing up
+     * high-speed peripherals, including USB. */
+    __HAL_RCC_CSI_ENABLE();
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
+    HAL_EnableCompensationCell();
+    HAL_Delay(10U);
 
     RCC_PeriphCLKInitTypeDef periph = {0};
     periph.PeriphClockSelection = RCC_PERIPHCLK_USB;
+#if defined(BOARD_SEQUREH7V2)
     periph.UsbClockSelection = RCC_USBCLKSOURCE_HSI48;
+#else
+    /* Generate USB's exact 48 MHz from a dedicated PLL instead of relying on
+     * the free-running HSI48 oscillator. */
+    periph.PLL3.PLL3M = 4U;
+    periph.PLL3.PLL3N = 96U;
+    periph.PLL3.PLL3P = 2U;
+    periph.PLL3.PLL3Q = 4U;
+    periph.PLL3.PLL3R = 2U;
+    periph.PLL3.PLL3RGE = RCC_PLL3VCIRANGE_1;
+    periph.PLL3.PLL3VCOSEL = RCC_PLL3VCOWIDE;
+    periph.PLL3.PLL3FRACN = 0U;
+    periph.UsbClockSelection = RCC_USBCLKSOURCE_PLL3;
+#endif
     if (HAL_RCCEx_PeriphCLKConfig(&periph) != HAL_OK) board_fatal_error();
 }
 
@@ -308,10 +363,6 @@ static bool sequre_receiver_uart(uint8_t port, USART_TypeDef **instance,
         *instance = UART7; *gpio_port = GPIOE; *pin = GPIO_PIN_7;
         *af = GPIO_AF7_UART7; *irq = UART7_IRQn;
         __HAL_RCC_UART7_CLK_ENABLE(); return true;
-    case 8U:
-        *instance = UART8; *gpio_port = GPIOE; *pin = GPIO_PIN_0;
-        *af = GPIO_AF8_UART8; *irq = UART8_IRQn;
-        __HAL_RCC_UART8_CLK_ENABLE(); return true;
     default:
         return false;
     }
@@ -332,8 +383,7 @@ bool board_receiver_uart_configure(bool crsf, uint8_t port)
         const IRQn_Type old_irq = hsbus_uart.Instance == USART1 ? USART1_IRQn :
             hsbus_uart.Instance == USART2 ? USART2_IRQn :
             hsbus_uart.Instance == UART4 ? UART4_IRQn :
-            hsbus_uart.Instance == USART6 ? USART6_IRQn :
-            hsbus_uart.Instance == UART7 ? UART7_IRQn : UART8_IRQn;
+            hsbus_uart.Instance == USART6 ? USART6_IRQn : UART7_IRQn;
         HAL_NVIC_DisableIRQ(old_irq);
         (void)HAL_UART_DeInit(&hsbus_uart);
     }
@@ -430,7 +480,10 @@ static void battery_adc_init(void)
     HAL_GPIO_Init(CURRENT_ADC_PORT, &gpio);
 #endif
     hadc1.Instance = ADC1;
-    hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV8;
+    /* Match Betaflight's H743 ADC clocking.  The previous asynchronous mode
+     * had no RCC ADC source configured, so calibration ran without a clock
+     * and eventually timed out. */
+    hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
     hadc1.Init.Resolution = ADC_RESOLUTION_12B;
     hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
     hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
@@ -462,12 +515,16 @@ void board_init(void)
     HAL_Init();
     clock_init();
     gpio_init();
-    spi_init();
-    if (!board_receiver_uart_configure(true, 1U)) board_fatal_error();
-    battery_adc_init();
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT = 0U;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+void board_peripherals_init(void)
+{
+    spi_init();
+    if (!board_receiver_uart_configure(true, 1U)) board_fatal_error();
+    battery_adc_init();
 }
 
 static uint32_t battery_adc_total;
@@ -613,12 +670,13 @@ static void jump_to_system_bootloader(void)
 {
     const uint32_t stack = *(volatile uint32_t *)SYSTEM_MEMORY_ADDRESS;
     const uint32_t entry = *(volatile uint32_t *)(SYSTEM_MEMORY_ADDRESS + 4U);
-    __disable_irq();
-    HAL_RCC_DeInit();
-    SysTick->CTRL = 0U;
-    SCB_DisableDCache();
-    SCB_DisableICache();
+
+    /* This path runs immediately after NVIC_SystemReset(), before board_init()
+     * changes clocks or starts peripherals.  Leave PRIMASK clear: the STM32H7
+     * ROM USB DFU bootloader needs interrupts in order to enumerate. */
     SCB->VTOR = SYSTEM_MEMORY_ADDRESS;
+    __DSB();
+    __ISB();
     __set_MSP(stack);
     ((void (*)(void))entry)();
     while (1) {

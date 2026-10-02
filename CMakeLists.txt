@@ -4,7 +4,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(FlightCode VERSION 1.4.0 LANGUAGES C ASM)
+project(FlightCode VERSION 1.5.0 LANGUAGES C ASM)
 
 include(FetchContent)
 
@@ -133,6 +133,7 @@ add_executable(FlightCode
     src/drivers/osd/osd_tuning_menu.c
     src/drivers/receiver/sbus.c
     src/drivers/vtx/vtx_tramp.c
+    src/drivers/vtx/vtx_smartaudio.c
     src/drivers/usb/usb_cdc.c
     src/drivers/usb/usbd_conf.c
     src/drivers/usb/usbd_desc.c

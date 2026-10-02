@@ -14,11 +14,11 @@ static motor_protocol_t active_protocol = MOTOR_PROTOCOL_DSHOT300;
 static uint16_t dshot_dma_buffer[DSHOT_FRAME_WORDS][DSHOT_MOTOR_COUNT]
     __attribute__((aligned(32)));
 
-static uint32_t dshot_period_ticks(void)
+static uint32_t dshot_bitrate_hz(void)
 {
-    if (active_protocol == MOTOR_PROTOCOL_DSHOT1200) return 10U;
-    if (active_protocol == MOTOR_PROTOCOL_DSHOT600) return 20U;
-    return 40U;
+    if (active_protocol == MOTOR_PROTOCOL_DSHOT1200) return 1200000U;
+    if (active_protocol == MOTOR_PROTOCOL_DSHOT600) return 600000U;
+    return 300000U;
 }
 
 static uint16_t sanitize(uint16_t value)
@@ -46,6 +46,12 @@ static uint32_t timer_clock_hz(void)
     return clock;
 }
 
+static uint32_t dshot_period_ticks(void)
+{
+    const uint32_t bitrate = dshot_bitrate_hz();
+    return (timer_clock_hz() + bitrate / 2U) / bitrate;
+}
+
 static bool transfer_active(void)
 {
     return (DMA1_Stream0->CR & DMA_SxCR_EN) != 0U;
@@ -65,10 +71,12 @@ static void hardware_init(void)
     };
     HAL_GPIO_Init(MOTOR_1_PORT, &gpio);
 
-    const uint32_t psc = timer_clock_hz() / 12000000U - 1U;
     const uint32_t period = dshot_period_ticks();
     TIM3->CR1 = 0U;
-    TIM3->PSC = psc;
+    /* Run TIM3 directly from its kernel clock.  Computing ARR from the
+     * requested bitrate avoids the 12.5 MHz prescaler rounding that turned
+     * DShot300 into 312.5 kbit/s on the 400 MHz H743 clock tree. */
+    TIM3->PSC = 0U;
     TIM3->ARR = period - 1U;
     TIM3->CCR1 = TIM3->CCR2 = TIM3->CCR3 = TIM3->CCR4 = 0U;
     TIM3->CCMR1 = (6U << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE |
@@ -105,10 +113,12 @@ void dshot_write(const uint16_t values[4])
     for (uint8_t motor = 0U; motor < DSHOT_MOTOR_COUNT; ++motor) {
         const uint16_t frame = packet(sanitize(values[motor]));
         for (uint8_t bit = 0U; bit < 16U; ++bit) {
+            /* Match Betaflight's DShot pulse ratios: 14/20 for a one and
+             * 7/20 for a zero. */
             dshot_dma_buffer[bit][motor] =
                 (frame & (1U << (15U - bit))) != 0U
-                    ? (uint16_t)((period * 3U + 2U) / 4U)
-                    : (uint16_t)((period * 3U + 4U) / 8U);
+                    ? (uint16_t)((period * 14U + 10U) / 20U)
+                    : (uint16_t)((period * 7U + 10U) / 20U);
         }
         dshot_dma_buffer[16][motor] = 0U;
         dshot_dma_buffer[17][motor] = 0U;

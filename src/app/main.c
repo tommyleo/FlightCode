@@ -212,8 +212,13 @@ int main(void)
 {
     board_check_dfu_request();
     board_init();
-    blackbox_sd_init();
+    /* Bring up the configuration port before probing optional storage.  A
+     * missing or unhealthy flash chip must not prevent USB recovery. */
     config_protocol_init();
+#if defined(PLATFORM_STM32H7)
+    board_peripherals_init();
+#endif
+    blackbox_sd_init();
     dshot_init();
     flight_settings_init();
     sbus_init();
@@ -222,7 +227,7 @@ int main(void)
     (void)msp_displayport_init();
     osd_tuning_menu_init();
     /* Start analog VTX control only after all board peripherals are ready.
-     * The Tramp driver then applies the persisted settings once at startup. */
+     * SmartAudio/Tramp apply and verify the persisted settings at startup. */
     (void)vtx_tramp_init();
 
     main_loop_state_t loop = {0};

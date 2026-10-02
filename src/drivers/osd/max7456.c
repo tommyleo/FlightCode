@@ -43,6 +43,7 @@ static bool font_ready;
 static uint8_t probe_value = 0xFFU;
 static uint8_t probe_spi_mode = 0xFFU;
 static bool video_pal = true;
+static uint32_t configured_video_mode;
 static bool enabled;
 static bool menu_active;
 static uint8_t selected_position = 4U;
@@ -242,6 +243,7 @@ static uint8_t battery_glyph(float cell_voltage)
 
 static void write_character(uint16_t position, uint8_t character)
 {
+    if (position >= SCREEN_COLUMNS * (video_pal ? SCREEN_ROWS : 13U)) return;
     write_register(REG_DMAH, (uint8_t)(position >> 8U));
     write_register(REG_DMAL, (uint8_t)position);
     write_register(REG_DMDI, character);
@@ -287,7 +289,8 @@ bool max7456_init(void)
     font_ready = install_font();
     HAL_Delay(100U);
     const uint8_t video_status = transfer(REG_STAT, 0xFFU);
-    if ((video_status & STAT_LOS) == 0U) {
+    if (configured_video_mode == OSD_VIDEO_AUTO &&
+        (video_status & STAT_LOS) == 0U) {
         if ((video_status & STAT_NTSC) != 0U) video_pal = false;
         else if ((video_status & STAT_PAL) != 0U) video_pal = true;
     }
@@ -320,6 +323,31 @@ uint8_t max7456_probe_spi_mode(void)
 bool max7456_video_is_pal(void)
 {
     return video_pal;
+}
+
+bool max7456_set_video_mode(uint32_t mode)
+{
+    if (mode > OSD_VIDEO_NTSC) return false;
+    if (configured_video_mode == mode) return true;
+    configured_video_mode = mode;
+    if (mode == OSD_VIDEO_AUTO) {
+        if (available) {
+            const uint8_t status = transfer(REG_STAT, 0xFFU);
+            if (status != 0xFFU && (status & STAT_LOS) == 0U) {
+                if (status & STAT_PAL) video_pal = true;
+                else if (status & STAT_NTSC) video_pal = false;
+            }
+        }
+    } else {
+        video_pal = mode == OSD_VIDEO_PAL;
+    }
+    if (available) {
+        max7456_clear_screen();
+        write_register(REG_VM0, (video_pal ? VM0_PAL : 0U) |
+                       ((enabled || menu_active) ? VM0_ENABLE : 0U));
+    }
+    reset_render_cache();
+    return true;
 }
 
 bool max7456_is_available(void)
@@ -401,7 +429,7 @@ static void render_layout(const char *total_voltage, const char *cell_text,
 #if BOARD_HAS_CURRENT
     if (settings->current_osd_enabled != 0U) {
         char current[OSD_TEXT_LENGTH + 1U];
-        (void)snprintf(current, sizeof(current), "%.0f A",
+        (void)snprintf(current, sizeof(current), "%3.0fA",
                        (double)board_battery_current());
         const uint32_t position = settings->current_osd_position;
         const uint8_t column = (uint8_t)(position % SCREEN_COLUMNS);

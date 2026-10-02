@@ -149,7 +149,7 @@ static void enqueue_layout(float voltage)
 #if BOARD_HAS_CURRENT
     if (settings->current_osd_enabled != 0U) {
         char current[16];
-        (void)snprintf(current, sizeof(current), "%.0f A",
+        (void)snprintf(current, sizeof(current), "%3.0fA",
                        (double)board_battery_current());
         enqueue_string(settings->current_osd_position, current);
     }

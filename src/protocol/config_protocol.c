@@ -203,14 +203,15 @@ static void send_osd_status(void)
     }
 #endif
 #if BOARD_HAS_OSD
-    reply("@CFG OSD_STATUS %u %u %s %s %s %02X %u %u\n",
+    reply("@CFG OSD_STATUS %u %u %s %s %s %02X %u %u %u\n",
           max7456_is_available() ? 1U : 0U,
           max7456_is_enabled() ? 1U : 0U,
           osd_position_name(max7456_position()),
           max7456_video_is_pal() ? "PAL" : "NTSC",
           max7456_font_is_ready() ? "FONT_OK" : "FONT_FAILED",
           max7456_probe_value(), max7456_probe_spi_mode(),
-          flight_settings_are_saved() ? 1U : 0U);
+          flight_settings_are_saved() ? 1U : 0U,
+          (unsigned)flight_settings_get()->osd_video_mode);
 #elif BOARD_HAS_DIGITAL_OSD
     reply("@CFG OSD_STATUS %u %u DIGITAL HD MSP_DISPLAYPORT 00 0 %u\n",
           msp_displayport_is_available() ? 1U : 0U,
@@ -306,7 +307,7 @@ static void process(const char *command)
 #elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
         reply("@CFG SERIAL_PORTS UART4 UART5 UART6\n");
 #elif defined(BOARD_SEQUREH7V2)
-        reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART6 UART7 UART8\n");
+        reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART6 UART7\n");
 #elif defined(BOARD_HDZERO_HALO)
         reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART5\n");
 #else
@@ -323,6 +324,9 @@ static void process(const char *command)
 #endif
 #if BOARD_HAS_OSD || BOARD_HAS_DIGITAL_OSD
               "OSD_LAYOUT "
+#if BOARD_HAS_OSD
+              "OSD_VIDEO_MODE "
+#endif
 #endif
 #if BOARD_HAS_VBAT_CALIBRATION
               "VBAT_CALIBRATION "
@@ -879,6 +883,25 @@ static void process(const char *command)
 #endif
         return;
     }
+#if BOARD_HAS_OSD
+    char video_mode[8];
+    if (sscanf(command, "SET_OSD_VIDEO_MODE %7s", video_mode) == 1) {
+        if (strcmp(video_mode, "AUTO") == 0) settings.osd_video_mode = OSD_VIDEO_AUTO;
+        else if (strcmp(video_mode, "PAL") == 0) settings.osd_video_mode = OSD_VIDEO_PAL;
+        else if (strcmp(video_mode, "NTSC") == 0) settings.osd_video_mode = OSD_VIDEO_NTSC;
+        else {
+            reply("@CFG ERROR INVALID_OSD_VIDEO_MODE\n");
+            return;
+        }
+        if (!flight_settings_set(&settings)) {
+            reply("@CFG ERROR INVALID_OSD_VIDEO_MODE\n");
+        } else {
+            reply("@CFG OK SET_OSD_VIDEO_MODE\n");
+            send_osd_status();
+        }
+        return;
+    }
+#endif
     unsigned int osd_enabled;
     if (sscanf(command, "SET_OSD_ENABLED %u", &osd_enabled) == 1) {
         settings.osd_enabled = osd_enabled;

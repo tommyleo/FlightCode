@@ -29,18 +29,19 @@ board default and must be checked against a known load before relying on amps
 or consumed capacity.
 
 For digital video, select **HDZero V3 · MSP + DisplayPort** and a free TX UART
-in the Configurator VTX tab, then save and reboot. UART8 has no exposed TX pin
-and cannot carry MSP DisplayPort.
+in the Configurator VTX tab, then save and reboot. UART8 is reserved for the
+internal ESC telemetry connection and cannot carry MSP DisplayPort.
 
-The board exposes six UARTs: UART1 (PA9/PA10), UART2 (PA2/PA3), UART4
-(PA0/PA1), UART6 (PC6/PC7), UART7 (PE8/PE7), and UART8 RX only (PE0).
+The board exposes five UARTs on user-accessible pads: UART1 (PA9/PA10),
+UART2 (PA2/PA3), UART4 (PA0/PA1), UART6 (PC6/PC7), and UART7 (PE8/PE7).
 Choose the receiver and VTX ports in the Configurator without assigning both
 functions to the same UART. SBUS enables the STM32H743 RX inversion on the
-selected port; ELRS/CRSF leaves it disabled. UART8 cannot control a VTX
-because no TX pin is exposed. IRC Tramp carries channel/power commands, not
-the analog OSD video signal. UART6 and UART7 are often used for GPS and HD
-VTX MSP respectively, but those are wiring conventions rather than fixed
-requirements in this target.
+selected port; ELRS/CRSF leaves it disabled. UART8 RX (PE0) is connected
+internally for ESC telemetry and is therefore not offered as a configurable
+receiver or VTX port. IRC Tramp carries channel/power commands, not the analog
+OSD video signal. UART6 and UART7 are often used for GPS and HD VTX MSP
+respectively, but those are wiring conventions rather than fixed requirements
+in this target.
 
 The Configurator's OSD layout editor offers **Current** as a movable item.
 It displays the measured value rounded to whole amperes, for example `45 A`.
@@ -52,3 +53,11 @@ This target has compiled successfully, but has not yet been checked on a
 physical SEQURE H743 V2. Before flight, verify gyro direction, all four motor
 outputs and numbering, receiver, analog OSD, voltage against a multimeter, and
 current against a known load with propellers removed.
+Analog OSD video format can be selected in Camera OSD: Auto, PAL or NTSC.
+Apply changes the format immediately; Save persists the choice for power-on,
+independently of camera startup timing. Auto retains startup detection.
+PAL uses 30 x 16 cells; NTSC uses 30 x 13 visible cells. Existing items outside
+the NTSC grid are marked in the editor and must be moved into the visible area.
+Settings version 27 is migrated with the existing layout and other settings
+preserved; save once after updating to persist the new version.
+Host regression: gcc -std=c11 -I tests/osd_stubs tests/osd_video_mode_test.c -o osd_video_mode_test
