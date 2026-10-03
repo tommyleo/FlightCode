@@ -528,9 +528,9 @@ static void apply(void)
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
 {
-    settings->roll = (pid_settings_t){101U, 190U, 120U};
-    settings->pitch = (pid_settings_t){100U, 200U, 100U};
-    settings->yaw = (pid_settings_t){150U, 250U, 0U};
+    settings->roll = (pid_settings_t){110U, 180U, 105U};
+    settings->pitch = (pid_settings_t){110U, 200U, 105U};
+    settings->yaw = (pid_settings_t){150U, 260U, 0U};
     settings->roll_rate_dps = 420.0f;
     settings->pitch_rate_dps = 420.0f;
     settings->yaw_rate_dps = 350.0f;

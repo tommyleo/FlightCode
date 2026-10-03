@@ -83,8 +83,15 @@ int main(void)
     assert(configured_current==configured_voltage||configured_current+1==configured_voltage);
     voltage_input=3000;advance(6000);
     assert(fabsf(board_battery_current()-0.68943f)<0.001f); /* independent channel */
-    current_input=900;advance(10000);
+    /* Short throttle bursts must reach the display instead of being hidden
+     * by a multi-second filter. Calibration and steady readings are unchanged. */
+    current_input=900;advance(200);
+    assert(board_battery_current()>5.3f&&board_battery_current()<6.9f);
+    advance(300);
     assert(board_battery_current()>6.7f&&board_battery_current()<6.9f);
+    current_input=90;advance(200);
+    assert(board_battery_current()>0.68f&&board_battery_current()<2.1f);
+    advance(800);assert(fabsf(board_battery_current()-0.68943f)<0.003f);
     uint32_t samples=d.samples;board_current_adc_diagnostics(&d);assert(d.samples>samples);
     samples=d.samples;stall=true;unsigned old_stops=stops;advance(150);
     board_current_adc_diagnostics(&d);assert(d.errors>0&&d.samples==samples&&stops>old_stops);
@@ -97,5 +104,5 @@ int main(void)
     now_us=UINT32_MAX-30000U;battery_adc_pending=false;started=false;battery_adc_next_sample_us=now_us;
     samples=current_adc_count;advance(150);assert(current_adc_count>samples);
     board_current_adc_diagnostics(&d);assert(d.age_ms<60);
-    puts("H7 ADC3 physical pin routing, initialization, current scaling, changing input, timeout recovery and wraparound passed");
+    puts("H7 ADC3 physical pin routing, initialization, current scaling, short pulses, fast settling, changing input, timeout recovery and wraparound passed");
 }

@@ -115,3 +115,13 @@ erase in another flashing tool would erase them.
 
 [Betaflight H743 ADC pin map](https://github.com/betaflight/betaflight/blob/master/src/platform/STM32/adc_stm32h7xx.c)
 and [ST H743VITx pin definitions](https://github.com/STMicroelectronics/STM32_open_pin_data/blob/master/mcu/STM32H743VITx.xml).
+
+### Current display response
+
+Current is now filtered on each fresh ADC sample (nominally 20 Hz), using a
+100 ms PT1 time constant. A sustained step reaches approximately 95% in 400 ms,
+instead of the previous eight-sample averaging and smoothing that needed several
+seconds. The 1052 calibration scale and voltage filtering are unchanged. Short
+throttle pulses are still smoothed; displayed current is not a peak-hold meter.
+The ADC host regression checks a 200 ms pulse, settling, decay, and steady scaling.
+No settings layout/version or flash storage changes are required for this update.

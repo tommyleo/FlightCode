@@ -546,8 +546,6 @@ static uint32_t battery_adc_errors;
 static float battery_voltage_filtered;
 static float battery_voltage_multiplier = 1.0f;
 #if BOARD_HAS_CURRENT
-static uint32_t current_adc_total;
-static uint8_t current_adc_samples;
 static bool current_adc_pending;
 static float battery_current_filtered;
 static uint32_t current_adc_raw, current_adc_count, current_adc_last_us;
@@ -613,20 +611,21 @@ void board_battery_update(void)
     battery_adc_pending = false;
 #if BOARD_HAS_CURRENT
     if (current_adc_pending) {
+        const uint32_t now = board_micros();
+        const uint32_t elapsed_us = now - current_adc_last_us;
         current_adc_raw = sample;
         ++current_adc_count;
-        current_adc_last_us = board_micros();
-        current_adc_total += sample;
-        if (++current_adc_samples >= 8U) {
-            const float millivolts = ((float)current_adc_total / 8.0f) *
-                3300.0f / 4095.0f;
-            const float measured = millivolts * 10.0f / CURRENT_METER_SCALE;
-            battery_current_filtered = current_adc_samples == 8U &&
-                battery_current_filtered == 0.0f ? measured :
-                battery_current_filtered * 0.85f + measured * 0.15f;
-            current_adc_total = 0U;
-            current_adc_samples = 0U;
-        }
+        current_adc_last_us = now;
+        const float millivolts = (float)sample * 3300.0f / 4095.0f;
+        const float measured = millivolts * 10.0f / CURRENT_METER_SCALE;
+        /* Filter every fresh current sample (nominally 20 Hz). The former
+         * eight-sample average plus 0.15 smoothing hid short throttle bursts.
+         * A 100 ms PT1 time constant settles in approximately 400 ms, while
+         * elapsed time keeps recovery and timer wraparound well behaved. */
+        const float elapsed_s = (float)elapsed_us * 0.000001f;
+        const float alpha = elapsed_s / (0.100f + elapsed_s);
+        battery_current_filtered = current_adc_count == 1U ? measured :
+            battery_current_filtered + alpha * (measured - battery_current_filtered);
         current_adc_pending = false;
         return;
     }
