@@ -7,7 +7,8 @@
 
 #if BOARD_HAS_DATAFLASH
 
-#define FLASH_BYTES (16U * 1024U * 1024U)
+static uint32_t flash_bytes = 16U * 1024U * 1024U;
+#define FLASH_BYTES flash_bytes
 #define BANK_BYTES (FLASH_BYTES / 2U)
 #define BANK_HEADER_BYTES 256U
 #define ERASE_BLOCK_BYTES (64U * 1024U)
@@ -255,11 +256,15 @@ void blackbox_sd_init(void)
     const bool id_ok = transmit(&command, 1U) &&
         HAL_SPI_Receive(&DATAFLASH_SPI_HANDLE, id, sizeof(id), 10U) == HAL_OK;
     select_flash(false);
-    /* Capacity code 0x18 is 128 Mbit / 16 MiB; accept all JEDEC vendors. */
-    if (!id_ok || id[0] == 0U || id[0] == 0xFFU || id[2] != 0x18U) {
+    /* Standard 24-bit-address NOR only. NAND uses different commands and must
+     * never be mistaken for NOR merely because its capacity byte matches. */
+    const bool nor = (id[1] == 0x40U || id[1] == 0x20U) &&
+                     id[0] != 0U && id[0] != 0xFFU;
+    if (!id_ok || !nor || id[2] < 0x15U || id[2] > 0x18U) {
         fail(ERR_JEDEC, 0U, id[0]);
         return;
     }
+    flash_bytes = 1UL << id[2];
     diagnostics.jedec_id = ((uint32_t)id[0] << 16) |
                            ((uint32_t)id[1] << 8) | id[2];
     available = true;
@@ -457,7 +462,7 @@ const char *blackbox_sd_state_name(void)
     return names[(unsigned)state <= BLACKBOX_SD_ERROR ? state
                                                        : BLACKBOX_SD_ERROR];
 }
-uint32_t blackbox_sd_capacity_mb(void) { return available ? 16U : 0U; }
+uint32_t blackbox_sd_capacity_mb(void) { return available ? FLASH_BYTES / (1024U * 1024U) : 0U; }
 uint32_t blackbox_sd_written_bytes(void) { return written_bytes; }
 uint32_t blackbox_sd_dropped_records(void) { return dropped_records; }
 uint32_t blackbox_sd_total_bytes(void)

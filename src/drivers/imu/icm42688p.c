@@ -82,7 +82,7 @@ static bool read_reg(uint8_t reg, uint8_t *value)
 
 static bool set_spi_prescaler(uint32_t prescaler)
 {
-#if defined(PLATFORM_STM32H7)
+#if defined(PLATFORM_STM32H7) || defined(PLATFORM_AT32)
     IMU_SPI_HANDLE.Init.BaudRatePrescaler = prescaler;
     return HAL_SPI_Init(&IMU_SPI_HANDLE) == HAL_OK;
 #else
@@ -110,7 +110,12 @@ bool icm42688p_init(uint32_t sample_rate_hz)
     gyro_rate_hz = sample_rate_hz >= 32000U ? 32000U
         : sample_rate_hz >= 16000U ? 16000U : 8000U;
     /* Configure and identify the sensor below its 1 MHz startup limit. */
+#if defined(PLATFORM_AT32)
+    /* 144 MHz APB2 / 256 = 562.5 kHz during device reset/configuration. */
+    if (!set_spi_prescaler(SPI_MCLK_DIV_256)) {
+#else
     if (!set_spi_prescaler(SPI_BAUDRATEPRESCALER_128)) {
+#endif
         return false;
     }
     HAL_Delay(2U);

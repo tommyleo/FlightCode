@@ -110,6 +110,24 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "hummingbird200rs-debug",
+      "displayName": "FlightCode Hummingbird 200RS Debug",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/hummingbird200rs-debug",
+      "cacheVariables": {
+        "BOARD": "HUMMINGBIRD_200RS"
+      }
+    },
+    {
+      "name": "hummingbird200rs-release",
+      "displayName": "FlightCode Hummingbird 200RS Release",
+      "inherits": "hummingbird200rs-debug",
+      "binaryDir": "${sourceDir}/build/hummingbird200rs-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -124,6 +142,8 @@
     { "name": "hdzero-halo-debug", "configurePreset": "hdzero-halo-debug" },
     { "name": "hdzero-halo-release", "configurePreset": "hdzero-halo-release" },
     { "name": "sequreh7v2-debug", "configurePreset": "sequreh7v2-debug" },
-    { "name": "sequreh7v2-release", "configurePreset": "sequreh7v2-release" }
+    { "name": "sequreh7v2-release", "configurePreset": "sequreh7v2-release" },
+    { "name": "hummingbird200rs-debug", "configurePreset": "hummingbird200rs-debug" },
+    { "name": "hummingbird200rs-release", "configurePreset": "hummingbird200rs-release" }
   ]
 }

@@ -290,6 +290,11 @@ typedef struct {
     uint32_t checksum;
 } settings_record_t;
 
+#if defined(PLATFORM_AT32)
+_Static_assert(sizeof(settings_record_t) <= 2048U,
+               "AT32 settings must fit in their reserved erase page");
+#endif
+
 static flight_settings_t current_settings;
 static bool settings_saved;
 
@@ -407,6 +412,9 @@ static bool receiver_valid(const flight_settings_t *settings)
 #if !BOARD_HAS_CRSF
            settings->receiver_protocol == RECEIVER_PROTOCOL_SBUS &&
 #endif
+#if defined(BOARD_HUMMINGBIRD_200RS)
+           settings->receiver_protocol == RECEIVER_PROTOCOL_CRSF &&
+#endif
            settings->arm_channel >= 4U && settings->arm_channel < 16U &&
            settings->beep_channel >= 4U && settings->beep_channel < 16U &&
            settings->arm_min_us >= 900U && settings->arm_max_us <= 2100U &&
@@ -420,7 +428,10 @@ vtx_uart_status_t flight_settings_vtx_uart_status(const flight_settings_t *setti
     const uint32_t port = settings->vtx_uart;
     if (settings->vtx_protocol == VTX_PROTOCOL_OFF)
         return port >= 1U && port <= 8U ? VTX_UART_OK : VTX_UART_UNAVAILABLE;
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_HUMMINGBIRD_200RS)
+    if (port == 1U) return VTX_UART_RECEIVER_CONFLICT;
+    const bool supported = port == 5U || port == 7U;
+#elif defined(BOARD_SEQUREH7V2)
     const bool supported = port == 1U || port == 2U || port == 4U ||
                            port == 6U || port == 7U;
 #elif defined(BOARD_CLRACINGF4)
@@ -568,7 +579,7 @@ void flight_settings_reset_defaults(void)
         .osd_element_enabled_mask = 1U,
         .osd_element_positions = {31U, 61U, 51U, 340U, 369U},
         .current_osd_enabled = 0U,
-        .current_osd_position = 85U,
+        .current_osd_position = 84U,
         .osd_pilot_name = "PILOT",
         .vtx_protocol = BOARD_DEFAULT_VTX_PROTOCOL,
         .vtx_uart = BOARD_DEFAULT_VTX_UART,

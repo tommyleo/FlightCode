@@ -171,7 +171,9 @@ void vtx_smartaudio_update(bool armed)
     }
     if (state == TRANSMITTING) {
         if (tx_position < tx_size && __HAL_UART_GET_FLAG(&uart, UART_FLAG_TXE) != RESET) {
-#if defined(PLATFORM_STM32H7)
+#if defined(PLATFORM_AT32)
+            usart_data_transmit(uart.Instance, tx[tx_position++]);
+#elif defined(PLATFORM_STM32H7)
             uart.Instance->TDR = tx[tx_position++];
 #else
             uart.Instance->DR = tx[tx_position++];
@@ -195,7 +197,9 @@ void vtx_smartaudio_update(bool armed)
     }
     for (uint8_t i = 0U; i < BUFFER_SIZE && state == WAIT_RESPONSE; ++i) {
         if (__HAL_UART_GET_FLAG(&uart, UART_FLAG_RXNE) == RESET) break;
-#if defined(PLATFORM_STM32H7)
+#if defined(PLATFORM_AT32)
+        const uint8_t byte = (uint8_t)usart_data_receive(uart.Instance);
+#elif defined(PLATFORM_STM32H7)
         const uint8_t byte = (uint8_t)uart.Instance->RDR;
 #else
         const uint8_t byte = (uint8_t)uart.Instance->DR;

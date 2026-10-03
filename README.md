@@ -1,14 +1,14 @@
-# FlightCode - STM32 flight controllers
+# FlightCode - STM32 and AT32 flight controllers
 
 *Born to race.*
 
-Current release: **1.5.0**.
+Current release: **1.5.1**.
 
 ## FlightCode in action! 🚀
 
 **[Watch the flight video on YouTube](https://youtu.be/JjHND97abkM)**
 
-FlightCode is an experimental Quad X rate-mode firmware for STM32 flight
+FlightCode is an experimental Quad X rate-mode firmware for STM32 and AT32 flight
 controllers. It provides an 8 or 16 kHz main loop, configurable PID and rates,
 DSHOT motor output, receiver support, Blackbox logging, diagnostics and a shared
 USB Configurator.
@@ -46,6 +46,14 @@ Want to use a different controller? Read the
 issue. It lists the hardware documentation and bench testing needed to produce
 a safe, maintainable port.
 
+## AT32 development target
+
+- **[NewBeeDrone Hummingbird 200 RaceSpec](docs/boards/hummingbird200rs.md)**:
+  `HUMMINGBIRD_200RS` · AT32F435G at 288 MHz · ICM-42688-P · integrated
+  ELRS on UART1 · analog OSD and MSP DisplayPort · NOR flash Blackbox.
+  The native AT32 backend builds HEX/BIN firmware and supports Configurator
+  connection and AT32 DFU flashing. Physical board validation is still pending.
+
 ## Core features
 
 - Quad X rate mode with configurable PID, rates, expo, feedforward and TPA;
@@ -57,7 +65,7 @@ a safe, maintainable port.
 - battery telemetry and persistent voltage calibration on supported targets;
 - protected motor test, guided IMU diagnostics and PID/mixer simulation;
 - RAM flight logging and persistent Blackbox on equipped boards;
-- USB CDC configuration and restart into STM32 DFU;
+- USB CDC configuration and restart into STM32 / AT32 DFU;
 - MSP/4-way ESC passthrough for BLHeli_S/Bluejay and AM32;
 - persistent settings stored in a reserved internal flash sector.
 
@@ -160,7 +168,7 @@ src/
 ├── app/                 Firmware entry point and main flight loop
 ├── control/             Rate controller, PID logic and motor mixer
 ├── drivers/             IMU, motors, receiver, OSD and USB drivers
-├── platform/            STM32 board mapping, HAL and interrupts
+├── platform/            STM32 / AT32 board mapping and interrupts
 ├── protocol/            FlightCode Configurator protocol
 └── storage/             Settings, flight log and Blackbox storage
 docs/boards/              Board-specific guides

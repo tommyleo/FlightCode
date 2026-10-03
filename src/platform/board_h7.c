@@ -7,7 +7,7 @@ SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi3;
 DMA_HandleTypeDef hdma_spi2_tx;
 UART_HandleTypeDef hsbus_uart;
-static ADC_HandleTypeDef hadc1;
+static ADC_HandleTypeDef hadc_battery;
 
 #define DFU_REQUEST_ADDRESS 0x2001FFF0U
 #define DFU_REQUEST_MAGIC 0x44554634U
@@ -468,7 +468,13 @@ bool board_receiver_uart_configure(bool crsf, uint8_t port)
 
 static void battery_adc_init(void)
 {
+#if defined(BOARD_SEQUREH7V2)
+    /* H743 LQFP100 exposes PC2_C/PC3_C, directly connected to ADC3
+     * INP0/INP1. ADC1 INP12/INP13 are different internal inputs. */
+    __HAL_RCC_ADC3_CLK_ENABLE();
+#else
     __HAL_RCC_ADC12_CLK_ENABLE();
+#endif
     GPIO_InitTypeDef gpio = {
         .Pin = BATTERY_ADC_PIN,
         .Mode = GPIO_MODE_ANALOG,
@@ -479,35 +485,39 @@ static void battery_adc_init(void)
     gpio.Pin = CURRENT_ADC_PIN;
     HAL_GPIO_Init(CURRENT_ADC_PORT, &gpio);
 #endif
-    hadc1.Instance = ADC1;
+#if defined(BOARD_SEQUREH7V2)
+    hadc_battery.Instance = ADC3;
+#else
+    hadc_battery.Instance = ADC1;
+#endif
     /* Use synchronous H743 ADC clocking.  The previous asynchronous mode
      * had no RCC ADC source configured, so calibration ran without a clock
      * and eventually timed out. */
-    hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
-    hadc1.Init.Resolution = ADC_RESOLUTION_12B;
-    hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-    hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-    hadc1.Init.LowPowerAutoWait = DISABLE;
-    hadc1.Init.ContinuousConvMode = DISABLE;
-    hadc1.Init.NbrOfConversion = 1U;
-    hadc1.Init.DiscontinuousConvMode = DISABLE;
-    hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-    hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-    hadc1.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DR;
-    hadc1.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-    hadc1.Init.LeftBitShift = ADC_LEFTBITSHIFT_NONE;
-    hadc1.Init.OversamplingMode = DISABLE;
-    if (HAL_ADC_Init(&hadc1) != HAL_OK) board_fatal_error();
-    if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET, ADC_SINGLE_ENDED) != HAL_OK)
+    hadc_battery.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+    hadc_battery.Init.Resolution = ADC_RESOLUTION_12B;
+    hadc_battery.Init.ScanConvMode = ADC_SCAN_DISABLE;
+    hadc_battery.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+    hadc_battery.Init.LowPowerAutoWait = DISABLE;
+    hadc_battery.Init.ContinuousConvMode = DISABLE;
+    hadc_battery.Init.NbrOfConversion = 1U;
+    hadc_battery.Init.DiscontinuousConvMode = DISABLE;
+    hadc_battery.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+    hadc_battery.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+    hadc_battery.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DR;
+    hadc_battery.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
+    hadc_battery.Init.LeftBitShift = ADC_LEFTBITSHIFT_NONE;
+    hadc_battery.Init.OversamplingMode = DISABLE;
+    if (HAL_ADC_Init(&hadc_battery) != HAL_OK) board_fatal_error();
+    if (HAL_ADCEx_Calibration_Start(&hadc_battery, ADC_CALIB_OFFSET, ADC_SINGLE_ENDED) != HAL_OK)
         board_fatal_error();
     ADC_ChannelConfTypeDef channel = {0};
     channel.Channel = BATTERY_ADC_CHANNEL;
     channel.Rank = ADC_REGULAR_RANK_1;
-    channel.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
+    channel.SamplingTime = ADC_SAMPLETIME_387CYCLES_5;
     channel.SingleDiff = ADC_SINGLE_ENDED;
     channel.OffsetNumber = ADC_OFFSET_NONE;
     channel.Offset = 0U;
-    if (HAL_ADC_ConfigChannel(&hadc1, &channel) != HAL_OK) board_fatal_error();
+    if (HAL_ADC_ConfigChannel(&hadc_battery, &channel) != HAL_OK) board_fatal_error();
 }
 
 void board_init(void)
@@ -531,6 +541,8 @@ static uint32_t battery_adc_total;
 static uint32_t battery_adc_next_sample_us;
 static uint8_t battery_adc_samples;
 static bool battery_adc_pending;
+static uint32_t battery_adc_started_us;
+static uint32_t battery_adc_errors;
 static float battery_voltage_filtered;
 static float battery_voltage_multiplier = 1.0f;
 #if BOARD_HAS_CURRENT
@@ -538,6 +550,7 @@ static uint32_t current_adc_total;
 static uint8_t current_adc_samples;
 static bool current_adc_pending;
 static float battery_current_filtered;
+static uint32_t current_adc_raw, current_adc_count, current_adc_last_us;
 #endif
 
 uint32_t board_micros(void)
@@ -567,27 +580,42 @@ void board_battery_update(void)
     if (!battery_adc_pending) {
         const uint32_t now = board_micros();
         if ((int32_t)(now - battery_adc_next_sample_us) < 0) return;
+        battery_adc_next_sample_us = now + 25000U;
 #if BOARD_HAS_CURRENT
         ADC_ChannelConfTypeDef channel = {0};
         channel.Channel = current_adc_pending ? CURRENT_ADC_CHANNEL : BATTERY_ADC_CHANNEL;
         channel.Rank = ADC_REGULAR_RANK_1;
-        channel.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
+        channel.SamplingTime = ADC_SAMPLETIME_387CYCLES_5;
         channel.SingleDiff = ADC_SINGLE_ENDED;
         channel.OffsetNumber = ADC_OFFSET_NONE;
-        if (HAL_ADC_ConfigChannel(&hadc1, &channel) != HAL_OK) return;
+        if (HAL_ADC_ConfigChannel(&hadc_battery, &channel) != HAL_OK) {
+            ++battery_adc_errors;
+            return;
+        }
 #endif
-        if (HAL_ADC_Start(&hadc1) == HAL_OK) {
+        if (HAL_ADC_Start(&hadc_battery) == HAL_OK) {
             battery_adc_pending = true;
-            battery_adc_next_sample_us = now + 25000U;
+            battery_adc_started_us = now;
+        } else ++battery_adc_errors;
+        return;
+    }
+    if (HAL_ADC_PollForConversion(&hadc_battery, 0U) != HAL_OK) {
+        /* A missed completion must not leave voltage/current frozen forever. */
+        if ((uint32_t)(board_micros() - battery_adc_started_us) >= 10000U) {
+            HAL_ADC_Stop(&hadc_battery);
+            battery_adc_pending = false;
+            ++battery_adc_errors;
         }
         return;
     }
-    if (HAL_ADC_PollForConversion(&hadc1, 0U) != HAL_OK) return;
-    const uint32_t sample = HAL_ADC_GetValue(&hadc1);
-    HAL_ADC_Stop(&hadc1);
+    const uint32_t sample = HAL_ADC_GetValue(&hadc_battery);
+    HAL_ADC_Stop(&hadc_battery);
     battery_adc_pending = false;
 #if BOARD_HAS_CURRENT
     if (current_adc_pending) {
+        current_adc_raw = sample;
+        ++current_adc_count;
+        current_adc_last_us = board_micros();
         current_adc_total += sample;
         if (++current_adc_samples >= 8U) {
             const float millivolts = ((float)current_adc_total / 8.0f) *
@@ -615,6 +643,16 @@ void board_battery_update(void)
 }
 
 float board_battery_voltage(void) { return battery_voltage_filtered; }
+#if defined(BOARD_SEQUREH7V2)
+void board_current_adc_diagnostics(board_current_adc_diagnostics_t *d)
+{
+    d->raw = current_adc_raw;
+    d->samples = current_adc_count;
+    d->age_ms = current_adc_count ?
+        (uint32_t)(board_micros() - current_adc_last_us) / 1000U : UINT32_MAX;
+    d->errors = battery_adc_errors;
+}
+#endif
 float board_battery_current(void)
 {
 #if BOARD_HAS_CURRENT

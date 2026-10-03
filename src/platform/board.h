@@ -2,7 +2,9 @@
 
 #include <stdbool.h>
 
-#if defined(PLATFORM_STM32H7)
+#if defined(PLATFORM_AT32)
+#include "at32/flightcode_at32.h"
+#elif defined(PLATFORM_STM32H7)
 #include "stm32h7xx_hal.h"
 #else
 #include "stm32f4xx_hal.h"
@@ -16,7 +18,9 @@
 #define IMU_TYPE_ICM42688P 2
 #define IMU_TYPE_AUTODETECT 3
 
-#if defined(BOARD_MAMBAF411)
+#if defined(BOARD_HUMMINGBIRD_200RS)
+#include "at32/hummingbird200rs.h"
+#elif defined(BOARD_MAMBAF411)
 #define BOARD_NAME "MAMBAF411"
 // DIAT Mamba F411 pin mapping.
 #define MOTOR_1_PORT GPIOB
@@ -312,13 +316,14 @@
 #define BOARD_HAS_BATTERY_VOLTAGE 1
 #define BATTERY_ADC_PORT GPIOC
 #define BATTERY_ADC_PIN GPIO_PIN_3
-#define BATTERY_ADC_CHANNEL ADC_CHANNEL_13
+/* PC3_C and PC2_C use ADC3 direct inputs on the H743 LQFP100 package. */
+#define BATTERY_ADC_CHANNEL ADC_CHANNEL_1
 #define BATTERY_VOLTAGE_DIVIDER 11.00f
 #define BOARD_HAS_VBAT_CALIBRATION 1
 #define BOARD_HAS_CURRENT 1
 #define CURRENT_ADC_PORT GPIOC
 #define CURRENT_ADC_PIN GPIO_PIN_2
-#define CURRENT_ADC_CHANNEL ADC_CHANNEL_12
+#define CURRENT_ADC_CHANNEL ADC_CHANNEL_0
 /* Default current scale: 1052 in 0.1 mV/A, zero offset. */
 #define CURRENT_METER_SCALE 1052.0f
 #define BOARD_HAS_OSD 1
@@ -482,6 +487,12 @@ void board_buzzer_update(bool requested);
 void board_battery_update(void);
 float board_battery_voltage(void);
 float board_battery_current(void);
+#if defined(BOARD_SEQUREH7V2)
+typedef struct {
+    uint32_t raw, samples, age_ms, errors;
+} board_current_adc_diagnostics_t;
+void board_current_adc_diagnostics(board_current_adc_diagnostics_t *diagnostics);
+#endif
 void board_battery_set_multiplier(float multiplier);
 void board_imu_select(uint8_t candidate);
 GPIO_TypeDef *board_imu_cs_port(void);

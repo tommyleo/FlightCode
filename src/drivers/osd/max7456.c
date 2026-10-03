@@ -429,9 +429,11 @@ static void render_layout(const char *total_voltage, const char *cell_text,
 #if BOARD_HAS_CURRENT
     if (settings->current_osd_enabled != 0U) {
         char current[OSD_TEXT_LENGTH + 1U];
-        (void)snprintf(current, sizeof(current), "%3.0fA",
+        (void)snprintf(current, sizeof(current), "%5.1fA",
                        (double)board_battery_current());
-        const uint32_t position = settings->current_osd_position;
+        const uint32_t requested = settings->current_osd_position;
+        const uint32_t position = requested - requested % SCREEN_COLUMNS +
+            (requested % SCREEN_COLUMNS > 24U ? 24U : requested % SCREEN_COLUMNS);
         const uint8_t column = (uint8_t)(position % SCREEN_COLUMNS);
         for (uint8_t i = 0U; i < OSD_TEXT_LENGTH && current[i] != '\0' &&
              column + i < SCREEN_COLUMNS; ++i) screen[position + i] = current[i];

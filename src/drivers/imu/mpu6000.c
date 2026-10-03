@@ -70,7 +70,7 @@ static bool set_spi_prescaler(uint32_t prescaler)
      * MPU6000 register configuration is limited to 1 MHz.  Sensor burst
      * reads may subsequently use the faster SPI clock.
      */
-#if defined(PLATFORM_STM32H7)
+#if defined(PLATFORM_STM32H7) || defined(PLATFORM_AT32)
     hspi1.Init.BaudRatePrescaler = prescaler;
     return HAL_SPI_Init(&hspi1) == HAL_OK;
 #else

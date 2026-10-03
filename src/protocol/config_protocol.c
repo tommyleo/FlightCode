@@ -287,6 +287,17 @@ static void send_blackbox_status(void)
 #endif
 }
 
+#if defined(BOARD_SEQUREH7V2)
+static void send_current_adc_diagnostics(void)
+{
+    board_current_adc_diagnostics_t d;
+    board_current_adc_diagnostics(&d);
+    reply("@CFG BATTERY_CURRENT_ADC %lu %lu %lu %lu\n",
+          (unsigned long)d.raw, (unsigned long)d.samples,
+          (unsigned long)d.age_ms, (unsigned long)d.errors);
+}
+#endif
+
 static void process(const char *command)
 {
     if (strcmp(command, "HELLO") == 0) {
@@ -297,12 +308,16 @@ static void process(const char *command)
         reply("@CFG IMU %s 1\n", imu_get_name());
         reply("@CFG GYRO_RATE %lu\n",
               (unsigned long)imu_get_gyro_rate_hz());
-#if BOARD_HAS_CRSF
+#if defined(BOARD_HUMMINGBIRD_200RS)
+        reply("@CFG RECEIVER_PROTOCOLS ELRS\n");
+#elif BOARD_HAS_CRSF
         reply("@CFG RECEIVER_PROTOCOLS SBUS ELRS\n");
 #else
         reply("@CFG RECEIVER_PROTOCOLS SBUS\n");
 #endif
-#if defined(BOARD_CLRACINGF4)
+#if defined(BOARD_HUMMINGBIRD_200RS)
+        reply("@CFG SERIAL_PORTS UART1 UART5 UART7\n");
+#elif defined(BOARD_CLRACINGF4)
         reply("@CFG SERIAL_PORTS UART1 UART3 UART4 UART6\n");
 #elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
         reply("@CFG SERIAL_PORTS UART4 UART5 UART6\n");
@@ -321,6 +336,9 @@ static void process(const char *command)
               "VTX_CONFIG "
 #if BOARD_HAS_CURRENT
               "BATTERY_CURRENT "
+#if defined(BOARD_SEQUREH7V2)
+              "CURRENT_ADC_DIAGNOSTICS "
+#endif
 #endif
 #if BOARD_HAS_OSD || BOARD_HAS_DIGITAL_OSD
               "OSD_LAYOUT "
@@ -516,6 +534,13 @@ static void process(const char *command)
 #endif
         return;
     }
+#if defined(BOARD_SEQUREH7V2)
+    if (strcmp(command, "GET_BATTERY_CURRENT_ADC") == 0) {
+        last_activity_us = board_micros();
+        send_current_adc_diagnostics();
+        return;
+    }
+#endif
     if (strcmp(command, "GET_FLIGHT_LOG_METADATA") == 0) {
         flight_log_metadata_t metadata;
         if (!flight_log_get_metadata(&metadata)) {
@@ -1455,6 +1480,9 @@ void config_protocol_send_telemetry(const sbus_data_t *rx,
     if ((uint32_t)(osd_status_now - last_osd_status_us) >= 1000000U) {
         last_osd_status_us = osd_status_now;
         send_osd_status();
+#if defined(BOARD_SEQUREH7V2)
+        send_current_adc_diagnostics();
+#endif
     }
     static uint32_t last_sbus_diagnostics_us;
     const uint32_t diagnostics_now = board_micros();

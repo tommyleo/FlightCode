@@ -1,0 +1,163 @@
+{
+  "board": "HUMMINGBIRD_200RS",
+  "manufacturer": "NewBeeDrone",
+  "product": "Hummingbird 200 RaceSpec 20x20",
+  "status": "development-hardware-unvalidated",
+  "source": {
+    "url": "https://github.com/newbeedrone/betaflight_config/blob/e0273b9564854e0ee1fbadd8200875b30bd35650/configs/HBRD/HUMMINGBIRD_200RS/config.h",
+    "revision": "e0273b9564854e0ee1fbadd8200875b30bd35650",
+    "checked": "2026-10-03"
+  },
+  "mcu": {
+    "target": "AT32F435G",
+    "core": "cortex-m4",
+    "clockHz": 288000000,
+    "hseHz": 8000000,
+    "flashBytes": 1048576,
+    "ramBytes": null,
+    "ramLayoutNote": "Linker uses 127 KiB; no user-system-data RAM partition changes. Physical RAM configuration requires bench verification.",
+    "linkerRamBytes": 130048
+  },
+  "motors": [
+    "PA10",
+    "PA9",
+    "PA1",
+    "PA0"
+  ],
+  "statusLed": {
+    "pin": "PA8",
+    "activeLevel": null
+  },
+  "ledStrip": {
+    "pin": "PB1"
+  },
+  "buzzer": null,
+  "spi": {
+    "1": {
+      "sck": "PA5",
+      "miso": "PA6",
+      "mosi": "PA7"
+    },
+    "2": {
+      "sck": "PB10",
+      "miso": "PB14",
+      "mosi": "PB15"
+    },
+    "4": {
+      "sck": "PB13",
+      "miso": "PB8",
+      "mosi": "PB9"
+    }
+  },
+  "imu": {
+    "model": "ICM42688P",
+    "spi": 1,
+    "cs": "PA4",
+    "interrupt": "PB11",
+    "clockInput": "PB12",
+    "alignmentDegrees": null
+  },
+  "receiver": {
+    "integrated": true,
+    "radio": "ExpressLRS 2.4GHz diversity",
+    "protocol": "CRSF",
+    "uart": 1,
+    "firmwareTarget": "NewBeeDrone Diversity 2.4Ghz RX V2"
+  },
+  "uart": {
+    "1": {
+      "rx": "PB7",
+      "tx": "PA15",
+      "role": "integrated-receiver"
+    },
+    "2": {
+      "rx": "PB0",
+      "tx": null,
+      "role": "esc-sensor"
+    },
+    "5": {
+      "rx": "PB5",
+      "tx": "PB6",
+      "role": "digital-vtx"
+    },
+    "7": {
+      "rx": "PB3",
+      "tx": "PB4",
+      "role": "free"
+    }
+  },
+  "i2c": {
+    "2": {
+      "scl": "PH2",
+      "sda": "PH3"
+    }
+  },
+  "osd": {
+    "analog": {
+      "model": "NBD7456",
+      "spi": 4,
+      "cs": "PC14",
+      "driverCompatibility": "unverified"
+    },
+    "digital": {
+      "protocol": "MSP_DISPLAYPORT",
+      "uart": 5
+    }
+  },
+  "blackbox": {
+    "spi": 2,
+    "cs": "PC15",
+    "upstreamDrivers": [
+      "M25P16",
+      "W25Q128FV",
+      "W25N01G"
+    ],
+    "fittedModel": null,
+    "capacityBytes": null
+  },
+  "adc": {
+    "instance": 1,
+    "vbat": "PA2",
+    "current": "PA3",
+    "upstreamVoltageScale": 110,
+    "upstreamCurrentScale": 307
+  },
+  "vtxPower": {
+    "pin": "PC13",
+    "volts": 10,
+    "upstreamPinioConfig": 129
+  },
+  "motorDma": {
+    "timerChannels": [
+      "TMR1_CH3",
+      "TMR1_CH2",
+      "TMR2_CH2",
+      "TMR2_CH1"
+    ],
+    "channels": [
+      "DMA1_CH1",
+      "DMA1_CH2",
+      "DMA1_CH3",
+      "DMA1_CH4"
+    ],
+    "requests": [
+      "TMR1_OVERFLOW",
+      "TMR1_OVERFLOW",
+      "TMR2_OVERFLOW",
+      "TMR2_OVERFLOW"
+    ]
+  },
+  "bootloader": {
+    "family": "AT32",
+    "usbIds": {
+      "product": "df11",
+      "vendor": "2e3c"
+    },
+    "flashGeometry": {
+      "settingsAddress": "080ff800",
+      "base": "08000000",
+      "pageBytes": 2048,
+      "pages": 512
+    }
+  }
+}

@@ -149,9 +149,12 @@ static void enqueue_layout(float voltage)
 #if BOARD_HAS_CURRENT
     if (settings->current_osd_enabled != 0U) {
         char current[16];
-        (void)snprintf(current, sizeof(current), "%3.0fA",
+        (void)snprintf(current, sizeof(current), "%5.1fA",
                        (double)board_battery_current());
-        enqueue_string(settings->current_osd_position, current);
+        const uint32_t requested = settings->current_osd_position;
+        const uint32_t position = requested - requested % 30U +
+            (requested % 30U > 24U ? 24U : requested % 30U);
+        enqueue_string(position, current);
     }
 #endif
     enqueue_simple(MSP_DP_DRAW_SCREEN);
@@ -192,7 +195,9 @@ void msp_displayport_process(void)
 #if BOARD_HAS_DIGITAL_OSD
     if (!available || tx_tail == tx_head ||
         __HAL_UART_GET_FLAG(&uart, UART_FLAG_TXE) == RESET) return;
-#if defined(PLATFORM_STM32H7)
+#if defined(PLATFORM_AT32)
+    usart_data_transmit(uart.Instance, tx_buffer[tx_tail]);
+#elif defined(PLATFORM_STM32H7)
     uart.Instance->TDR = tx_buffer[tx_tail];
 #else
     uart.Instance->DR = tx_buffer[tx_tail];
