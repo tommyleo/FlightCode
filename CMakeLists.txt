@@ -5,10 +5,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(BOARD "MAMBAF411" CACHE STRING "Flight controller target")
-set_property(CACHE BOARD PROPERTY STRINGS MAMBAF411 CLRACINGF4 FLYWOOF405NANO FLYWOOF405NANO_ANALOG HDZERO_HALO SEQUREH7V2 HUMMINGBIRD_200RS)
+set_property(CACHE BOARD PROPERTY STRINGS MAMBAF411 CLRACINGF4 FLYWOOF405NANO FLYWOOF405NANO_ANALOG HDZERO_HALO SEQUREH7V2 FOXEERF722V4 FOXEERH743 HUMMINGBIRD_200RS)
 string(TOUPPER "${BOARD}" BOARD)
 
-project(FlightCode VERSION 1.5.1 LANGUAGES C ASM)
+project(FlightCode VERSION 1.6.0 LANGUAGES C ASM)
 
 include(FetchContent)
 
@@ -26,13 +26,19 @@ elseif(BOARD STREQUAL "CLRACINGF4" OR BOARD STREQUAL "FLYWOOF405NANO" OR
     set(MCU_DEFINE STM32F405xx)
     set(STARTUP_FILE startup_stm32f405xx.s)
     set(LINKER_SCRIPT STM32F405RGTx_FLASH.ld)
-elseif(BOARD STREQUAL "HDZERO_HALO" OR BOARD STREQUAL "SEQUREH7V2")
+elseif(BOARD STREQUAL "FOXEERF722V4")
+    set(MCU_DEFINE STM32F722xx)
+    set(STARTUP_FILE startup_stm32f722xx.s)
+    set(LINKER_SCRIPT STM32F722RETx_FLASH.ld)
+    set(STM32_FAMILY_F7 TRUE)
+elseif(BOARD STREQUAL "HDZERO_HALO" OR BOARD STREQUAL "SEQUREH7V2" OR
+       BOARD STREQUAL "FOXEERH743")
     set(MCU_DEFINE STM32H743xx)
     set(STARTUP_FILE startup_stm32h743xx.s)
     set(LINKER_SCRIPT STM32H743VITx_FLASH.ld)
     set(STM32_FAMILY_H7 TRUE)
 else()
-    message(FATAL_ERROR "Unsupported BOARD='${BOARD}'. Use MAMBAF411, CLRACINGF4, FLYWOOF405NANO, FLYWOOF405NANO_ANALOG, HDZERO_HALO, or SEQUREH7V2.")
+    message(FATAL_ERROR "Unsupported BOARD='${BOARD}'. Use MAMBAF411, CLRACINGF4, FLYWOOF405NANO, FLYWOOF405NANO_ANALOG, HDZERO_HALO, SEQUREH7V2, FOXEERF722V4, or FOXEERH743.")
 endif()
 
 FetchContent_Declare(cmsis_core
@@ -49,6 +55,17 @@ if(STM32_FAMILY_H7)
     FetchContent_Declare(stm32_hal
         GIT_REPOSITORY https://github.com/STMicroelectronics/stm32h7xx-hal-driver.git
         GIT_TAG v1.11.5
+        GIT_SHALLOW TRUE
+    )
+elseif(STM32_FAMILY_F7)
+    FetchContent_Declare(cmsis_device
+        GIT_REPOSITORY https://github.com/STMicroelectronics/cmsis-device-f7.git
+        GIT_TAG v1.2.10
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_Declare(stm32_hal
+        GIT_REPOSITORY https://github.com/STMicroelectronics/stm32f7xx-hal-driver.git
+        GIT_TAG v1.3.3
         GIT_SHALLOW TRUE
     )
 else()
@@ -100,6 +117,29 @@ if(STM32_FAMILY_H7)
     set(CPU_FLAGS -mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard)
     set(BOARD_SOURCE src/platform/board_h7.c)
     set(DSHOT_SOURCE src/drivers/motors/dshot_h7.c)
+elseif(STM32_FAMILY_F7)
+    set(SYSTEM_SOURCE ${cmsis_device_SOURCE_DIR}/Source/Templates/system_stm32f7xx.c)
+    set(HAL_FAMILY_SOURCES
+        ${HAL_SRC}/stm32f7xx_hal.c
+        ${HAL_SRC}/stm32f7xx_hal_adc.c
+        ${HAL_SRC}/stm32f7xx_hal_cortex.c
+        ${HAL_SRC}/stm32f7xx_hal_dma.c
+        ${HAL_SRC}/stm32f7xx_hal_flash.c
+        ${HAL_SRC}/stm32f7xx_hal_flash_ex.c
+        ${HAL_SRC}/stm32f7xx_hal_gpio.c
+        ${HAL_SRC}/stm32f7xx_hal_pwr.c
+        ${HAL_SRC}/stm32f7xx_hal_pwr_ex.c
+        ${HAL_SRC}/stm32f7xx_hal_rcc.c
+        ${HAL_SRC}/stm32f7xx_hal_rcc_ex.c
+        ${HAL_SRC}/stm32f7xx_hal_spi.c
+        ${HAL_SRC}/stm32f7xx_hal_uart.c
+        ${HAL_SRC}/stm32f7xx_hal_pcd.c
+        ${HAL_SRC}/stm32f7xx_hal_pcd_ex.c
+        ${HAL_SRC}/stm32f7xx_ll_usb.c
+    )
+    set(CPU_FLAGS -mcpu=cortex-m7 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard)
+    set(BOARD_SOURCE src/platform/board_f7.c)
+    set(DSHOT_SOURCE src/drivers/motors/dshot_f7.c)
 else()
     set(SYSTEM_SOURCE ${cmsis_device_SOURCE_DIR}/Source/Templates/system_stm32f4xx.c)
     set(HAL_FAMILY_SOURCES
@@ -185,6 +225,7 @@ target_compile_definitions(FlightCode PRIVATE
     USE_HAL_DRIVER
     HSE_VALUE=8000000U
     $<$<BOOL:${STM32_FAMILY_H7}>:PLATFORM_STM32H7>
+    $<$<BOOL:${STM32_FAMILY_F7}>:PLATFORM_STM32F7>
 )
 
 target_compile_options(FlightCode PRIVATE

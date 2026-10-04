@@ -397,7 +397,11 @@ static bool filters_valid(const flight_settings_t *settings)
 
 static bool receiver_valid(const flight_settings_t *settings)
 {
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_UART_MASK)
+    const bool uart_valid = settings->receiver_uart >= 1U &&
+        settings->receiver_uart <= 8U &&
+        (BOARD_UART_MASK & (1U << settings->receiver_uart)) != 0U;
+#elif defined(BOARD_SEQUREH7V2)
     const bool uart_valid = settings->receiver_uart == 1U ||
                             settings->receiver_uart == 2U ||
                             settings->receiver_uart == 4U ||
@@ -431,6 +435,9 @@ vtx_uart_status_t flight_settings_vtx_uart_status(const flight_settings_t *setti
 #if defined(BOARD_HUMMINGBIRD_200RS)
     if (port == 1U) return VTX_UART_RECEIVER_CONFLICT;
     const bool supported = port == 5U || port == 7U;
+#elif defined(BOARD_UART_MASK)
+    const bool supported = port >= 1U && port <= 8U &&
+        (BOARD_UART_MASK & (1U << port)) != 0U;
 #elif defined(BOARD_SEQUREH7V2)
     const bool supported = port == 1U || port == 2U || port == 4U ||
                            port == 6U || port == 7U;
@@ -448,7 +455,7 @@ vtx_uart_status_t flight_settings_vtx_uart_status(const flight_settings_t *setti
     const bool supported = port == 1U || port == 2U;
 #endif
     if (!supported) return VTX_UART_UNAVAILABLE;
-#if defined(BOARD_SEQUREH7V2)
+#if BOARD_HAS_SELECTABLE_RECEIVER_UART
     const uint32_t receiver_port = settings->receiver_uart;
 #elif defined(BOARD_MAMBAF411)
     const uint32_t receiver_port = 1U;
@@ -551,12 +558,7 @@ void flight_settings_reset_defaults(void)
         .motor_protocol = MOTOR_PROTOCOL_DSHOT300,
         .board_roll_deg = 0.0f,
         .board_pitch_deg = 0.0f,
-        .board_yaw_deg =
-#if defined(BOARD_SEQUREH7V2)
-            90.0f,
-#else
-            0.0f,
-#endif
+        .board_yaw_deg = BOARD_DEFAULT_YAW_DEG,
         .motor_direction_reversed = 0U,
         .motor_idle_percent = 5.0f,
         .receiver_channel_order = RECEIVER_ORDER_TAER1234,
@@ -570,7 +572,7 @@ void flight_settings_reset_defaults(void)
         .osd_position = 4U,
         .blackbox_enabled = 0U,
         .receiver_protocol = BOARD_DEFAULT_RECEIVER_PROTOCOL,
-#if defined(BOARD_SEQUREH7V2)
+#if BOARD_HAS_SELECTABLE_RECEIVER_UART
         .receiver_uart = 1U,
 #endif
         .main_loop_hz = 16000U,

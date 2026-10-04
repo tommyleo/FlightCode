@@ -2,6 +2,8 @@
 
 #if defined(PLATFORM_STM32H7)
 #include "stm32h7xx_hal.h"
+#elif defined(PLATFORM_STM32F7)
+#include "stm32f7xx_hal.h"
 #else
 #include "stm32f4xx_hal.h"
 #endif

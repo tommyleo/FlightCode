@@ -128,6 +128,46 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "foxeerf722v4-debug",
+      "displayName": "FlightCode FOXEERF722V4 debug",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/foxeerf722v4-debug",
+      "cacheVariables": {
+        "BOARD": "FOXEERF722V4",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "foxeerf722v4-release",
+      "displayName": "FlightCode FOXEERF722V4 release",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/foxeerf722v4-release",
+      "cacheVariables": {
+        "BOARD": "FOXEERF722V4",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "foxeerh743-debug",
+      "displayName": "FlightCode FOXEERH743 debug",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/foxeerh743-debug",
+      "cacheVariables": {
+        "BOARD": "FOXEERH743",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "foxeerh743-release",
+      "displayName": "FlightCode FOXEERH743 release",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/foxeerh743-release",
+      "cacheVariables": {
+        "BOARD": "FOXEERH743",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -144,6 +184,10 @@
     { "name": "sequreh7v2-debug", "configurePreset": "sequreh7v2-debug" },
     { "name": "sequreh7v2-release", "configurePreset": "sequreh7v2-release" },
     { "name": "hummingbird200rs-debug", "configurePreset": "hummingbird200rs-debug" },
-    { "name": "hummingbird200rs-release", "configurePreset": "hummingbird200rs-release" }
+    { "name": "hummingbird200rs-release", "configurePreset": "hummingbird200rs-release" },
+    { "name": "foxeerf722v4-debug", "configurePreset": "foxeerf722v4-debug" },
+    { "name": "foxeerf722v4-release", "configurePreset": "foxeerf722v4-release" },
+    { "name": "foxeerh743-debug", "configurePreset": "foxeerh743-debug" },
+    { "name": "foxeerh743-release", "configurePreset": "foxeerh743-release" }
   ]
 }

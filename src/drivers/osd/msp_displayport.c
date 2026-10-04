@@ -6,6 +6,8 @@
 
 #include "board.h"
 #include "flight_settings.h"
+#include "flight_control.h"
+#include "hdzero_msp.h"
 
 #define MSP_BAUD_RATE 115200U
 #define MSP_DISPLAYPORT 182U
@@ -31,6 +33,8 @@ typedef enum {
 
 #if BOARD_HAS_DIGITAL_OSD
 static UART_HandleTypeDef uart;
+static hdzero_msp_t vtx_peer;
+static uint32_t active_uart;
 static uint8_t tx_buffer[TX_BUFFER_SIZE];
 static uint16_t tx_head;
 static uint16_t tx_tail;
@@ -62,21 +66,30 @@ static bool enqueue_byte(uint8_t value)
     return true;
 }
 
-static bool enqueue_msp(uint8_t command, const uint8_t *payload, uint8_t length)
+static bool enqueue_packet(bool v2, char direction, uint16_t command, const uint8_t *payload, uint8_t length)
 {
-    if (buffer_free() < (uint16_t)length + 6U) {
+    if (buffer_free() < (uint16_t)length + (v2 ? 9U : 6U)) {
         status = DISPLAYPORT_QUEUE_FULL;
         return false;
     }
-    uint8_t checksum = length ^ command;
+    uint8_t checksum = 0U;
     (void)enqueue_byte('$');
-    (void)enqueue_byte('M');
-    (void)enqueue_byte('>');
-    (void)enqueue_byte(length);
-    (void)enqueue_byte(command);
+    (void)enqueue_byte(v2 ? 'X' : 'M');
+    (void)enqueue_byte((uint8_t)direction);
+    if (v2) {
+        const uint8_t header[] = {0U, (uint8_t)command, (uint8_t)(command >> 8), length, 0U};
+        for (unsigned i=0; i<sizeof(header); ++i) {
+            (void)enqueue_byte(header[i]);
+            checksum=hdzero_crc(checksum,header[i]);
+        }
+    } else {
+        (void)enqueue_byte(length);
+        (void)enqueue_byte((uint8_t)command);
+        checksum=length ^ (uint8_t)command;
+    }
     for (uint8_t i = 0U; i < length; ++i) {
         (void)enqueue_byte(payload[i]);
-        checksum ^= payload[i];
+        checksum=v2 ? hdzero_crc(checksum,payload[i]) : checksum ^ payload[i];
     }
     (void)enqueue_byte(checksum);
     if (status == DISPLAYPORT_QUEUE_FULL) status = DISPLAYPORT_READY;
@@ -85,7 +98,7 @@ static bool enqueue_msp(uint8_t command, const uint8_t *payload, uint8_t length)
 
 static bool enqueue_displayport(const uint8_t *payload, uint8_t length)
 {
-    return enqueue_msp(MSP_DISPLAYPORT, payload, length);
+    return enqueue_packet(false, '>', MSP_DISPLAYPORT, payload, length);
 }
 
 static void enqueue_simple(uint8_t subcommand)
@@ -169,10 +182,15 @@ bool msp_displayport_init(void)
     tx_head = tx_tail = 0U;
     status = DISPLAYPORT_NOT_CONFIGURED;
     if (settings->vtx_protocol != VTX_PROTOCOL_HDZERO_MSP) return false;
-    if (!board_uart_tx_init((uint8_t)settings->vtx_uart, MSP_BAUD_RATE, &uart)) {
+    if (!board_uart_tx_rx_init((uint8_t)settings->vtx_uart, MSP_BAUD_RATE, &uart)) {
         status = DISPLAYPORT_UART_ERROR;
         return false;
     }
+    memset(&vtx_peer, 0, sizeof(vtx_peer));
+    vtx_peer.started_us=board_micros();
+    active_uart=settings->vtx_uart;
+    hdzero_configure(&vtx_peer, settings->vtx_band, settings->vtx_channel,
+                     settings->vtx_power_mw, false);
     available = true;
     status = DISPLAYPORT_READY;
     release_sent = false;
@@ -193,11 +211,42 @@ bool msp_displayport_init(void)
 void msp_displayport_process(void)
 {
 #if BOARD_HAS_DIGITAL_OSD
-    if (!available || tx_tail == tx_head ||
+    if (!msp_displayport_is_available()) return;
+    const uint32_t now=board_micros();
+    const bool armed=flight_control_is_armed();
+    const flight_settings_t *settings=flight_settings_get();
+    hdzero_configure(&vtx_peer,settings->vtx_band,settings->vtx_channel,
+                     settings->vtx_power_mw,armed);
+#if defined(PLATFORM_AT32)
+    if (__HAL_UART_GET_FLAG(&uart, UART_FLAG_ORE) != RESET ||
+        __HAL_UART_GET_FLAG(&uart, UART_FLAG_FE) != RESET ||
+        __HAL_UART_GET_FLAG(&uart, UART_FLAG_NE) != RESET) {
+        at32_uart_clear_errors(&uart);
+        vtx_peer.state=0U;
+    }
+#else
+    if (__HAL_UART_GET_FLAG(&uart, UART_FLAG_ORE) != RESET) {
+        __HAL_UART_CLEAR_OREFLAG(&uart);
+        vtx_peer.state=0U;
+    }
+#endif
+    /* Bound RX work so the link cannot hold up the control loop. */
+    for (unsigned i=0; i<8U && __HAL_UART_GET_FLAG(&uart, UART_FLAG_RXNE) != RESET; ++i) {
+#if defined(PLATFORM_AT32)
+        const uint8_t byte=(uint8_t)usart_data_receive(uart.Instance);
+#elif defined(PLATFORM_STM32H7) || defined(PLATFORM_STM32F7)
+        const uint8_t byte=(uint8_t)uart.Instance->RDR;
+#else
+        const uint8_t byte=(uint8_t)uart.Instance->DR;
+#endif
+        hdzero_receive(&vtx_peer,byte,armed,now,enqueue_packet);
+    }
+    hdzero_service(&vtx_peer,now,enqueue_packet);
+    if (tx_tail == tx_head ||
         __HAL_UART_GET_FLAG(&uart, UART_FLAG_TXE) == RESET) return;
 #if defined(PLATFORM_AT32)
     usart_data_transmit(uart.Instance, tx_buffer[tx_tail]);
-#elif defined(PLATFORM_STM32H7)
+#elif defined(PLATFORM_STM32H7) || defined(PLATFORM_STM32F7)
     uart.Instance->TDR = tx_buffer[tx_tail];
 #else
     uart.Instance->DR = tx_buffer[tx_tail];
@@ -209,7 +258,7 @@ void msp_displayport_process(void)
 void msp_displayport_update(float voltage, bool armed, uint32_t now_us)
 {
 #if BOARD_HAS_DIGITAL_OSD
-    if (!available) return;
+    if (!msp_displayport_is_available()) return;
     const flight_settings_t *settings = flight_settings_get();
     if ((uint32_t)(now_us - last_heartbeat_us) >= HEARTBEAT_PERIOD_US) {
         enqueue_simple(MSP_DP_HEARTBEAT);
@@ -240,7 +289,9 @@ void msp_displayport_update(float voltage, bool armed, uint32_t now_us)
 bool msp_displayport_is_available(void)
 {
 #if BOARD_HAS_DIGITAL_OSD
-    return available;
+    const flight_settings_t *settings=flight_settings_get();
+    return available && settings->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP &&
+        settings->vtx_uart == active_uart;
 #else
     return false;
 #endif
@@ -263,5 +314,16 @@ const char *msp_displayport_status_name(void)
     }
 #else
     return "MSP_DISPLAYPORT_UNSUPPORTED";
+#endif
+}
+
+const char *msp_displayport_vtx_status_name(void)
+{
+#if BOARD_HAS_DIGITAL_OSD
+    if (!msp_displayport_is_available())
+        return status == DISPLAYPORT_UART_ERROR ? "UART_ERROR" : "NOT_CONFIGURED";
+    return hdzero_status(&vtx_peer,board_micros());
+#else
+    return "NOT_CONFIGURED";
 #endif
 }

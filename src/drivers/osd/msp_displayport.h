@@ -10,3 +10,5 @@ bool msp_displayport_is_available(void);
 bool msp_displayport_is_enabled(void);
 const char *msp_displayport_status_name(void);
 
+
+const char *msp_displayport_vtx_status_name(void);

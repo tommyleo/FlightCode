@@ -23,6 +23,9 @@ static ADC_HandleTypeDef hadc_battery;
 static GPIO_TypeDef *active_imu_cs_port = IMU_PRIMARY_CS_PORT;
 static uint16_t active_imu_cs_pin = IMU_PRIMARY_CS_PIN;
 
+#if defined(BOARD_FOXEERH743)
+#include "foxeer_uart.h"
+#else
 bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate, uint32_t stop_bits,
                                  UART_HandleTypeDef *handle)
 {
@@ -66,8 +69,8 @@ bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate, uint32_t stop
     return HAL_HalfDuplex_Init(handle) == HAL_OK;
 }
 
-bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
-                        UART_HandleTypeDef *handle)
+static bool board_uart_serial_init(uint8_t port, uint32_t baud_rate,
+                        UART_HandleTypeDef *handle, bool receive)
 {
     USART_TypeDef *instance = NULL;
     GPIO_TypeDef *gpio_port = NULL;
@@ -106,14 +109,29 @@ bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
     gpio.Alternate = gpio_af;
     HAL_GPIO_Init(gpio_port, &gpio);
 
+    if (receive) {
+        GPIO_TypeDef *rx_port = gpio_port;
+        uint16_t rx_pin = (uint16_t)(gpio_pin << 1);
+        if (port == 5U) { rx_port = GPIOD; rx_pin = GPIO_PIN_2; }
+        if (port == 7U) rx_pin = GPIO_PIN_7;
+        gpio.Pin = rx_pin;
+        HAL_GPIO_Init(rx_port, &gpio);
+    }
     *handle = (UART_HandleTypeDef){0};
     handle->Instance = instance; handle->Init.BaudRate = baud_rate;
     handle->Init.WordLength = UART_WORDLENGTH_8B;
     handle->Init.StopBits = UART_STOPBITS_1; handle->Init.Parity = UART_PARITY_NONE;
-    handle->Init.Mode = UART_MODE_TX; handle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    handle->Init.Mode = receive ? UART_MODE_TX_RX : UART_MODE_TX; handle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
     handle->Init.OverSampling = UART_OVERSAMPLING_16;
     return HAL_UART_Init(handle) == HAL_OK;
 }
+
+bool board_uart_tx_init(uint8_t port, uint32_t baud, UART_HandleTypeDef *handle)
+{ return board_uart_serial_init(port, baud, handle, false); }
+bool board_uart_tx_rx_init(uint8_t port, uint32_t baud, UART_HandleTypeDef *handle)
+{ return board_uart_serial_init(port, baud, handle, true); }
+
+#endif
 
 void board_imu_select(uint8_t candidate)
 {
@@ -127,7 +145,7 @@ uint16_t board_imu_cs_pin(void) { return active_imu_cs_pin; }
 static void clock_init(void)
 {
     if (HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY) != HAL_OK) board_fatal_error();
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     /* VOS1/400 MHz also supports STM32H743 silicon revision Y. VOS0 is only
      * available on revision V and later. */
     __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
@@ -137,7 +155,7 @@ static void clock_init(void)
     while (!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {
     }
 
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     /* Apply this workaround on STM32H743/H750 before enabling
      * HSE.  On affected silicon HSERDY can otherwise take many seconds (or
      * time out altogether), which leaves the board apparently dead before
@@ -160,7 +178,7 @@ static void clock_init(void)
     osc.PLL.PLLSource = RCC_PLLSOURCE_HSE;
     osc.PLL.PLLState = RCC_PLL_ON;
     osc.PLL.PLLM = 4U;
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     /* 8 MHz HSE / 4 * 400 / 2 = 400 MHz SYSCLK. */
     osc.PLL.PLLN = 400U;
 #else
@@ -187,7 +205,7 @@ static void clock_init(void)
     clk.APB2CLKDivider = RCC_APB2_DIV2;
     clk.APB4CLKDivider = RCC_APB4_DIV2;
     if (HAL_RCC_ClockConfig(&clk,
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
                             FLASH_LATENCY_2
 #else
                             FLASH_LATENCY_4
@@ -203,7 +221,7 @@ static void clock_init(void)
 
     RCC_PeriphCLKInitTypeDef periph = {0};
     periph.PeriphClockSelection = RCC_PERIPHCLK_USB;
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     periph.UsbClockSelection = RCC_USBCLKSOURCE_HSI48;
 #else
     /* Generate USB's exact 48 MHz from a dedicated PLL instead of relying on
@@ -248,8 +266,13 @@ static void gpio_init(void)
     HAL_GPIO_WritePin(GPIOB, IMU_PRIMARY_CS_PIN | IMU_ALT_CS_PIN, GPIO_PIN_SET);
 
     gpio.Pin = BUZZER_PIN;
+#if BOARD_BUZZER_OUTPUT_OPEN_DRAIN
     gpio.Mode = GPIO_MODE_OUTPUT_OD;
     gpio.Pull = GPIO_PULLUP;
+#else
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
+#endif
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(BUZZER_PORT, &gpio);
     board_buzzer_set(false);
@@ -259,7 +282,7 @@ static void spi_init(void)
 {
     __HAL_RCC_SPI1_CLK_ENABLE();
     __HAL_RCC_SPI2_CLK_ENABLE();
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     __HAL_RCC_SPI3_CLK_ENABLE();
 #endif
 
@@ -294,7 +317,7 @@ static void spi_init(void)
     hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
     if (HAL_SPI_Init(&hspi1) != HAL_OK) board_fatal_error();
 
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     gpio.Pin = MAX7456_CS_PIN;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     gpio.Alternate = 0U;
@@ -306,7 +329,7 @@ static void spi_init(void)
     gpio.Mode = GPIO_MODE_AF_PP;
     gpio.Alternate = GPIO_AF5_SPI2;
     HAL_GPIO_Init(GPIOB, &gpio);
-#if !defined(BOARD_SEQUREH7V2)
+#if !defined(BOARD_SEQUREH7V2) && !defined(BOARD_FOXEERH743)
     gpio.Pin = DATAFLASH_CS_PIN;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     HAL_GPIO_Init(DATAFLASH_CS_PORT, &gpio);
@@ -320,7 +343,7 @@ static void spi_init(void)
     hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
     hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
     if (HAL_SPI_Init(&hspi2) != HAL_OK) board_fatal_error();
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     gpio.Pin = GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
     gpio.Mode = GPIO_MODE_AF_PP;
     gpio.Alternate = GPIO_AF6_SPI3;
@@ -369,9 +392,10 @@ static bool sequre_receiver_uart(uint8_t port, USART_TypeDef **instance,
 }
 #endif
 
+#if !defined(BOARD_FOXEERH743)
 bool board_receiver_uart_configure(bool crsf, uint8_t port)
 {
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     USART_TypeDef *instance = NULL;
     GPIO_TypeDef *gpio_port = NULL;
     uint16_t pin = 0U;
@@ -455,7 +479,7 @@ bool board_receiver_uart_configure(bool crsf, uint8_t port)
     hsbus_uart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
     hsbus_uart.Init.OverSampling = UART_OVERSAMPLING_16;
     hsbus_uart.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     hsbus_uart.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_RXINVERT_INIT;
     hsbus_uart.AdvancedInit.RxPinLevelInvert = UART_ADVFEATURE_RXINV_ENABLE;
 #endif
@@ -466,9 +490,11 @@ bool board_receiver_uart_configure(bool crsf, uint8_t port)
 #endif
 }
 
+#endif
+
 static void battery_adc_init(void)
 {
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     /* H743 LQFP100 exposes PC2_C/PC3_C, directly connected to ADC3
      * INP0/INP1. ADC1 INP12/INP13 are different internal inputs. */
     __HAL_RCC_ADC3_CLK_ENABLE();
@@ -485,7 +511,7 @@ static void battery_adc_init(void)
     gpio.Pin = CURRENT_ADC_PIN;
     HAL_GPIO_Init(CURRENT_ADC_PORT, &gpio);
 #endif
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)
     hadc_battery.Instance = ADC3;
 #else
     hadc_battery.Instance = ADC1;

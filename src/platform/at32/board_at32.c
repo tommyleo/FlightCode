@@ -200,6 +200,15 @@ static bool uart_tx_config(uint8_t port, uint32_t baud, uint32_t stop,
 }
 bool board_uart_tx_init(uint8_t port, uint32_t baud, UART_HandleTypeDef *h)
 { return uart_tx_config(port, baud, UART_STOPBITS_1, h, false); }
+bool board_uart_tx_rx_init(uint8_t port, uint32_t baud, UART_HandleTypeDef *h)
+{
+    if (!uart_tx_config(port, baud, UART_STOPBITS_1, h, false)) return false;
+    /* UART5: PB6 TX / PB5 RX; UART7: PB4 TX / PB3 RX. */
+    at32_gpio_config(GPIOB, port == 5U ? GPIO_PIN_5 : GPIO_PIN_3,
+                     GPIO_MODE_MUX, GPIO_PULL_UP, GPIO_MUX_8);
+    usart_receiver_enable(h->Instance, TRUE);
+    return true;
+}
 bool board_uart_half_duplex_init(uint8_t port, uint32_t baud, uint32_t stop, UART_HandleTypeDef *h)
 { return uart_tx_config(port, baud, stop, h, true); }
 void board_imu_select(uint8_t candidate) { (void)candidate; }

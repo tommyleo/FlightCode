@@ -12,7 +12,7 @@ Pin assignments for this target:
 | Motors 1–4 | PB4, PB5, PB0, PB1 (TIM3 CH1–4) |
 | ICM-42688-P | SPI2, CS PB12; gyro yaw alignment 90 degrees |
 | AT7456E analog OSD | SPI1, CS PA4 |
-| Digital OSD | MSP DisplayPort on a free TX UART |
+| Digital OSD | MSP DisplayPort on a free UART |
 | W25Q128 flash | SPI3, CS PA15 |
 | Receiver SBUS or ELRS/CRSF | Selectable RX UART; default UART1 / PA10 |
 | IRC Tramp VTX control | Selectable TX UART; default UART2 / PA2 |
@@ -28,7 +28,7 @@ current pad cannot provide a meaningful reading. FlightCode reports
 board default and must be checked against a known load before relying on amps
 or consumed capacity.
 
-For digital video, select **HDZero V3 · MSP + DisplayPort** and a free TX UART
+For digital video, select **HDZero V3 · MSP + DisplayPort** and a free UART
 in the Configurator VTX tab, then save and reboot. UART8 is reserved for the
 internal ESC telemetry connection and cannot carry MSP DisplayPort.
 

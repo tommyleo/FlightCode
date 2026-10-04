@@ -14,7 +14,7 @@ The `CLRACINGF4` target uses the CL Racing F4 hardware mapping.
 | Motors | M1 PB0, M2 PB1, M3 PA3, M4 PA2 |
 | Battery voltage | ADC PC2, 11:1 base divider with calibration |
 | Analog OSD | MAX7456/AT7456E on SPI3, CS PA15 |
-| Digital OSD | MSP DisplayPort on a free TX UART |
+| Digital OSD | MSP DisplayPort on a free UART |
 | Status LED | PB5 |
 | Buzzer | Passive 5 kHz timer-driven output on PB4 |
 | Persistent Blackbox | microSD on SPI2, CS PB12, detect PB7 |
@@ -27,7 +27,7 @@ receiver cannot prevent USB DFU detection.
 
 ## OSD tuning menu
 
-For digital video, select **HDZero V3 · MSP + DisplayPort** and a free TX UART
+For digital video, select **HDZero V3 · MSP + DisplayPort** and a free UART
 in the Configurator VTX tab, then save and reboot. Do not reuse the receiver
 UART. The controllable inverter affects the UART1 SBUS RX path only; UART3
 is not inverted. UART1 can be used for DisplayPort only when the receiver is

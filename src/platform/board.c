@@ -89,8 +89,8 @@ bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate, uint32_t stop
     return HAL_HalfDuplex_Init(handle) == HAL_OK;
 }
 
-bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
-                        UART_HandleTypeDef *handle)
+static bool board_uart_serial_init(uint8_t port, uint32_t baud_rate,
+                        UART_HandleTypeDef *handle, bool receive)
 {
     USART_TypeDef *instance = NULL;
     GPIO_TypeDef *gpio_port = NULL;
@@ -139,14 +139,26 @@ bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
     gpio.Alternate = gpio_af;
     HAL_GPIO_Init(gpio_port, &gpio);
 
+    if (receive) {
+        GPIO_TypeDef *rx_port = gpio_port;
+        uint16_t rx_pin = (uint16_t)(gpio_pin << 1);
+        if (port == 5U) { rx_port = GPIOD; rx_pin = GPIO_PIN_2; }
+        gpio.Pin = rx_pin;
+        HAL_GPIO_Init(rx_port, &gpio);
+    }
     *handle = (UART_HandleTypeDef){0};
     handle->Instance = instance; handle->Init.BaudRate = baud_rate;
     handle->Init.WordLength = UART_WORDLENGTH_8B;
     handle->Init.StopBits = UART_STOPBITS_1; handle->Init.Parity = UART_PARITY_NONE;
-    handle->Init.Mode = UART_MODE_TX; handle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    handle->Init.Mode = receive ? UART_MODE_TX_RX : UART_MODE_TX; handle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
     handle->Init.OverSampling = UART_OVERSAMPLING_16;
     return HAL_UART_Init(handle) == HAL_OK;
 }
+
+bool board_uart_tx_init(uint8_t port, uint32_t baud, UART_HandleTypeDef *handle)
+{ return board_uart_serial_init(port, baud, handle, false); }
+bool board_uart_tx_rx_init(uint8_t port, uint32_t baud, UART_HandleTypeDef *handle)
+{ return board_uart_serial_init(port, baud, handle, true); }
 
 static void isolate_receiver_from_bootloader(void)
 {

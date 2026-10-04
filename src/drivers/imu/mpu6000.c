@@ -25,7 +25,7 @@ static bool write_reg(uint8_t reg, uint8_t value)
 {
     uint8_t data[2] = {reg, value};
     HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_RESET);
-    const HAL_StatusTypeDef status = HAL_SPI_Transmit(&hspi1, data, 2, 10);
+    const HAL_StatusTypeDef status = HAL_SPI_Transmit(&IMU_SPI_HANDLE, data, 2, 10);
     HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_SET);
     return status == HAL_OK;
 }
@@ -49,7 +49,7 @@ static bool read_regs(uint8_t reg, uint8_t *data, uint16_t length)
      */
     HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_RESET);
     const HAL_StatusTypeDef status =
-        HAL_SPI_TransmitReceive(&hspi1, tx, rx, length + 1U, 10U);
+        HAL_SPI_TransmitReceive(&IMU_SPI_HANDLE, tx, rx, length + 1U, 10U);
     HAL_GPIO_WritePin(IMU_CS_PORT, IMU_CS_PIN, GPIO_PIN_SET);
     if (status == HAL_OK) {
         for (uint16_t i = 0U; i < length; ++i) {
@@ -71,19 +71,19 @@ static bool set_spi_prescaler(uint32_t prescaler)
      * reads may subsequently use the faster SPI clock.
      */
 #if defined(PLATFORM_STM32H7) || defined(PLATFORM_AT32)
-    hspi1.Init.BaudRatePrescaler = prescaler;
-    return HAL_SPI_Init(&hspi1) == HAL_OK;
+    IMU_SPI_HANDLE.Init.BaudRatePrescaler = prescaler;
+    return HAL_SPI_Init(&IMU_SPI_HANDLE) == HAL_OK;
 #else
     const uint32_t started = HAL_GetTick();
-    while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_BSY) != RESET) {
+    while (__HAL_SPI_GET_FLAG(&IMU_SPI_HANDLE, SPI_FLAG_BSY) != RESET) {
         if ((HAL_GetTick() - started) > 10U) {
             return false;
         }
     }
-    __HAL_SPI_DISABLE(&hspi1);
-    MODIFY_REG(hspi1.Instance->CR1, SPI_CR1_BR, prescaler);
-    hspi1.Init.BaudRatePrescaler = prescaler;
-    __HAL_SPI_ENABLE(&hspi1);
+    __HAL_SPI_DISABLE(&IMU_SPI_HANDLE);
+    MODIFY_REG(IMU_SPI_HANDLE.Instance->CR1, SPI_CR1_BR, prescaler);
+    IMU_SPI_HANDLE.Init.BaudRatePrescaler = prescaler;
+    __HAL_SPI_ENABLE(&IMU_SPI_HANDLE);
     return true;
 #endif
 }

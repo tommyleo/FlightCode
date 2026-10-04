@@ -2,7 +2,7 @@
 
 *Born to race.*
 
-Current release: **1.5.1**.
+Current release: **1.6.0**.
 
 ## FlightCode in action! 🚀
 
@@ -33,10 +33,19 @@ USB Configurator.
 - **[SEQURE H743 V2](docs/boards/sequreh7v2.md)**<br>
   `SEQUREH7V2` · STM32H743 · ICM-42688-P · Analog/Digital OSD (AT7456E + MSP DisplayPort) · ADC voltage/current · flash Blackbox
 
+- **[Foxeer F722 V4](docs/boards/foxeerf722v4.md)**<br>
+  `FOXEERF722V4` · STM32F722 · automatic MPU6000 / ICM-42688-P detection · SBUS/CRSF · Analog/Digital OSD · ADC voltage/current · flash Blackbox
+
+- **[Foxeer H743](docs/boards/foxeerh743.md)**<br>
+  `FOXEERH743` · STM32H743 · automatic MPU6000 / ICM-42688-P detection · SBUS/CRSF · Analog/Digital OSD · ADC voltage/current · flash Blackbox
+
+- **[Foxeer H7 Mini MPU6000](docs/boards/foxeerh7-mini-mpu6000.md)**<br>
+  `FOXEERH743` · shared H743 firmware · STM32H743 · MPU6000 at 8 kHz · 20 × 20 mm mounting · Analog/Digital OSD · flash Blackbox
+
 Each board page contains its pin mapping, supported hardware, receiver and OSD
 details, build command and firmware output path.
 
-The SEQURE target compiles but still needs validation on a physical board
+The SEQURE and Foxeer targets compile but still need validation on physical boards
 before flight. Receiver and VTX UARTs are selectable in the Configurator;
 SBUS RX inversion is enabled on the selected UART and disabled for ELRS/CRSF.
 ELRS telemetry transmission is not yet implemented.
@@ -145,16 +154,21 @@ exits without saving.
 
 ### Digital OSD
 
-All listed STM32 targets can send MSP DisplayPort on a free TX UART at
+All listed STM32 targets can use MSP + DisplayPort on a free UART at
 115200 baud. FlightCode sends a non-blocking HDZero-compatible 30 × 16
 canvas centered in the HD display, so the same Configurator layout editor and
 saved element positions work on analog and digital video.
 
 On the Flywoo HD and HDZero Halo targets, MSP DisplayPort is enabled by
 default. On boards that also have an analog OSD chip, select **HDZero V3 ·
-MSP + DisplayPort** and a free TX UART in the VTX tab, save, then reboot.
+MSP + DisplayPort** and a free UART in the VTX tab, save, then reboot.
 Do not assign that UART to the receiver or another peripheral. The analog
 chip remains available for analog video when digital OSD is not selected.
+
+HDZero band/channel and 25/200 mW power control now shares the OSD UART.
+Connect both UART wires (FC TX to VTX RX, FC RX to VTX TX) and ground.
+See the [HDZero MSP guide](docs/hdzero-msp.md) for wiring, link status and
+bench validation. Host regression: `tools/test-hdzero.ps1`.
 
 ## Building on Windows
 

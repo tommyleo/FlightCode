@@ -14,7 +14,7 @@ Do not use the Analog target firmware on this board.
 | Receiver | SBUS(5) on UART5 RX PD2; external CRSF on UART4 RX PA1 |
 | Motors | M1 PB0, M2 PB1, M3 PA3, M4 PA2 |
 | Battery voltage | ADC PC3, 11:1 base divider with calibration |
-| Digital OSD | MSP DisplayPort at 115200 baud on UART6 TX PC6 |
+| Digital OSD | MSP DisplayPort at 115200 baud on UART6 PC6 TX / PC7 RX |
 | Status LED | PC14 |
 | Buzzer | PC13 |
 | Persistent Blackbox | 16 MiB W25Q128 on SPI3, CS PB3 |

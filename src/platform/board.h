@@ -6,6 +6,8 @@
 #include "at32/flightcode_at32.h"
 #elif defined(PLATFORM_STM32H7)
 #include "stm32h7xx_hal.h"
+#elif defined(PLATFORM_STM32F7)
+#include "stm32f7xx_hal.h"
 #else
 #include "stm32f4xx_hal.h"
 #endif
@@ -261,6 +263,8 @@
 #define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM2_TIM3
 #define BOARD_BUZZER_REQUIRES_TONE 0
 #define BOARD_BUZZER_OUTPUT_OPEN_DRAIN 0
+#elif defined(BOARD_FOXEERF722V4)
+#include "foxeer_f722.h"
 #elif defined(BOARD_SEQUREH7V2)
 #define BOARD_NAME "SEQUREH7V2"
 /* SEQURE H743 V2: SPI1 OSD, SPI2 gyro, SPI3 flash. */
@@ -342,6 +346,89 @@
 #define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM3_CH1_4
 #define BOARD_BUZZER_REQUIRES_TONE 0
 #define BOARD_BUZZER_OUTPUT_OPEN_DRAIN 1
+#elif defined(BOARD_FOXEERH743)
+#define BOARD_NAME "FOXEERH743"
+/* Foxeer H743: SPI1 OSD, SPI2 gyro, SPI3 flash. */
+#define MOTOR_1_PORT GPIOB
+#define MOTOR_1_PIN GPIO_PIN_4
+#define MOTOR_2_PORT GPIOB
+#define MOTOR_2_PIN GPIO_PIN_5
+#define MOTOR_3_PORT GPIOB
+#define MOTOR_3_PIN GPIO_PIN_0
+#define MOTOR_4_PORT GPIOB
+#define MOTOR_4_PIN GPIO_PIN_1
+#define STATUS_LED_PORT GPIOC
+#define STATUS_LED_PIN GPIO_PIN_13
+#define STATUS_LED_ACTIVE_LEVEL GPIO_PIN_RESET
+#define BUZZER_PORT GPIOD
+#define BUZZER_PIN GPIO_PIN_2
+#define BUZZER_ACTIVE_LEVEL GPIO_PIN_RESET
+#define BOARD_HAS_SBUS_INVERTER_CONTROL 0
+#define SBUS_UART_INSTANCE USART1
+#define SBUS_UART_IRQn USART1_IRQn
+#define SBUS_UART_IRQ_HANDLER USART1_IRQHandler
+#define SBUS_UART_CLOCK_ENABLE() __HAL_RCC_USART1_CLK_ENABLE()
+#define SBUS_RX_PORT GPIOA
+#define SBUS_RX_PIN GPIO_PIN_10
+#define SBUS_RX_AF GPIO_AF7_USART1
+#define SBUS_UART_NAME "UART1"
+#define BOARD_HAS_CRSF 1
+#define CRSF_UART_INSTANCE USART1
+#define CRSF_UART_IRQn USART1_IRQn
+#define CRSF_UART_IRQ_HANDLER USART1_IRQHandler
+#define CRSF_UART_CLOCK_ENABLE() __HAL_RCC_USART1_CLK_ENABLE()
+#define CRSF_RX_PORT GPIOA
+#define CRSF_RX_PIN GPIO_PIN_10
+#define CRSF_RX_AF GPIO_AF7_USART1
+#define CRSF_UART_NAME "UART1"
+#define BOARD_RECEIVER_UART_SHARED 1
+#define BOARD_DEFAULT_RECEIVER_PROTOCOL RECEIVER_PROTOCOL_CRSF
+#define SETTINGS_ADDRESS 0x081E0000U
+#define SETTINGS_FLASH_SECTOR FLASH_SECTOR_7
+#define SETTINGS_FLASH_BANK FLASH_BANK_2
+#define FLIGHT_LOG_ADDRESS 0x081C0000U
+#define FLIGHT_LOG_FLASH_SECTOR FLASH_SECTOR_6
+#define FLIGHT_LOG_FLASH_BANK FLASH_BANK_2
+#define IMU_PRIMARY_CS_PORT GPIOB
+#define IMU_PRIMARY_CS_PIN GPIO_PIN_12
+#define IMU_ALT_CS_PORT GPIOB
+#define IMU_ALT_CS_PIN GPIO_PIN_12
+#define IMU_CS_PORT board_imu_cs_port()
+#define IMU_CS_PIN board_imu_cs_pin()
+#define IMU_SPI_HANDLE hspi2
+#define BOARD_IMU_TYPE IMU_TYPE_AUTODETECT
+#define BOARD_CORE_CLOCK_HZ 400000000U
+#define BOARD_HAS_BATTERY_VOLTAGE 1
+#define BATTERY_ADC_PORT GPIOC
+#define BATTERY_ADC_PIN GPIO_PIN_3
+/* PC3_C and PC2_C use ADC3 direct inputs on the H743 LQFP100 package. */
+#define BATTERY_ADC_CHANNEL ADC_CHANNEL_1
+#define BATTERY_VOLTAGE_DIVIDER 11.00f
+#define BOARD_HAS_VBAT_CALIBRATION 1
+#define BOARD_HAS_CURRENT 1
+#define CURRENT_ADC_PORT GPIOC
+#define CURRENT_ADC_PIN GPIO_PIN_2
+#define CURRENT_ADC_CHANNEL ADC_CHANNEL_0
+/* Betaflight default current scale: 100 in 0.1 mV/A. */
+#define CURRENT_METER_SCALE 100.0f
+#define BOARD_HAS_OSD 1
+#define BOARD_HAS_DIGITAL_OSD 1
+#define OSD_SPI_HANDLE hspi1
+#define MAX7456_CS_PORT GPIOA
+#define MAX7456_CS_PIN GPIO_PIN_4
+#define BOARD_DEFAULT_OSD_ENABLED 1U
+#define BOARD_DEFAULT_VTX_UART 2U
+#define BOARD_HAS_SDCARD 0
+#define BOARD_HAS_DATAFLASH 1
+#define DATAFLASH_SPI_HANDLE hspi3
+#define DATAFLASH_CS_PORT GPIOA
+#define DATAFLASH_CS_PIN GPIO_PIN_15
+#define BOARD_FLIGHT_LOG_CAPACITY 2688U
+#define BOARD_MOTOR_OUTPUT_LAYOUT MOTOR_OUTPUT_LAYOUT_TIM3_CH1_4
+#define BOARD_BUZZER_REQUIRES_TONE 0
+#define BOARD_BUZZER_OUTPUT_OPEN_DRAIN 0
+#define BOARD_UART_MASK 0x1DEU /* UART1/2/3/4/6/7/8; SPI3 occupies UART5 TX. */
+#define BOARD_HAS_SELECTABLE_RECEIVER_UART 1
 #elif defined(BOARD_HDZERO_HALO)
 #define BOARD_NAME "HDZERO_HALO"
 /* HDZero Halo pin mapping. */
@@ -424,6 +511,21 @@
 #error "No supported board selected"
 #endif
 
+#ifndef BOARD_HAS_SELECTABLE_RECEIVER_UART
+#if defined(BOARD_SEQUREH7V2)
+#define BOARD_HAS_SELECTABLE_RECEIVER_UART 1
+#else
+#define BOARD_HAS_SELECTABLE_RECEIVER_UART 0
+#endif
+#endif
+#ifndef BOARD_DEFAULT_YAW_DEG
+#if defined(BOARD_SEQUREH7V2)
+#define BOARD_DEFAULT_YAW_DEG 90.0f
+#else
+#define BOARD_DEFAULT_YAW_DEG 0.0f
+#endif
+#endif
+
 #ifndef BOARD_HAS_SDCARD
 #define BOARD_HAS_SDCARD 0
 #endif
@@ -469,12 +571,13 @@ extern DMA_HandleTypeDef hdma_spi2_tx;
 extern UART_HandleTypeDef hsbus_uart;
 
 void board_init(void);
-#if defined(PLATFORM_STM32H7)
+#if defined(PLATFORM_STM32H7) || defined(PLATFORM_STM32F7)
 void board_peripherals_init(void);
 #endif
 bool board_receiver_uart_configure(bool crsf, uint8_t port);
 bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate, uint32_t stop_bits,
                                  UART_HandleTypeDef *handle);
+bool board_uart_tx_rx_init(uint8_t port, uint32_t baud_rate, UART_HandleTypeDef *handle);
 bool board_uart_tx_init(uint8_t port, uint32_t baud_rate,
                         UART_HandleTypeDef *handle);
 void board_fatal_error(void);

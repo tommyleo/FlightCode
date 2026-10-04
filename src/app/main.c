@@ -215,7 +215,7 @@ int main(void)
     /* Bring up the configuration port before probing optional storage.  A
      * missing or unhealthy flash chip must not prevent USB recovery. */
     config_protocol_init();
-#if defined(PLATFORM_STM32H7)
+#if defined(PLATFORM_STM32H7) || defined(PLATFORM_STM32F7)
     board_peripherals_init();
 #endif
     blackbox_sd_init();

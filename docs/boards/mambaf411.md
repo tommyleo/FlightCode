@@ -14,7 +14,7 @@ The `MAMBAF411` target uses the DIAT Mamba F411 hardware mapping.
 | Motors | M1 PB3, M2 PB4, M3 PB6, M4 PB7 |
 | Battery voltage | ADC PA0, 16.2:1 base divider |
 | Analog OSD | MAX7456/AT7456E on SPI2, CS PB12 |
-| Digital OSD | MSP DisplayPort on a free TX UART (typically UART2 / PA2) |
+| Digital OSD | MSP DisplayPort on a free UART (typically UART2 / PA2) |
 | Status LED | PC13 |
 | Buzzer | Active-low PB2 |
 | Persistent Blackbox | Not available; RAM flight log remains supported |

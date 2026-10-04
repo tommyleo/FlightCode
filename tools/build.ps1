@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("MAMBAF411", "CLRACINGF4", "FLYWOOF405NANO", "FLYWOOF405NANO_ANALOG", "HDZERO_HALO", "SEQUREH7V2", "HUMMINGBIRD_200RS", "All")]
+    [ValidateSet("MAMBAF411", "CLRACINGF4", "FLYWOOF405NANO", "FLYWOOF405NANO_ANALOG", "HDZERO_HALO", "SEQUREH7V2", "FOXEERF722V4", "FOXEERH743", "HUMMINGBIRD_200RS", "All")]
     [string]$Board = "MAMBAF411",
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release"
@@ -38,7 +38,7 @@ if (-not $cmake -or -not $ninja) {
 }
 
 $boards = if ($Board -eq "All") {
-    @("MAMBAF411", "CLRACINGF4", "FLYWOOF405NANO", "FLYWOOF405NANO_ANALOG", "HDZERO_HALO", "SEQUREH7V2", "HUMMINGBIRD_200RS")
+    @("MAMBAF411", "CLRACINGF4", "FLYWOOF405NANO", "FLYWOOF405NANO_ANALOG", "HDZERO_HALO", "SEQUREH7V2", "FOXEERF722V4", "FOXEERH743", "HUMMINGBIRD_200RS")
 } else {
     @($Board)
 }
@@ -51,6 +51,8 @@ foreach ($selectedBoard in $boards) {
         "FLYWOOF405NANO_ANALOG" { "flywoof405nano-analog-" }
         "HDZERO_HALO" { "hdzero-halo-" }
         "SEQUREH7V2" { "sequreh7v2-" }
+        "FOXEERF722V4" { "foxeerf722v4-" }
+        "FOXEERH743" { "foxeerh743-" }
         "HUMMINGBIRD_200RS" { "hummingbird200rs-" }
     }
     $preset = $prefix + $Configuration.ToLowerInvariant()

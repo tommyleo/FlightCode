@@ -25,7 +25,11 @@ void SBUS_UART_IRQ_HANDLER(void)
     HAL_UART_IRQHandler(&hsbus_uart);
 }
 
-#if defined(BOARD_SEQUREH7V2)
+#if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743) || defined(BOARD_FOXEERF722V4)
+void USART3_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
+#if defined(BOARD_FOXEERF722V4)
+void UART5_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
+#endif
 void USART2_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
 void UART4_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }
 void USART6_IRQHandler(void) { HAL_UART_IRQHandler(&hsbus_uart); }

@@ -158,7 +158,7 @@ static void send_filters(void)
 static void send_receiver_config(void)
 {
     const flight_settings_t *s = flight_settings_get();
-#if defined(BOARD_SEQUREH7V2)
+#if BOARD_HAS_SELECTABLE_RECEIVER_UART
     char dynamic_port[8];
     (void)snprintf(dynamic_port, sizeof(dynamic_port), "UART%lu",
                    (unsigned long)s->receiver_uart);
@@ -235,7 +235,7 @@ static void send_vtx_config(void)
           flight_settings_are_saved() ? 1U : 0U);
     reply("@CFG VTX_STATUS %s\n",
           s->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP
-              ? msp_displayport_status_name() : vtx_tramp_status_name());
+              ? msp_displayport_vtx_status_name() : vtx_tramp_status_name());
 }
 
 static void send_osd_layout(void)
@@ -321,6 +321,10 @@ static void process(const char *command)
         reply("@CFG SERIAL_PORTS UART1 UART3 UART4 UART6\n");
 #elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
         reply("@CFG SERIAL_PORTS UART4 UART5 UART6\n");
+#elif defined(BOARD_FOXEERF722V4)
+        reply("@CFG SERIAL_PORTS UART1 UART2 UART3 UART4 UART5 UART6\n");
+#elif defined(BOARD_FOXEERH743)
+        reply("@CFG SERIAL_PORTS UART1 UART2 UART3 UART4 UART6 UART7 UART8\n");
 #elif defined(BOARD_SEQUREH7V2)
         reply("@CFG SERIAL_PORTS UART1 UART2 UART4 UART6 UART7\n");
 #elif defined(BOARD_HDZERO_HALO)
@@ -387,6 +391,8 @@ static void process(const char *command)
     if (strcmp(command, "PING") == 0) {
         client_active = true;
         last_activity_us = board_micros();
+        if (flight_settings_get()->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP)
+            reply("@CFG VTX_LINK_STATUS %s\n", msp_displayport_vtx_status_name());
         return;
     }
     if (strcmp(command, "BYE") == 0) {
@@ -1020,12 +1026,17 @@ static void process(const char *command)
         &arm_min, &arm_max, &beep_channel, &beep_min, &beep_max);
     if (receiver_with_port == 9 &&
         strncmp(receiver_port, "UART", 4U) == 0) {
-#if defined(BOARD_SEQUREH7V2)
+#if BOARD_HAS_SELECTABLE_RECEIVER_UART
         unsigned int selected_port = 0U;
         if (sscanf(receiver_port, "UART%u", &selected_port) != 1 ||
+#if defined(BOARD_UART_MASK)
+            selected_port < 1U || selected_port > 8U ||
+            (BOARD_UART_MASK & (1U << selected_port)) == 0U
+#else
             !(selected_port == 1U || selected_port == 2U ||
-              selected_port == 4U || selected_port == 6U ||
-              selected_port == 7U || selected_port == 8U)) {
+              selected_port == 4U || selected_port == 6U || selected_port == 7U)
+#endif
+        ) {
             reply("@CFG ERROR INVALID_RECEIVER_PORT\n");
             return;
         }
@@ -1091,7 +1102,7 @@ static void process(const char *command)
         settings.beep_channel = beep_channel - 1U;
         settings.beep_min_us = beep_min;
         settings.beep_max_us = beep_max;
-#if defined(BOARD_SEQUREH7V2)
+#if BOARD_HAS_SELECTABLE_RECEIVER_UART
         settings.receiver_uart = selected_port;
 #endif
         if (flight_settings_vtx_uart_status(&settings) == VTX_UART_RECEIVER_CONFLICT) {

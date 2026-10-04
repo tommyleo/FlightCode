@@ -75,7 +75,7 @@ static bool receive_byte(uint8_t *value)
 #if defined(PLATFORM_AT32)
  if(__HAL_UART_GET_FLAG(&uart,UART_FLAG_RXNE)==RESET) return false;
  *value=(uint8_t)usart_data_receive(uart.Instance);
-#elif defined(PLATFORM_STM32H7)
+#elif defined(PLATFORM_STM32H7) || defined(PLATFORM_STM32F7)
  if(__HAL_UART_GET_FLAG(&uart,UART_FLAG_RXNE)==RESET) return false;
  *value=(uint8_t)uart.Instance->RDR;
 #else

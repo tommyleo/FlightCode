@@ -14,7 +14,7 @@ the Halo BLHeli_32 stack.
 | Receiver | Integrated Gemini ExpressLRS using CRSF on USART1 RX PB7 |
 | Motors | M1 PC6, M2 PC7, M3 PC8, M4 PC9 |
 | Battery voltage | ADC PC0, 11:1 base divider with calibration |
-| Digital OSD | MSP DisplayPort at 115200 baud on UART5 TX PC12 |
+| Digital OSD | MSP DisplayPort at 115200 baud on UART5 PC12 TX / PD2 RX |
 | Status LED | PE2 |
 | Buzzer | Active-low PD12 |
 | Persistent Blackbox | 16 MiB W25Q128 on SPI2, CS PB12 |
@@ -22,7 +22,7 @@ the Halo BLHeli_32 stack.
 
 The 4-in-1 ESC is driven through the supplied eight-pin stack cable using
 DSHOT300, DSHOT600 or DSHOT1200. MSP DisplayPort uses the Halo target's
-dedicated UART5 TX connection and is enabled by default on a fresh
+dedicated UART5 connection (PC12 TX / PD2 RX) and is enabled by default on a fresh
 configuration.
 
 The FC transmits standard MSP v1 DisplayPort frames at 115200 baud. HDZero's
@@ -33,7 +33,7 @@ is queued and transmitted without blocking the flight-control loop.
 
 Existing saved settings are not overwritten; in that case select **HDZero V3 ·
 MSP + DisplayPort** and **UART5** in the Configurator VTX tab, save, and reboot.
-ESC telemetry, direct VTX channel/power control, switchable 9 V BEC control,
+ESC telemetry, switchable 9 V BEC control,
 and receiver telemetry are not implemented yet.
 
 ## Build
