@@ -160,7 +160,7 @@ bool board_receiver_uart_configure(bool crsf, uint8_t port)
     crm_periph_clock_enable(CRM_USART1_PERIPH_CLOCK, TRUE);
     usart_enable(USART1, FALSE);
     at32_gpio_config(GPIOB, GPIO_PIN_7, GPIO_MODE_MUX, GPIO_PULL_UP, GPIO_MUX_7);
-    /* PA15 stays input until CRSF telemetry is implemented. */
+    /* PA15 is enabled temporarily when sending a CRSF bind command. */
     at32_gpio_config(GPIOA, GPIO_PIN_15, GPIO_MODE_INPUT, GPIO_PULL_NONE, GPIO_MUX_0);
     hsbus_uart.Instance = USART1;
     hsbus_uart.rxRemaining = 0;
@@ -175,6 +175,17 @@ bool board_receiver_uart_configure(bool crsf, uint8_t port)
     NVIC_EnableIRQ(USART1_IRQn);
     return true;
 }
+bool board_receiver_uart_transmit(const uint8_t *bytes, uint16_t length)
+{
+    if (hsbus_uart.Instance != USART1) return false;
+    at32_gpio_config(GPIOA, GPIO_PIN_15, GPIO_MODE_MUX, GPIO_PULL_NONE, GPIO_MUX_7);
+    usart_transmitter_enable(USART1, TRUE);
+    const bool sent = HAL_UART_Transmit(&hsbus_uart, bytes, length, 5U) == HAL_OK;
+    usart_transmitter_enable(USART1, FALSE);
+    at32_gpio_config(GPIOA, GPIO_PIN_15, GPIO_MODE_INPUT, GPIO_PULL_NONE, GPIO_MUX_0);
+    return sent;
+}
+
 void USART1_IRQHandler(void) { at32_uart_irq(&hsbus_uart); }
 
 static bool uart_tx_config(uint8_t port, uint32_t baud, uint32_t stop,

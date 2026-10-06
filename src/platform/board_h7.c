@@ -393,6 +393,28 @@ static bool sequre_receiver_uart(uint8_t port, USART_TypeDef **instance,
 #endif
 
 #if !defined(BOARD_FOXEERH743)
+#include "receiver_uart_tx.h"
+
+bool board_receiver_uart_transmit(const uint8_t *bytes, uint16_t length)
+{
+#if defined(BOARD_SEQUREH7V2)
+    GPIO_TypeDef *port = GPIOA;
+    uint16_t pin;
+    uint32_t af;
+    if (hsbus_uart.Instance == USART1) { pin=GPIO_PIN_9; af=GPIO_AF7_USART1; }
+    else if (hsbus_uart.Instance == USART2) { pin=GPIO_PIN_2; af=GPIO_AF7_USART2; }
+    else if (hsbus_uart.Instance == UART4) { pin=GPIO_PIN_0; af=GPIO_AF8_UART4; }
+    else if (hsbus_uart.Instance == USART6) { port=GPIOC; pin=GPIO_PIN_6; af=GPIO_AF7_USART6; }
+    else if (hsbus_uart.Instance == UART7) { port=GPIOE; pin=GPIO_PIN_8; af=GPIO_AF7_UART7; }
+    else return false;
+    return receiver_uart_transmit(port, pin, af, bytes, length);
+#else
+    if (hsbus_uart.Instance != CRSF_UART_INSTANCE) return false;
+    return receiver_uart_transmit(GPIOB, GPIO_PIN_6, GPIO_AF7_USART1,
+                                  bytes, length);
+#endif
+}
+
 bool board_receiver_uart_configure(bool crsf, uint8_t port)
 {
 #if defined(BOARD_SEQUREH7V2) || defined(BOARD_FOXEERH743)

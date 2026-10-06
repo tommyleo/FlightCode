@@ -338,6 +338,9 @@ static void process(const char *command)
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
               "VTX_CONFIG "
+#if BOARD_HAS_CRSF
+              "RECEIVER_BIND "
+#endif
 #if BOARD_HAS_CURRENT
               "BATTERY_CURRENT "
 #if defined(BOARD_SEQUREH7V2)
@@ -363,7 +366,11 @@ static void process(const char *command)
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
-              "TELEMETRY_EXT RECEIVER_CONFIG VTX_CONFIG\n");
+              "TELEMETRY_EXT RECEIVER_CONFIG VTX_CONFIG "
+#if BOARD_HAS_CRSF
+              "RECEIVER_BIND "
+#endif
+              "\n");
 #endif
         send_pids();
         send_motor_protocol();
@@ -810,6 +817,17 @@ static void process(const char *command)
     }
     if (flight_control_is_armed()) {
         reply("@CFG ERROR ARMED\n");
+        return;
+    }
+    if (strcmp(command, "BIND_RECEIVER") == 0) {
+        if (motor_test_enabled || pid_simulation_enabled) {
+            reply("@CFG ERROR BIND_BUSY\n");
+        } else if (flight_settings_get()->receiver_protocol != RECEIVER_PROTOCOL_CRSF) {
+            reply("@CFG ERROR BIND_REQUIRES_ELRS\n");
+        } else {
+            reply(sbus_bind_receiver() ? "@CFG OK BIND_RECEIVER\n"
+                          : "@CFG ERROR BIND_TX_FAILED\n");
+        }
         return;
     }
     if (strcmp(command, "ENTER_DFU") == 0) {

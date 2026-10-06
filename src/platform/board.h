@@ -575,6 +575,7 @@ void board_init(void);
 void board_peripherals_init(void);
 #endif
 bool board_receiver_uart_configure(bool crsf, uint8_t port);
+bool board_receiver_uart_transmit(const uint8_t *bytes, uint16_t length);
 bool board_uart_half_duplex_init(uint8_t port, uint32_t baud_rate, uint32_t stop_bits,
                                  UART_HandleTypeDef *handle);
 bool board_uart_tx_rx_init(uint8_t port, uint32_t baud_rate, UART_HandleTypeDef *handle);

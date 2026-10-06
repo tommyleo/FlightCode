@@ -3,7 +3,8 @@
 #include <stdint.h>
 #include <stdio.h>
 typedef unsigned IRQn_Type;
-typedef struct {unsigned id;} USART_TypeDef,GPIO_TypeDef;
+typedef struct {unsigned id; uint32_t CR1;} USART_TypeDef;
+typedef struct {unsigned id;} GPIO_TypeDef;
 static USART_TypeDef uart[9];static GPIO_TypeDef gp[5];
 #define USART1 (&uart[1])
 #define USART2 (&uart[2])
@@ -57,6 +58,10 @@ static USART_TypeDef uart[9];static GPIO_TypeDef gp[5];
 typedef struct {uint32_t Pin,Mode,Pull,Speed,Alternate;} GPIO_InitTypeDef;
 #define GPIO_MODE_AF_OD 1U
 #define GPIO_MODE_AF_PP 2U
+#define GPIO_MODE_INPUT 0U
+#define USART_CR1_TE 8U
+#define SET_BIT(reg, bits) ((reg) |= (bits))
+#define CLEAR_BIT(reg, bits) ((reg) &= ~(bits))
 #define GPIO_PULLUP 1U
 #define GPIO_NOPULL 0U
 #define GPIO_SPEED_FREQ_VERY_HIGH 3U
@@ -79,9 +84,11 @@ typedef struct {USART_TypeDef *Instance;struct {
 #define UART_ADVFEATURE_RXINV_ENABLE 1U
 #define HAL_OK 0U
 static UART_HandleTypeDef hsbus_uart;
-static unsigned enabled_irq,disabled_irq,pad,af;
+static unsigned enabled_irq,disabled_irq,pad,af,mode,transmit_status;
+static unsigned expected_tx_pin;
+static GPIO_TypeDef *expected_tx_port;
 static GPIO_TypeDef *pad_port;
-static void HAL_GPIO_Init(GPIO_TypeDef *p,GPIO_InitTypeDef *g){pad=g->Pin;af=g->Alternate;pad_port=p;}
+static void HAL_GPIO_Init(GPIO_TypeDef *p,GPIO_InitTypeDef *g){pad=g->Pin;af=g->Alternate;pad_port=p;mode=g->Mode;}
 static unsigned HAL_UART_Init(UART_HandleTypeDef *h){(void)h;return HAL_OK;}
 static unsigned HAL_HalfDuplex_Init(UART_HandleTypeDef *h){(void)h;return HAL_OK;}
 static unsigned HAL_UART_DeInit(UART_HandleTypeDef *h){(void)h;return HAL_OK;}
@@ -89,6 +96,13 @@ static void HAL_NVIC_DisableIRQ(IRQn_Type i){disabled_irq=i;}
 static void HAL_NVIC_ClearPendingIRQ(IRQn_Type i){(void)i;}
 static void HAL_NVIC_SetPriority(IRQn_Type i,unsigned p,unsigned sub){(void)i;assert(p==5U);(void)sub;}
 static void HAL_NVIC_EnableIRQ(IRQn_Type i){enabled_irq=i;}
+static unsigned HAL_UART_Transmit(UART_HandleTypeDef *h,uint8_t *bytes,uint16_t n,uint32_t timeout){
+    assert(h==&hsbus_uart && (h->Instance->CR1 & USART_CR1_TE)!=0);
+    assert(bytes[0]==0xc8 && n==9 && timeout==5);
+    assert(pad==expected_tx_pin && pad_port==expected_tx_port && mode==GPIO_MODE_AF_PP);
+    return transmit_status;
+}
+#include "crsf_bind.h"
 #include "foxeer_uart.h"
 
 int main(void)
@@ -112,6 +126,14 @@ int main(void)
         assert(board_receiver_uart_configure(true,p));assert(disabled_irq==p);
         assert(hsbus_uart.Init.BaudRate==420000&&hsbus_uart.Init.WordLength==8&&hsbus_uart.Init.StopBits==1);
         assert(hsbus_uart.AdvancedInit.RxPinLevelInvert==0U);
+        expected_tx_pin=u.tx_pin; expected_tx_port=u.tx_port;
+        hsbus_uart.Instance->CR1=4U; /* RX stays enabled while sending. */
+        transmit_status=0;
+        assert(board_receiver_uart_transmit(crsf_bind_frame,sizeof(crsf_bind_frame)));
+        assert(mode==GPIO_MODE_INPUT && hsbus_uart.Instance->CR1==4U);
+        transmit_status=1;
+        assert(!board_receiver_uart_transmit(crsf_bind_frame,sizeof(crsf_bind_frame)));
+        assert(mode==GPIO_MODE_INPUT && hsbus_uart.Instance->CR1==4U);
         UART_HandleTypeDef vtx;
         assert(board_uart_tx_init(p,115200,&vtx));assert(pad==u.tx_pin&&pad_port==u.tx_port);
         assert(board_uart_tx_rx_init(p,115200,&vtx));

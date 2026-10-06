@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+bool sbus_bind_receiver(void);
+
 #define SBUS_CHANNEL_COUNT 16U
 
 typedef enum {

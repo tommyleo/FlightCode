@@ -145,3 +145,16 @@ bool board_receiver_uart_configure(bool crsf, uint8_t port)
     HAL_NVIC_EnableIRQ(u.irq);
     return true;
 }
+
+#include "receiver_uart_tx.h"
+
+bool board_receiver_uart_transmit(const uint8_t *bytes, uint16_t length)
+{
+    for (uint8_t p=1U; p<=8U; ++p) {
+        foxeer_uart_t u;
+        if (foxeer_uart(p, &u) && u.instance == hsbus_uart.Instance)
+            return receiver_uart_transmit(u.tx_port, u.tx_pin, u.af,
+                                          bytes, length);
+    }
+    return false;
+}

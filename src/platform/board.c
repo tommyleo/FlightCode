@@ -606,6 +606,25 @@ bool board_receiver_uart_configure(bool crsf, uint8_t port)
     return true;
 }
 
+#include "receiver_uart_tx.h"
+
+bool board_receiver_uart_transmit(const uint8_t *bytes, uint16_t length)
+{
+#if BOARD_HAS_CRSF
+    if (hsbus_uart.Instance != CRSF_UART_INSTANCE) return false;
+#if defined(BOARD_MAMBAF411)
+    return receiver_uart_transmit(GPIOA, GPIO_PIN_9, GPIO_AF7_USART1,
+                                  bytes, length);
+#else
+    return receiver_uart_transmit(GPIOA, GPIO_PIN_0, GPIO_AF8_UART4,
+                                  bytes, length);
+#endif
+#else
+    (void)bytes; (void)length;
+    return false;
+#endif
+}
+
 static void battery_adc_init(void)
 {
 #if BOARD_HAS_BATTERY_VOLTAGE

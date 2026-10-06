@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "board.h"
+#include "crsf_bind.h"
 
 #define FRAME_SIZE 25U
 #define SIGNAL_TIMEOUT_US 100000U
@@ -311,4 +312,14 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
         last_recovery_us = board_micros();
         uart_recovery_pending = true;
     }
+}
+
+bool sbus_bind_receiver(void)
+{
+    if (!driver_initialized || receiver_protocol != 1U) return false;
+    const bool sent = board_receiver_uart_transmit(crsf_bind_frame,
+                                                   sizeof(crsf_bind_frame));
+    /* Some HAL timeout paths disable RX interrupts as well as TX. */
+    if (!sent) restart_uart_receive();
+    return sent;
 }

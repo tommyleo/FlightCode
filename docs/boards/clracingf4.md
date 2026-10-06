@@ -47,3 +47,14 @@ the menu controls.
 
 Firmware image:
 `build/clracingf4-release/FlightCode-CLRACINGF4.hex`
+
+## ELRS binding
+
+With ExpressLRS 3.4 or newer, apply ELRS in the Receiver tab and click
+**Bind receiver**, then select Bind on the radio. Connect receiver TX to
+RX4 (PA1), and FC TX4 (PA0) to receiver RX, with common ground. TELE belongs
+to UART3 and is not the return path for UART4. The FC must be disarmed and
+motor testing/PID simulation stopped. The button confirms only that the
+command was sent; check the receiver LED and channel movement to confirm binding.
+
+The firmware sends CRSF bind commands but does not implement CRSF telemetry.

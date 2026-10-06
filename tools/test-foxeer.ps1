@@ -30,7 +30,7 @@ try {
         $taskMask = [regex]::Match($taskDefinitions, '#define BOARD_UART_MASK (0x[0-9A-F]+U)').Groups[1].Value
         if (-not $taskMask) { throw "Missing $taskBoard UART mask" }
         $taskPlatform = if ($taskBoard -eq 'FOXEERF722V4') { '-DPLATFORM_STM32F7' } else { '-DPLATFORM_STM32H7' }
-        & $Compiler -std=c11 -Wall -Wextra $taskPlatform "-DBOARD_$taskBoard" "-DBOARD_UART_MASK=$taskMask" -Isrc/platform tests/foxeer_uart_test.c -o "build/foxeer-uart-$taskBoard-test.exe"
+        & $Compiler -std=c11 -Wall -Wextra $taskPlatform "-DBOARD_$taskBoard" "-DBOARD_UART_MASK=$taskMask" -Isrc/platform -Isrc/drivers/receiver tests/foxeer_uart_test.c -o "build/foxeer-uart-$taskBoard-test.exe"
         if ($LASTEXITCODE -ne 0) { throw "Foxeer UART test compilation failed" }
         & "./build/foxeer-uart-$taskBoard-test.exe"
         if ($LASTEXITCODE -ne 0) { throw "Foxeer UART test failed" }
