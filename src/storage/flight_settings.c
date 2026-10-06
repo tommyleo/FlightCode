@@ -446,6 +446,10 @@ vtx_uart_status_t flight_settings_vtx_uart_status(const flight_settings_t *setti
                            port == 6U;
 #elif defined(BOARD_FLYWOOF405NANO) || defined(BOARD_FLYWOOF405NANO_ANALOG)
     if (port == 5U) return VTX_UART_INVERTED_SBUS_ONLY;
+#if defined(BOARD_FLYWOOF405NANO)
+    /* USART6 is physically connected to the onboard ELRS receiver. */
+    if (port == 6U) return VTX_UART_RECEIVER_CONFLICT;
+#endif
     const bool supported = port == 4U || port == 6U;
 #elif defined(BOARD_HDZERO_HALO)
     const bool supported = port == 1U || port == 2U || port == 4U ||
@@ -459,7 +463,10 @@ vtx_uart_status_t flight_settings_vtx_uart_status(const flight_settings_t *setti
     const uint32_t receiver_port = settings->receiver_uart;
 #elif defined(BOARD_MAMBAF411)
     const uint32_t receiver_port = 1U;
-#elif defined(BOARD_CLRACINGF4) || defined(BOARD_FLYWOOF405NANO) || \
+#elif defined(BOARD_FLYWOOF405NANO)
+    const uint32_t receiver_port = settings->receiver_protocol == RECEIVER_PROTOCOL_CRSF
+                                       ? 6U : 5U;
+#elif defined(BOARD_CLRACINGF4) || \
       defined(BOARD_FLYWOOF405NANO_ANALOG)
     const uint32_t receiver_port = settings->receiver_protocol == RECEIVER_PROTOCOL_CRSF
                                        ? 4U :
@@ -600,6 +607,20 @@ void flight_settings_reset_defaults(void)
 void flight_settings_init(void)
 {
     const settings_record_t *stored = (const settings_record_t *)SETTINGS_ADDRESS;
+#if defined(BOARD_FLYWOOF405NANO)
+    /* Preserve tuning and the active OSD protocol while moving the old
+     * UART6 DisplayPort connection to UART4, away from integrated ELRS. */
+    settings_record_t migrated_record;
+    bool migrated_uart6 = false;
+    if (stored->magic == SETTINGS_MAGIC && stored->version == SETTINGS_VERSION &&
+        stored->checksum == checksum(stored) && stored->settings.vtx_uart == 6U) {
+        migrated_record = *stored;
+        migrated_record.settings.vtx_uart = BOARD_DEFAULT_VTX_UART;
+        migrated_record.checksum = checksum(&migrated_record);
+        stored = &migrated_record;
+        migrated_uart6 = true;
+    }
+#endif
     /* Version 27 is the exact prefix preceding the new video-mode field. */
     if (stored->magic == SETTINGS_MAGIC && stored->version == 27U) {
         const size_t prefix = offsetof(flight_settings_t, osd_video_mode);
@@ -611,6 +632,11 @@ void flight_settings_init(void)
         if (stored_checksum == checksum_bytes(stored, checksum_offset)) {
             flight_settings_t migrated = current_settings;
             memcpy(&migrated, &stored->settings, prefix);
+#if defined(BOARD_FLYWOOF405NANO)
+            if (migrated.vtx_uart == 6U) {
+                migrated.vtx_uart = BOARD_DEFAULT_VTX_UART;
+            }
+#endif
             (void)flight_settings_set(&migrated);
         }
         return;
@@ -954,6 +980,9 @@ void flight_settings_init(void)
     }
     current_settings = stored->settings;
     settings_saved = true;
+#if defined(BOARD_FLYWOOF405NANO)
+    if (migrated_uart6) settings_saved = false;
+#endif
     apply();
 }
 

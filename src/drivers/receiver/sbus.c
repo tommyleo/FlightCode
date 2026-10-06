@@ -133,10 +133,28 @@ static uint8_t crsf_crc8(const uint8_t *bytes, uint8_t length)
 static void decode_crsf(void)
 {
     const uint8_t length = frame[1];
-    if (length != 24U || frame[2] != CRSF_RC_CHANNELS_PACKED ||
-        crsf_crc8(&frame[2], (uint8_t)(length - 1U)) != frame[length + 1U]) {
+    if (crsf_crc8(&frame[2], (uint8_t)(length - 1U)) != frame[length + 1U]) {
         ++data.invalid_frame_count;
         return;
+    }
+    /* Link statistics and other CRSF messages are valid traffic, but must
+     * not refresh the RC channel timestamp or clear the RC failsafe. */
+    if (frame[2] != CRSF_RC_CHANNELS_PACKED) return;
+    if (length != 24U) {
+        ++data.invalid_frame_count;
+        return;
+    }
+    if (data.valid_frame_count == 0U) {
+        /* Start ELRS operational diagnostics only after acquiring RC. */
+        const uint32_t irq_state = __get_PRIMASK();
+        __disable_irq();
+        data.uart_error_count = 0U;
+        data.recovery_count = 0U;
+        data.ring_overrun_count = 0U;
+        data.invalid_frame_count = 0U;
+        uart_recovery_pending = false;
+        ring_resync_pending = false;
+        if (irq_state == 0U) __enable_irq();
     }
     const uint8_t *payload = &frame[3];
     uint32_t accumulator = 0U;

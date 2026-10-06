@@ -615,6 +615,9 @@ bool board_receiver_uart_transmit(const uint8_t *bytes, uint16_t length)
 #if defined(BOARD_MAMBAF411)
     return receiver_uart_transmit(GPIOA, GPIO_PIN_9, GPIO_AF7_USART1,
                                   bytes, length);
+#elif defined(BOARD_FLYWOOF405NANO)
+    return receiver_uart_transmit(GPIOC, GPIO_PIN_6, GPIO_AF8_USART6,
+                                  bytes, length);
 #else
     return receiver_uart_transmit(GPIOA, GPIO_PIN_0, GPIO_AF8_UART4,
                                   bytes, length);

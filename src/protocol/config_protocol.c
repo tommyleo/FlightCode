@@ -1084,7 +1084,13 @@ static void process(const char *command)
             return;
         }
 #endif
-#if defined(BOARD_CLRACINGF4) || defined(BOARD_FLYWOOF405NANO) || \
+#if defined(BOARD_FLYWOOF405NANO)
+        if (strcmp(receiver_protocol, "ELRS") == 0 &&
+            strcmp(receiver_port, "UART6") != 0) {
+            reply("@CFG ERROR ELRS_REQUIRES_UART6\n");
+            return;
+        }
+#elif defined(BOARD_CLRACINGF4) || \
     defined(BOARD_FLYWOOF405NANO_ANALOG)
         if (strcmp(receiver_protocol, "ELRS") == 0 &&
             strcmp(receiver_port, "UART4") != 0) {
