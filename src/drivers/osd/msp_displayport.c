@@ -264,6 +264,15 @@ void msp_displayport_update(float voltage, bool armed, uint32_t now_us)
         enqueue_simple(MSP_DP_HEARTBEAT);
         last_heartbeat_us = now_us;
     }
+    if (flight_control_boot_arm_blocked()) {
+        release_sent = false;
+        enqueue_simple(MSP_DP_CLEAR_SCREEN);
+        enqueue_string(153u, "WARNING: ARM SWITCH ON");
+        enqueue_string(213u, "POWER OFF AND ON AGAIN");
+        enqueue_string(274u, "WITH ARM SWITCH OFF");
+        enqueue_simple(MSP_DP_DRAW_SCREEN);
+        return;
+    }
     if (settings->osd_enabled == 0U) {
         if (!release_sent) {
             enqueue_simple(MSP_DP_RELEASE);

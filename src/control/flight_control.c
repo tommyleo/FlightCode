@@ -1,4 +1,5 @@
 #include "flight_control.h"
+#include "boot_arm_guard.h"
 
 #include <math.h>
 #include <string.h>
@@ -55,6 +56,7 @@ static bool calibrated;
 static bool calibration_failed;
 static bool armed;
 static bool arm_switch_was_low;
+static boot_arm_guard_t boot_arm_guard;
 static bool arm_calibration_active;
 static bool motor_direction_reversed;
 static float motor_idle_percent = 5.0f;
@@ -318,6 +320,12 @@ void flight_control_update(const imu_sample_t *imu,
     const bool arm_switch = rx->valid &&
         rx->channel_us[settings->arm_channel] >= settings->arm_min_us &&
         rx->channel_us[settings->arm_channel] <= settings->arm_max_us;
+    boot_arm_guard_update(&boot_arm_guard, rx->valid, arm_switch);
+    if (boot_arm_guard.blocked) {
+        armed = false;
+        reset_controller();
+        return;
+    }
     if (!calibrated) {
         if (armed) flight_log_stop(FLIGHT_LOG_FLAG_STOP_DISARM);
         armed = false;
@@ -592,3 +600,6 @@ void flight_control_get_corrected_imu(const imu_sample_t *raw,
         corrected->gyro_z_dps -= bias_z;
     }
 }
+
+bool flight_control_boot_arm_blocked(void)
+{ return boot_arm_guard.blocked; }

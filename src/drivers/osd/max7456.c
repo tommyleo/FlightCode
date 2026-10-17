@@ -8,6 +8,7 @@
 #include "board.h"
 #include "font_flightcode.h"
 #include "flight_settings.h"
+#include "flight_control.h"
 
 #define REG_VM0 0x00U
 #define REG_DMM 0x04U
@@ -467,7 +468,15 @@ void max7456_process(void)
 
 void max7456_update(float voltage, bool armed, uint32_t now_us)
 {
-    if (!available || !enabled || menu_active) return;
+    if (!available) return;
+    if (flight_control_boot_arm_blocked()) {
+        if (!menu_active && !max7456_menu_begin()) return;
+        max7456_write_text(5u, 3u, "WARNING: ARM SWITCH ON");
+        max7456_write_text(7u, 3u, "POWER OFF AND ON AGAIN");
+        max7456_write_text(9u, 4u, "WITH ARM SWITCH OFF");
+        return;
+    }
+    if (!enabled || menu_active) return;
     if (armed && !previous_armed) {
         flight_started_us = now_us;
         flight_duration_us = 0U;

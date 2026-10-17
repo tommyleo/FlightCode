@@ -6,6 +6,7 @@
 
 #include "board.h"
 #include "flight_settings.h"
+#include "flight_control.h"
 #include "max7456.h"
 #include "vtx_tramp.h"
 
@@ -227,6 +228,10 @@ bool osd_tuning_menu_is_active(void)
 
 void osd_tuning_menu_update(const sbus_data_t *receiver, bool armed)
 {
+    if (flight_control_boot_arm_blocked()) {
+        if (active) close_menu(false);
+        return;
+    }
     if (receiver == NULL || !receiver->valid) {
         entry_started_us = 0U;
         if (active) close_menu(false);

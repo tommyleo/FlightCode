@@ -37,3 +37,5 @@ void flight_control_reset_pid_state(void);
 void flight_control_emergency_stop(uint8_t log_stop_flag);
 void flight_control_get_corrected_imu(const imu_sample_t *raw,
                                       imu_sample_t *corrected);
+
+bool flight_control_boot_arm_blocked(void);

@@ -107,8 +107,12 @@ static void main_loop_step(main_loop_state_t *state)
     const sbus_data_t *receiver = sbus_get();
     const flight_settings_t *settings = flight_settings_get();
     if (service_due) {
-        board_status_led_update(receiver->valid,
-                                !flight_control_is_calibrated());
+        if (flight_control_boot_arm_blocked()) {
+            board_status_led_set(true);
+        } else {
+            board_status_led_update(receiver->valid,
+                                    !flight_control_is_calibrated());
+        }
         osd_tuning_menu_update(receiver, flight_control_is_armed());
         vtx_tramp_update(flight_control_is_armed());
     }

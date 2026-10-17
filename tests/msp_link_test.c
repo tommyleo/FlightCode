@@ -35,6 +35,8 @@ static uint8_t rx[256], wire[4096];
 static unsigned rx_read,rx_size,wire_size;
 static const flight_settings_t *flight_settings_get(void){return &settings;}
 static bool flight_control_is_armed(void){return armed;}
+static bool boot_blocked;
+static bool flight_control_boot_arm_blocked(void){return boot_blocked;}
 static uint32_t board_micros(void){return now;}
 static bool board_uart_tx_rx_init(uint8_t port,uint32_t baud,UART_HandleTypeDef *h)
 {assert(port==5 && baud==115200);h->Instance=&peripheral;return uart_ok;}
@@ -79,6 +81,13 @@ int main(void)
     assert(strcmp(msp_displayport_vtx_status_name(),"MSP_SETTINGS_SENT")==0);
     /* RF control continues with the OSD disabled. */
     settings.osd_enabled=0;poll(88);assert(wire[4]==88);
+    boot_blocked=true; wire_size=0;
+    msp_displayport_update(12.0f,false,now); drain(); check_wire();
+    bool warning_found=false;
+    for(unsigned i=0;i+sizeof("WARNING: ARM SWITCH ON")-1U<=wire_size;++i)
+        if(memcmp(wire+i,"WARNING: ARM SWITCH ON",sizeof("WARNING: ARM SWITCH ON")-1U)==0) warning_found=true;
+    assert(warning_found); /* Warning overrides disabled normal OSD. */
+    boot_blocked=false;
     /* Actual transmitted config is frozen even if settings change armed. */
     armed=true;settings.vtx_channel=7;settings.vtx_power_mw=25;
     poll(88);assert(wire[7]==3 && wire[8]==2);

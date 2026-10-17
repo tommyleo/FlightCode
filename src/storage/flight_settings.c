@@ -568,7 +568,7 @@ void flight_settings_reset_defaults(void)
         .board_yaw_deg = BOARD_DEFAULT_YAW_DEG,
         .motor_direction_reversed = 0U,
         .motor_idle_percent = 5.0f,
-        .receiver_channel_order = RECEIVER_ORDER_TAER1234,
+        .receiver_channel_order = RECEIVER_ORDER_AETR1234,
         .arm_channel = 5U,
         .arm_min_us = 1950U,
         .arm_max_us = 2100U,
