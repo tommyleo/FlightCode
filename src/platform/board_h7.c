@@ -570,6 +570,22 @@ static void battery_adc_init(void)
 
 void board_init(void)
 {
+    /* ROM DFU may jump here without a hardware reset. SystemInit does not
+     * relocate VTOR in this build. Restore application interrupts before
+     * HAL starts SysTick, and discard interrupt state inherited from ROM. */
+    __disable_irq();
+    SysTick->CTRL = 0U;
+    SysTick->LOAD = 0U;
+    SysTick->VAL = 0U;
+    for (uint32_t index = 0U; index < 8U; ++index) {
+        NVIC->ICER[index] = UINT32_MAX;
+        NVIC->ICPR[index] = UINT32_MAX;
+    }
+    SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk | SCB_ICSR_PENDSVCLR_Msk;
+    SCB->VTOR = FLASH_BASE;
+    __DSB();
+    __ISB();
+    __enable_irq();
     HAL_Init();
     clock_init();
     gpio_init();

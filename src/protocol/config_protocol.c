@@ -47,17 +47,26 @@ static bool arm_mode_active(const sbus_data_t *receiver)
 
 static void reply(const char *format, ...)
 {
-    char output[384];
+    /* The H7 capability list exceeds 384 bytes. A truncated reply loses its
+     * newline and joins the next packet, corrupting the line protocol. */
+    char output[768];
     va_list args;
     va_start(args, format);
     const int length = vsnprintf(output, sizeof(output), format, args);
     va_end(args);
-    if (length > 0) {
-        usb_cdc_write((const uint8_t *)output,
-                      (size_t)length < sizeof(output) ? (size_t)length
-                                                     : sizeof(output) - 1U);
+    if (length >= (int)sizeof(output)) {
+        static const char error[] = "@CFG ERROR RESPONSE_TOO_LONG\n";
+        usb_cdc_write((const uint8_t *)error, sizeof(error) - 1U);
+    } else if (length > 0) {
+        usb_cdc_write((const uint8_t *)output, (size_t)length);
     }
 }
+
+#define BACKUP_REPLY reply
+#define BACKUP_FAMILY "FlightCode"
+#define BACKUP_BOARD BOARD_NAME
+#define BACKUP_NOW_US board_micros
+#include "settings_backup_protocol.h"
 
 static void send_pids(void)
 {
@@ -300,7 +309,14 @@ static void send_current_adc_diagnostics(void)
 
 static void process(const char *command)
 {
+    if (settings_backup_process(command, flight_control_is_armed() ||
+                                arm_mode_active(sbus_get()) || motor_test_enabled || pid_simulation_enabled)) {
+        last_activity_us = board_micros();
+        return;
+    }
     if (strcmp(command, "HELLO") == 0) {
+        restore_active = false;
+        backup_snapshot_ready = false;
         client_active = true;
         last_activity_us = board_micros();
         reply("@CFG HELLO FlightCode 3 %s %s\n", BOARD_NAME,
@@ -335,7 +351,7 @@ static void process(const char *command)
 #if BOARD_HAS_BATTERY_VOLTAGE
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
+              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT SETTINGS_BACKUP "
               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE OSD "
               "VTX_CONFIG "
 #if BOARD_HAS_CRSF
@@ -365,7 +381,7 @@ static void process(const char *command)
 #else
         reply("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
+              "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT SETTINGS_BACKUP "
               "TELEMETRY_EXT RECEIVER_CONFIG VTX_CONFIG "
 #if BOARD_HAS_CRSF
               "RECEIVER_BIND "
@@ -403,6 +419,8 @@ static void process(const char *command)
         return;
     }
     if (strcmp(command, "BYE") == 0) {
+        restore_active = false;
+        backup_snapshot_ready = false;
         client_active = false;
         motor_test_enabled = false;
         return;

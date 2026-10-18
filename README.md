@@ -245,3 +245,12 @@ with ARM off. Without a valid receiver signal, the check remains pending.
 The onboard status LED stays on steadily during the lockout, including
 without OSD. Fresh configurations and factory resets default to AETR;
 existing saved channel mappings are preserved.
+
+
+## Complete settings backup protocol
+
+All targets advertise `SETTINGS_BACKUP`. `GET_SETTINGS_INFO` captures a consistent full settings snapshot and returns family, board, persistent layout version, byte size, CRC32 and saved flag. `GET_SETTINGS_CHUNK offset count` reads at most 48 bytes as hex. `RESTORE_SETTINGS_BEGIN family board schema size checksum`, contiguous `RESTORE_SETTINGS_CHUNK offset hex` packets and `RESTORE_SETTINGS_COMMIT` form a staged transaction. Commit validates the full payload with the existing settings validator before saving, and replies with REBOOT_REQUIRED. No settings layout/version or flash address is changed.
+
+The operation requires disarming, the ARM switch inactive and motor/PID tests stopped. Partial, corrupt, expired or incompatible transfers never reach settings application. A new HELLO/BYE cancels staged state. Backups include all persistent FC configuration, not flight logs or ESC configuration; restore requires the same firmware family, target and settings layout. Use the shared Configurator Save backup / Load backup controls and restart after restoring.
+
+Protocol reply framing correction (2026-10-18): the complete H7 capability list exceeded the former 384-byte reply buffer, dropping its newline and merging the next response. Replies now allow 768 bytes and explicitly return a complete RESPONSE_TOO_LONG error instead of sending truncated packets. `tools/test-protocol-reply.ps1` compiles the actual reply function to check packet boundaries and overflow handling.

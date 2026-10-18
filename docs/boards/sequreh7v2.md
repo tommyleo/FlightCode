@@ -125,3 +125,21 @@ seconds. The 1052 calibration scale and voltage filtering are unchanged. Short
 throttle pulses are still smoothed; displayed current is not a peak-hold meter.
 The ADC host regression checks a 200 ms pulse, settling, decay, and steady scaling.
 No settings layout/version or flash storage changes are required for this update.
+
+
+## ADC3 DMA diagnostic — 2026-10-18
+
+SEQUREH7V2 now identifies as 1.6.2-adc3dma and advertises CURRENT_ADC_DMA. It continuously scans rank 1 VBAT (ADC3 channel 1) and rank 2 current (channel 0), using DMA1 Stream1 independently of motor DMA1 Stream0 and SPI DMA1 Stream4. A 32-byte-aligned AXI SRAM buffer is processed in completed half-buffer callbacks with cache invalidation. Each published raw current value is the mean of 64 pairs; the sample counter counts physical pairs and advances much faster than the former 20 Hz sampler. Existing diagnostic packet fields remain compatible. ADC errors are reported, and a halted stream retains its last acquisition timestamp so the Configurator can mark stale readings.
+
+The 1052 current scale, voltage divider, settings layout and reserved flash addresses are unchanged. Current uses a 100 ms PT1 filter; voltage uses an approximately 2.5 s time constant. The new tools/test-h7-adc-dma.ps1 regression tests the actual DMA processing code with simulated transfers. Hardware compilation and host tests do not validate the physical sensor. Compare USB-only, battery/motors stopped and battery/motors running without propellers before interpreting the measurement. The diagnostic remains unverified on hardware.
+
+
+## USB recovery build — 2026-10-18
+
+After a reported loss of CDC enumeration with the backup/DMA build, the SEQURE target was returned to its previous polled ADC implementation while retaining the complete settings backup protocol. The experimental DMA module is no longer included or advertised. The firmware identifies as 1.6.2-backup-recovery. This isolates the experiment; it does not establish the physical cause of the failed startup. Settings layout version 28 and address 0x081E0000 are unchanged. The build still requires a cold-start test on the physical board.
+
+The recovery build also fixes an identified ROM-to-application startup defect: the bundled H7 SystemInit leaves VTOR unchanged unless USER_VECT_TAB_ADDRESS is enabled, which this project does not enable. board_init now masks interrupts, stops inherited SysTick, clears pending/enabled NVIC interrupts, points VTOR to application flash and restores interrupt delivery before HAL_Init. Without this, a DFU jump can keep ROM vectors or masked interrupts and prevent HAL/USB startup. `tools/test-h7-startup.ps1` compiles the actual entry sequence with both inherited ROM state and cold-reset state. Physical boot verification remains required.
+
+During recovery the board settings sector at 0x081E0000 was read without writing the FC. Its stored version-28 FNV checksum was verified, and a complete Configurator-compatible CRC32 JSON backup was generated from the 252-byte settings payload. The application's flash contents matched the uploaded backup/DMA image byte for byte, excluding a partial flash as the explanation for that image.
+
+Physical recovery result: the 1.6.2-backup-recovery image was programmed over ROM DFU on the connected SEQURE H7. STM32CubeProgrammer erased only application sectors 0 and 1 and verified the download. A second read of the complete 128 KiB settings sector matched the saved pre-flash sector byte for byte (SHA256 comparison). Starting the application from DFU then enumerated USB CDC VID 0483 / PID 5740 as COM14 with Windows status OK. An independent serial HELLO check could not open COM14 (access denied); application-protocol verification was therefore not completed by this test.
