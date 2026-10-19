@@ -2,7 +2,7 @@
 
 *Born to race.*
 
-Current release: **1.6.2**.
+Current development version: **1.6.4** (not released).
 
 ## FlightCode in action! 🚀
 
