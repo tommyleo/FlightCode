@@ -806,22 +806,25 @@ static void process(const char *command)
             flight_log_record_t item;
             if (!flight_log_get((uint32_t)log_offset + sent, &item)) break;
             reply("@CFG FLIGHT_LOG %lu "
-                  "%d %d %d %d %d %d "
-                  "%u %u %u %u %u %u %u %u %u %u %u "
-                  "%d %d %d %d %d %d %d %d %d %d %d %d\n",
-                  (unsigned long)((uint32_t)log_offset + sent),
-                  item.gyro[0], item.gyro[1], item.gyro[2],
-                  item.setpoint[0], item.setpoint[1], item.setpoint[2],
-                  item.motor[0], item.motor[1],
-                  item.motor[2], item.motor[3],
-                  item.throttle, item.flags, item.main_loop_us,
-                  item.gyro_loop_us,
-                  item.battery_centivolts, item.cell_centivolts,
-                  item.battery_cells,
-                  item.p_term[0], item.p_term[1], item.p_term[2],
-                  item.i_term[0], item.i_term[1], item.i_term[2],
-                   item.d_term[0], item.d_term[1], item.d_term[2],
-                   item.ff_term[0], item.ff_term[1], item.ff_term[2]);
+                   "%d %d %d %d %d %d "
+                   "%u %u %u %u %u %u %u %u %u %u %u "
+                   "%d %d %d %d %d %d %d %d %d %d %d %d "
+                   "%lu %d %d %d %d %d %d %d %d %d %u %d %d %d\n",
+                   (unsigned long)((uint32_t)log_offset + sent),
+                   item.gyro[0], item.gyro[1], item.gyro[2],
+                   item.setpoint[0], item.setpoint[1], item.setpoint[2],
+                   item.motor[0], item.motor[1], item.motor[2], item.motor[3],
+                   item.throttle, item.flags, item.main_loop_us, item.gyro_loop_us,
+                   item.battery_centivolts, item.cell_centivolts, item.battery_cells,
+                   item.p_term[0], item.p_term[1], item.p_term[2],
+                   item.i_term[0], item.i_term[1], item.i_term[2],
+                   item.d_filtered[0]/50, item.d_filtered[1]/50, item.d_filtered[2]/50,
+                   item.ff_term[0], item.ff_term[1], item.ff_term[2],
+                   (unsigned long)item.timestamp_us,
+                   item.gyro_raw[0], item.gyro_raw[1], item.gyro_raw[2],
+                   item.d_unfiltered[0], item.d_unfiltered[1], item.d_unfiltered[2],
+                   item.d_filtered[0], item.d_filtered[1], item.d_filtered[2],
+                   item.overwritten_records, item.pid[0], item.pid[1], item.pid[2]);
         }
         reply("@CFG FLIGHT_LOG_CHUNK_END %lu\n",
               (unsigned long)((uint32_t)log_offset + sent));

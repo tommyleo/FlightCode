@@ -5,9 +5,9 @@
 #include <stddef.h>
 #include <string.h>
 
-#define FLIGHT_LOG_RATE_HZ 200U
+#define FLIGHT_LOG_RATE_HZ 500U
 #define BLACKBOX_LOG_RATE_HZ 1000U
-#define FLIGHT_LOG_FORMAT_VERSION_MAJOR 1U
+#define FLIGHT_LOG_FORMAT_VERSION_MAJOR 2U
 #define FLIGHT_LOG_FORMAT_VERSION_MINOR 0U
 #define FLIGHT_LOG_FORMAT_VERSION_PACKED \
     ((FLIGHT_LOG_FORMAT_VERSION_MAJOR << 4U) | \
@@ -18,30 +18,31 @@
 #define FLIGHT_LOG_FLAG_STOP_IMU 0x08U
 #define FLIGHT_LOG_FLAG_STOP_RX_FAILSAFE 0x10U
 #define FLIGHT_LOG_FLAG_STOP_RX_TIMEOUT 0x20U
+#define FLIGHT_LOG_FLAG_SIGNAL_CLIPPED 0x40U
 
 
 typedef struct __attribute__((packed)) {
-    int16_t gyro[3];       /* 0.1 deg/s */
-    int16_t setpoint[3];   /* 0.1 deg/s */
-    uint8_t motor[4];      /* 0..255 = 0..100 percent */
-    uint8_t throttle;      /* 0..200 = 0..100 percent */
-    uint8_t flags;         /* bit 0 mixer saturated */
-    uint16_t main_loop_us;
-    uint16_t gyro_loop_us;
-    uint16_t battery_centivolts;
-    uint16_t cell_centivolts;
+    uint32_t timestamp_us;       /* real acquisition time, modulo 2^32 us */
+    int16_t gyro[3];             /* filtered, 0.1 deg/s */
+    int16_t gyro_raw[3];         /* aligned, bias removed, before gyro LPF */
+    int16_t setpoint[3];         /* 0.1 deg/s */
+    int16_t d_unfiltered[3];     /* 0.01 percent, same gain/TPA/boost as D */
+    int16_t d_filtered[3];       /* 0.01 percent */
+    uint8_t motor[4];           /* 0..255 = 0..100 percent */
+    uint8_t throttle;           /* 0..200 = 0..100 percent */
+    uint8_t flags;
+    uint16_t main_loop_us, gyro_loop_us;
+    uint16_t battery_centivolts, cell_centivolts;
     uint8_t battery_cells;
-    int8_t p_term[3];      /* 0.5 percent */
-    int8_t i_term[3];      /* 0.5 percent */
-    int8_t d_term[3];      /* 0.5 percent */
-    int8_t ff_term[3];     /* 0.5 percent */
-    uint8_t reserved; /* retain a 40-byte stride for aligned record storage */
+    int8_t p_term[3], i_term[3], ff_term[3], pid[3]; /* 0.5 percent */
+    uint16_t overwritten_records; /* cumulative ring overwrites, saturating */
+    uint8_t reserved;
 } flight_log_record_t;
 
-_Static_assert(sizeof(flight_log_record_t) == 40U,
-               "flight log record format must remain 40 bytes");
+_Static_assert(sizeof(flight_log_record_t) == 64U,
+               "internal log v2 record must remain 64 bytes");
 
-/* Persistent SD/dataflash sample format 1.0. Eight 60-byte records plus the
+/* Persistent SD/dataflash sample format 2.0. Eight 60-byte records plus the
  * 32-byte block header fill one 512-byte SD sector exactly. Loop periods use
  * two packed 12-bit values (0..4095 us). Static tuning values belong to
  * flight_log_metadata_t and are written once per flight. */
@@ -93,7 +94,7 @@ static inline uint16_t blackbox_record_gyro_loop_us(
         ((uint16_t)record->loop_timing[2] << 4U));
 }
 
-#define FLIGHT_LOG_METADATA_VERSION 5U
+#define FLIGHT_LOG_METADATA_VERSION 6U
 typedef struct __attribute__((packed)) {
     uint32_t version;
     uint32_t main_loop_hz;
@@ -115,7 +116,7 @@ typedef struct __attribute__((packed)) {
 } flight_log_metadata_t;
 
 _Static_assert(sizeof(flight_log_metadata_t) == 128U,
-               "metadata v5 must remain 128 bytes");
+               "metadata v6 must remain 128 bytes");
 static inline bool flight_log_metadata_decode(flight_log_metadata_t *out,
                                                const void *stored)
 {

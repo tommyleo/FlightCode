@@ -15,7 +15,7 @@ static uint32_t flash_bytes = 16U * 1024U * 1024U;
 #define PAGE_BYTES 256U
 #define QUEUE_RECORDS 32U
 #define HEADER_MAGIC 0x42424646U /* FFBB */
-#define HEADER_VERSION 7U
+#define HEADER_VERSION 8U
 #define HEADER_VALID 0xA5U
 #define CMD_JEDEC_ID 0x9FU
 #define CMD_READ 0x03U

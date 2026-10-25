@@ -2,7 +2,7 @@
 
 *Born to race.*
 
-Current development version: **1.6.4** (not released).
+Current release: **1.6.4**.
 
 ## FlightCode in action! 🚀
 
@@ -85,7 +85,7 @@ rate follows it as well. MPU6000 targets retain their hardware-limited 8 kHz
 gyroscope and PID rate when the main scheduler runs at 16 kHz; the latest motor
 command is held for the intermediate motor-output frame.
 
-Version 2 Blackbox metadata and version 7 Configurator JSON logs record both
+Version 6 Blackbox metadata and version 2.0 Configurator JSON logs record both
 the measured main-scheduler period and the interval between fresh gyroscope/PID
 updates. Each sample exposes the periods in microseconds and their derived
 frequencies, alongside the separated P/I/D/FF terms.
@@ -231,7 +231,7 @@ before installing propellers.
 ## Direct throttle and storage formats
 
 Throttle is applied directly to the controller and mixer on each update.
-Log metadata uses version 5 with integer PID/feedforward values; exports contain a single throttle channel.
+Log metadata uses version 6 with integer PID/feedforward values; exports contain a single throttle channel.
 Settings saved by the preceding firmware version are not migrated; configure
 and save the aircraft settings again after updating. Existing onboard logs
 from the preceding format are not loaded.
@@ -254,3 +254,5 @@ All targets advertise `SETTINGS_BACKUP`. `GET_SETTINGS_INFO` captures a consiste
 The operation requires disarming, the ARM switch inactive and motor/PID tests stopped. Partial, corrupt, expired or incompatible transfers never reach settings application. A new HELLO/BYE cancels staged state. Backups include all persistent FC configuration, not flight logs or ESC configuration; restore requires the same firmware family, target and settings layout. Use the shared Configurator Save backup / Load backup controls and restart after restoring.
 
 Protocol reply framing correction (2026-10-18): the complete H7 capability list exceeded the former 384-byte reply buffer, dropping its newline and merging the next response. Replies now allow 768 bytes and explicitly return a complete RESPONSE_TOO_LONG error instead of sending truncated packets. `tools/test-protocol-reply.ps1` compiles the actual reply function to check packet boundaries and overflow handling.
+
+See [flight log format 2.0](docs/log-format-2.md) for the 1.6.4 logger, retained duration and analysis limits.
